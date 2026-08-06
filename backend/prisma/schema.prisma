@@ -1,0 +1,115 @@
+// Cretona — Prisma schema
+// Spec: docs/DATA_MODEL.md
+//
+// MIGRATION OWNERSHIP: the database is created and evolved by SQL in
+// supabase/ (bootstrap.sql and later migrations), not by `prisma migrate`.
+// Postgres features Prisma cannot express — the auth.users FK and trigger,
+// RLS policies, partial indexes, CHECK constraints, and the lower(email)
+// index — all live there. This file is the *client* model and must be kept
+// aligned with that SQL. Use `prisma db pull` to check for drift.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // pooled
+  directUrl = env("DIRECT_URL") // direct, for introspection
+}
+
+enum ProjectStatus {
+  pending
+  generating
+  completed
+  failed
+
+  @@map("project_status")
+}
+
+model Role {
+  id    Int    @id @default(autoincrement()) @db.SmallInt
+  name  String @unique
+  users User[]
+
+  @@map("roles")
+}
+
+/// `id` is `auth.users.id`. The foreign key to the auth schema is declared in
+/// SQL because Prisma does not manage that schema.
+model User {
+  id         String   @id @db.Uuid
+  roleId     Int      @default(1) @map("role_id") @db.SmallInt
+  username   String?  @unique
+  email      String   @unique
+  isDisabled Boolean  @default(false) @map("is_disabled")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  role     Role           @relation(fields: [roleId], references: [id])
+  projects VideoProject[]
+
+  @@map("users")
+}
+
+/// Only services/projects may write `status`, and only along the legal
+/// transitions: pending -> generating -> completed | failed, plus
+/// failed -> pending on retry.
+model VideoProject {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  title  String
+  prompt String?
+
+  /// Storage object keys, never URLs — signed URLs expire and are minted per
+  /// response (API_CONTRACT §3.1).
+  imagePath     String? @map("image_path")
+  videoPath     String? @map("video_path")
+  thumbnailPath String? @map("thumbnail_path")
+
+  status          ProjectStatus @default(pending)
+  provider        String
+  providerJobId   String?       @map("provider_job_id")
+  errorMessage    String?       @map("error_message")
+  durationSeconds Int?          @map("duration_seconds") @db.SmallInt
+  idempotencyKey  String?       @map("idempotency_key")
+  attemptCount    Int           @default(0) @map("attempt_count") @db.SmallInt
+
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  user User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  logs GenerationLog[]
+
+  // In SQL this unique index is PARTIAL (`where idempotency_key is not null`),
+  // which Prisma cannot express. Without the partial clause Postgres would
+  // still allow multiple NULLs, so behaviour matches — but do not let
+  // `prisma migrate` regenerate it.
+  @@unique([userId, idempotencyKey], map: "uq_projects_idempotency")
+  @@index([userId, createdAt(sort: Desc)], map: "idx_projects_user_created")
+  @@index([status, createdAt], map: "idx_projects_status_created")
+  @@index([provider, providerJobId], map: "idx_projects_provider_job")
+  @@map("video_projects")
+}
+
+/// Append-only audit of every provider interaction (FR-2.10). Credentials are
+/// redacted in the adapter before a row is built, not at the logger.
+model GenerationLog {
+  id         BigInt   @id @default(autoincrement())
+  projectId  String   @map("project_id") @db.Uuid
+  provider   String
+  requestId  String?  @map("request_id")
+  /// submit | poll | webhook | download | error
+  event      String
+  request    Json?
+  response   Json?
+  httpStatus Int?     @map("http_status")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  project VideoProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt(sort: Desc)], map: "idx_logs_project_created")
+  @@map("generation_logs")
+}

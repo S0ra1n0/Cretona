@@ -1,0 +1,30 @@
+# --- Android / Gradle ---
+*.iml
+.gradle/
+.kotlin/
+/local.properties
+/.idea/
+# Trailing slash, NOT "/build": these must match at every level, otherwise
+# app/build/ (~1000 generated files) gets committed.
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.keystore
+*.jks
+release/
+
+# --- Node / backend ---
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+*.log
