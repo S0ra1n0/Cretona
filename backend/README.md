@@ -64,6 +64,28 @@ src/
 └── app.ts               middleware assembly, in pipeline order
 ```
 
+## Generation pipeline
+
+```
+POST /projects → quota check → insert (pending) → submit to provider
+                                                        ↓
+                                          update (generating, jobId)
+                                                        ↓
+              poller claims due jobs  ──  FOR UPDATE SKIP LOCKED
+                                                        ↓
+                              running? → touch    failed? → failed + errorCode
+                                                        ↓
+                              succeeded → download → upload to our bucket
+                                                        ↓
+                                                    completed
+```
+
+The result is re-hosted **before** the project is marked completed. Provider
+URLs expire, so completing first would guarantee a broken link within days.
+
+All job state lives in Postgres, so a restart resumes cleanly and multiple
+instances are safe — `SKIP LOCKED` means two workers never claim one job.
+
 ## Rules that keep this maintainable
 
 - **Controllers hold no business logic and no Prisma calls.** Services do the work.
@@ -74,13 +96,22 @@ src/
 
 ## Endpoints
 
-| Route | Status |
+| Route | Notes |
 |---|---|
-| `GET /api/v1/health` | live — liveness, unauthenticated, no dependencies |
-| `GET /api/v1/health/ready` | live — readiness, 503 when the database is unreachable |
-| `/me`, `/uploads` | P2-9, P2-14 |
-| `/projects` | P2-10 … P2-13 |
-| `/admin/*` | P2-15 … P2-17 |
+| `GET /health` | liveness — unauthenticated, no dependencies |
+| `GET /health/ready` | readiness — 503 when the database is unreachable |
+| `GET/PATCH /me` | profile and quota |
+| `POST /uploads/sign` | signed upload URL; image bytes never pass through here |
+| `POST /projects` | create a generation; honours `Idempotency-Key` |
+| `GET /projects` | own history, cursor-paginated |
+| `GET /projects/:id` | detail; someone else's project returns 404, never 403 |
+| `DELETE /projects/:id` | soft-deletes the row, hard-deletes the media |
+| `POST /projects/:id/retry` | only for retryable failures; consumes quota |
+| `GET /admin/users` | list, search, filter |
+| `PATCH /admin/users/:id` | role and disabled state; cannot target yourself |
+| `GET /admin/stats` | totals, per-status, per-provider, failure rate, daily |
+
+Not yet mounted: `POST /webhooks/providers/:provider` (deferred by ADR-003).
 
 Liveness and readiness are separate on purpose: a failing database should stop
 traffic being routed here, not cause the platform to restart the process.

@@ -1,7 +1,11 @@
 import { createApp } from './app.js';
 import { env } from './config/env.js';
+import { startPoller, stopPoller } from './jobs/poller.js';
 import { logger } from './lib/logger.js';
 import { checkDatabase, disconnectPrisma } from './lib/prisma.js';
+import { registerProviders } from './services/ai/index.js';
+
+registerProviders();
 
 const app = createApp();
 
@@ -16,6 +20,9 @@ const server = app.listen(env.PORT, () => {
   void checkDatabase().then((ok) => {
     if (ok) {
       logger.info('Database reachable');
+      // Only started once the database answers: the poller's first act is a
+      // claim query, and failing that on every tick just fills the log.
+      startPoller();
     } else {
       logger.warn('Database unreachable — check DATABASE_URL in backend/.env');
     }
@@ -28,6 +35,7 @@ const server = app.listen(env.PORT, () => {
  */
 async function shutdown(signal: string): Promise<void> {
   logger.info({ signal }, 'Shutting down');
+  stopPoller();
 
   const forced = setTimeout(() => {
     logger.error('Shutdown timed out after 10s, forcing exit');

@@ -66,3 +66,39 @@ export const patchAdminUserSchema = z
 export const statsQuerySchema = z.object({
   days: z.coerce.number().int().min(1).max(90).default(30),
 });
+
+// --- Projects ---------------------------------------------------------------
+
+export const createProjectSchema = z
+  .object({
+    title: z.string().trim().max(120).optional(),
+    prompt: z.string().trim().min(1).max(1000).optional(),
+    imagePath: z.string().min(1).max(300).optional(),
+    provider: z.string().min(1).max(40).optional(),
+    options: z
+      .object({
+        durationSeconds: z.coerce.number().int().min(1).max(60).optional(),
+        aspectRatio: z.enum(['16:9', '9:16', '1:1']).optional(),
+      })
+      .optional(),
+  })
+  // This is what distinguishes the three generation modes (FR-2.1 – FR-2.3).
+  // The same rule exists as a CHECK constraint in the database.
+  .refine((v) => Boolean(v.prompt) || Boolean(v.imagePath), {
+    message: 'Provide a prompt, an image, or both.',
+  });
+
+export const listProjectsSchema = paginationSchema.extend({
+  status: z.enum(['pending', 'generating', 'completed', 'failed']).optional(),
+});
+
+// --- Uploads ----------------------------------------------------------------
+
+export const signUploadSchema = z.object({
+  contentType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
+  sizeBytes: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(10 * 1024 * 1024, 'Images must be 10 MB or smaller'),
+});
