@@ -12,10 +12,11 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// Prisma 7 no longer accepts connection URLs here. The CLI reads them from
+// ../prisma.config.ts; the runtime client gets one via a driver adapter in
+// src/lib/prisma.ts.
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL") // pooled
-  directUrl = env("DIRECT_URL") // direct, for introspection
+  provider = "postgresql"
 }
 
 enum ProjectStatus {

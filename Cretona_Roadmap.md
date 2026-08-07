@@ -5,7 +5,7 @@ Task IDs are stable — use them to pick what to implement next (e.g. "do P1-3 a
 
 **Legend:** `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` skipped/deferred
 
-**Current state (2026-08-06):** Phase 0 decisions all made and recorded as ADRs. Documentation set written. Android/Kotlin scaffold builds and tests clean. Phase 1 schema written and verified against a real Postgres — only P1-1 (creating the actual Supabase project) is outstanding. Backend not started.
+**Current state (2026-08-06):** Phase 0 decisions all recorded as ADRs. Documentation set written. Android scaffold builds and tests clean. Phase 1 schema verified against a real Postgres. Phase 2 core scaffold built and running — typecheck clean, 16 tests passing, server serves `/health`. Next: the P2 route handlers.
 
 ---
 
@@ -65,16 +65,20 @@ All SQL lives in [`supabase/bootstrap.sql`](supabase/bootstrap.sql). **Executed 
 
 ## Phase 2 — Backend (Node.js + Express + Prisma)
 
+Core scaffold is built and verified: typecheck clean, 16 tests passing, production build runs, server boots and serves traffic.
+
 | ID | Task |
 |----|------|
-| P2-1 | `[ ]` Scaffold Express + TypeScript project, folder layout per plan (`controllers/ routes/ middleware/ services/ai/ prisma/ utils/`) |
-| P2-2 | `[ ]` Prisma init, introspect or define schema, generate client, wire migrations |
-| P2-3 | `[ ]` Config loader + env validation (fail fast on missing keys) |
-| P2-4 | `[ ]` Auth middleware: verify Supabase JWT, load user, attach to request |
-| P2-5 | `[ ]` RBAC middleware: `requireRole('admin')` |
-| P2-6 | `[ ]` Error handling middleware + consistent JSON error envelope |
-| P2-7 | `[ ]` Request logging + request IDs |
-| P2-8 | `[ ]` Health endpoint `GET /health` |
+| P2-1 | `[x]` Express 5 + TypeScript (ESM) scaffold, layout per plan |
+| P2-2 | `[x]` Prisma 7 client over the `pg` driver adapter; `prisma.config.ts` for CLI URLs; `prisma generate` verified |
+| P2-3 | `[x]` Config loader with zod validation — **verified**: missing keys exit 1 and name every one |
+| P2-4 | `[x]` Auth chain: verify Supabase JWT (HS256) → load user → reject if disabled |
+| P2-5 | `[x]` RBAC: `requireRole()` / `requireAdmin` |
+| P2-6 | `[x]` `AppError` + error-code table + the single error-envelope handler |
+| P2-7 | `[x]` pino structured logging with central redaction; `X-Request-Id` assigned and echoed |
+| P2-8 | `[x]` `GET /health` (liveness) and `GET /health/ready` (503 when the DB is down) |
+| P2-18 | `[~]` Rate limiting middleware built and emitting `X-RateLimit-*`. Per-user **quota** (the actual spend control) still to do |
+| P2-19 | `[~]` `validate()` middleware built; per-route schemas arrive with each endpoint |
 
 ### API surface
 
