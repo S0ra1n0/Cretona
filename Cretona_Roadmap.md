@@ -5,7 +5,7 @@ Task IDs are stable — use them to pick what to implement next (e.g. "do P1-3 a
 
 **Legend:** `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` skipped/deferred
 
-**Current state (2026-08-06):** Phase 0 decisions all recorded as ADRs. Documentation set written. Android scaffold builds and tests clean. Phase 1 schema verified against a real Postgres. Phase 2 core scaffold built and running — typecheck clean, 16 tests passing, server serves `/health`. Next: the P2 route handlers.
+**Current state (2026-08-06):** Phase 0 decisions all recorded as ADRs. Documentation set written. Android scaffold builds and tests clean. Phase 1 schema verified against a real Postgres. Phase 2 is most of the way done — scaffold, middleware, quota, profile and admin endpoints, 48 tests passing. Next: P3-1 … P3-3 (provider interface + storage), which unblocks the `/projects` endpoints.
 
 ---
 
@@ -65,7 +65,7 @@ All SQL lives in [`supabase/bootstrap.sql`](supabase/bootstrap.sql). **Executed 
 
 ## Phase 2 — Backend (Node.js + Express + Prisma)
 
-Core scaffold is built and verified: typecheck clean, 16 tests passing, production build runs, server boots and serves traffic.
+Core scaffold plus the profile and admin endpoints are built and verified: typecheck clean, **48 tests passing**, production build runs, server boots and serves traffic. Remaining in P2: `/projects` and `/uploads/sign`, both of which need P3's storage and provider services.
 
 | ID | Task |
 |----|------|
@@ -84,17 +84,17 @@ Core scaffold is built and verified: typecheck clean, 16 tests passing, producti
 
 | ID | Task |
 |----|------|
-| P2-9  | `[ ]` `GET /me`, `PATCH /me` — profile read/update |
+| P2-9  | `[x]` `GET /me`, `PATCH /me` — profile read/update, with quota; unique-username violation mapped to 409 |
 | P2-10 | `[ ]` `POST /projects` — create generation job (text / image / text+image) |
 | P2-11 | `[ ]` `GET /projects` — paginated history for current user, filter by status |
 | P2-12 | `[ ]` `GET /projects/:id` — detail incl. current status |
 | P2-13 | `[ ]` `DELETE /projects/:id` — delete project + its stored media |
 | P2-14 | `[ ]` `POST /uploads/sign` — signed upload URL for source images (app uploads direct to Storage) |
-| P2-15 | `[ ]` `GET /admin/users` — list/search/paginate |
-| P2-16 | `[ ]` `PATCH /admin/users/:id` — change role, enable/disable |
-| P2-17 | `[ ]` `GET /admin/stats` — totals, per-status counts, per-provider counts, recent activity |
-| P2-18 | `[ ]` Rate limiting on generation endpoints + per-user quota enforcement (from P0-6) |
-| P2-19 | `[ ]` Input validation (zod/joi) on every route |
+| P2-15 | `[x]` `GET /admin/users` — cursor pagination, search, role and disabled filters |
+| P2-16 | `[x]` `PATCH /admin/users/:id` — role change and enable/disable, self-modification blocked (FR-4.6) |
+| P2-17 | `[x]` `GET /admin/stats` — totals, per-status, per-provider, failure rate, daily series |
+| P2-18 | `[x]` Rate limiting **and** the per-user rolling quota service (ADR-007), which required a new `error_code` column — [migration 002](supabase/002_add_error_code.sql) |
+| P2-19 | `[x]` zod validation wired on every route defined so far; new routes add their schema in `src/schemas/` |
 
 ---
 

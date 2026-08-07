@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { z } from 'zod';
+import { parseIsoDurationMs } from '../lib/duration.js';
 
 /**
  * Environment configuration (P2-3).
@@ -32,7 +33,12 @@ const schema = z.object({
 
   // Quota and rate limiting (ADR-007)
   GENERATION_QUOTA_LIMIT: z.coerce.number().int().positive().default(10),
-  GENERATION_QUOTA_WINDOW: z.string().default('P1D'),
+  GENERATION_QUOTA_WINDOW: z
+    .string()
+    .default('P1D')
+    .refine((v) => parseIsoDurationMs(v) !== null, {
+      message: 'must be an ISO-8601 duration of days or smaller, e.g. P1D or PT12H',
+    }),
   RATE_LIMIT_GENERATION_PER_MIN: z.coerce.number().int().positive().default(5),
   RATE_LIMIT_DEFAULT_PER_MIN: z.coerce.number().int().positive().default(120),
 

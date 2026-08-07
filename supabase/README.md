@@ -6,6 +6,8 @@ Database and storage setup for Cretona. Specified in [docs/DATA_MODEL.md](../doc
 
 1. **Create the project** (P1-1) at [supabase.com](https://supabase.com). Pick the region closest to your users.
 2. **Run [`bootstrap.sql`](bootstrap.sql)** — open the SQL Editor, paste the whole file, execute. It is one transaction and safe to re-run.
+
+   Then run **[`002_add_error_code.sql`](002_add_error_code.sql)**, which adds the machine-readable failure code the quota query depends on. Migrations are numbered and applied in order.
 3. **Run the verification queries** at the bottom of that file. All must pass before moving on.
 
    > The RLS check filters on `relnamespace = 'public'::regnamespace` deliberately. `auth.users` is *also* called `users` and has RLS off, so an unfiltered query returns two `users` rows and looks like a failure when nothing is wrong.

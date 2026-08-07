@@ -126,6 +126,10 @@ Android blocks cleartext HTTP by default. If you switch the debug base URL to a 
 
 | Symptom | Cause / fix |
 |---|---|
+| `P1001 Can't reach database server at aws-0-REGION.pooler…` | The placeholder in `.env.example` was copied literally. Get the real string from **Connect → ORMs → Prisma**; the hostname is not predictable |
+| `P1001` with a real-looking hostname | Special character in the database password is not URL-encoded (`@` → `%40`). This fails identically to a network problem |
+| `prisma migrate` hangs or errors on advisory locks | `DIRECT_URL` points at the transaction pooler (6543). It must be the session pooler (5432) |
+| `P4002 Cross schema references are only allowed…` from `prisma db pull` | Expected — `users.id` references `auth.users`. Introspection is not used on this project; run `supabase/drift_check.sql` instead. `prisma generate` and runtime are unaffected |
 | `requires ... compile against version 37 or later` | API 37 platform not installed — install it in SDK Manager |
 | `The 'org.jetbrains.kotlin.android' plugin is no longer required` | AGP 9 has built-in Kotlin support; don't re-add the plugin |
 | `SUPABASE_URL` empty on the Home screen | `local.properties` not filled in, or Gradle not re-synced after editing it |

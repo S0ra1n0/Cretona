@@ -42,7 +42,6 @@ curl http://localhost:3000/api/v1/health
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm test` | Vitest |
 | `npm run prisma:generate` | Regenerate the client after a schema change |
-| `npm run prisma:pull` | Introspect the live database and report schema drift |
 
 ## Layout
 
@@ -99,5 +98,17 @@ advisory locks they need.
 
 Migrations stay owned by SQL in [`supabase/`](../supabase/). **Do not run
 `prisma migrate`** — it does not know about the RLS policies, the `auth.users`
-trigger, or the partial indexes, and will try to drop them. Use
-`npm run prisma:pull` to check for drift instead.
+trigger, or the partial indexes, and will try to drop them.
+
+**`prisma db pull` does not work on this schema either**, which is why there is
+no script for it. `public.users.id` is a foreign key into `auth.users`, and
+Prisma refuses cross-schema references (`P4002`) unless `auth` is added to the
+datasource's `schemas` — which would pull Supabase's ~16 auth tables into our
+model and force `@@schema` onto every model we own. `db pull` also overwrites
+`schema.prisma`, discarding its comments.
+
+Only introspection is affected; `prisma generate` and every runtime query are
+fine. To check the schema file still matches the database, run
+[`supabase/drift_check.sql`](../supabase/drift_check.sql) in the SQL Editor.
+After adding a column in SQL, add the field to `schema.prisma` by hand and run
+`npm run prisma:generate`.

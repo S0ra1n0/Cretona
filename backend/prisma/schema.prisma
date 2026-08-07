@@ -6,7 +6,13 @@
 // Postgres features Prisma cannot express — the auth.users FK and trigger,
 // RLS policies, partial indexes, CHECK constraints, and the lower(email)
 // index — all live there. This file is the *client* model and must be kept
-// aligned with that SQL. Use `prisma db pull` to check for drift.
+// aligned with that SQL by hand.
+//
+// `prisma db pull` does NOT work here: users.id references auth.users, and
+// Prisma rejects cross-schema references (P4002) unless `auth` joins the
+// datasource `schemas` — which drags Supabase's whole auth schema into this
+// file. Run supabase/drift_check.sql instead. Only introspection is affected;
+// `prisma generate` and runtime queries are unaffected.
 
 generator client {
   provider = "prisma-client-js"
@@ -68,10 +74,18 @@ model VideoProject {
   videoPath     String? @map("video_path")
   thumbnailPath String? @map("thumbnail_path")
 
-  status          ProjectStatus @default(pending)
-  provider        String
-  providerJobId   String?       @map("provider_job_id")
-  errorMessage    String?       @map("error_message")
+  status        ProjectStatus @default(pending)
+  provider      String
+  providerJobId String?       @map("provider_job_id")
+
+  /// Prose for the user. Never a raw provider payload.
+  errorMessage String? @map("error_message")
+
+  /// Machine-readable taxonomy from AI_PROVIDER_SPEC.md §2.1. Quota accounting
+  /// reads this to skip infrastructure failures (ADR-007), so it must be set
+  /// on every failed project.
+  errorCode String? @map("error_code")
+
   durationSeconds Int?          @map("duration_seconds") @db.SmallInt
   idempotencyKey  String?       @map("idempotency_key")
   attemptCount    Int           @default(0) @map("attempt_count") @db.SmallInt

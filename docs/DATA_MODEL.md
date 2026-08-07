@@ -101,6 +101,7 @@ Mirrors `auth.users`, which Supabase owns. `users.id` **is** `auth.users.id` —
 | `provider` | `text` | NOT NULL | **added** — needed to poll without joining logs |
 | `provider_job_id` | `text` | NULL allowed | **added** — set once the provider accepts the job |
 | `error_message` | `text` | NULL allowed | **added** — user-readable failure reason |
+| `error_code` | `text` | NULL allowed, CHECK against the taxonomy | **added in migration 002** — machine-readable failure reason |
 | `duration_seconds` | `smallint` | NULL allowed | |
 | `idempotency_key` | `text` | NULL allowed | **added** — supports safe submit retries |
 | `attempt_count` | `smallint` | NOT NULL DEFAULT 0 | retry accounting |
@@ -125,9 +126,20 @@ ALTER TABLE video_projects ADD CONSTRAINT chk_has_input
 ALTER TABLE video_projects ADD CONSTRAINT chk_completed_has_video
   CHECK (status <> 'completed' OR video_path IS NOT NULL);
 
--- A failed project must say why.
+-- A failed project must say why, in both registers: prose for the user and a
+-- code for the quota query.
 ALTER TABLE video_projects ADD CONSTRAINT chk_failed_has_reason
   CHECK (status <> 'failed' OR error_message IS NOT NULL);
+ALTER TABLE video_projects ADD CONSTRAINT chk_failed_has_code
+  CHECK (status <> 'failed' OR error_code IS NOT NULL);
+
+-- The taxonomy is AI_PROVIDER_SPEC.md §2.1. Text plus CHECK rather than an
+-- enum, because providers keep inventing failure modes and widening a CHECK is
+-- a one-line migration.
+ALTER TABLE video_projects ADD CONSTRAINT chk_error_code
+  CHECK (error_code IS NULL OR error_code IN (
+    'content_policy', 'invalid_input', 'quota', 'timeout', 'provider_error', 'unknown'
+  ));
 
 -- Idempotency is scoped per user.
 CREATE UNIQUE INDEX uq_projects_idempotency
@@ -175,6 +187,8 @@ CREATE INDEX idx_projects_status_created ON video_projects (status, created_at)
 CREATE INDEX idx_projects_provider_job   ON video_projects (provider, provider_job_id);
 CREATE INDEX idx_logs_project_created    ON generation_logs (project_id, created_at DESC);
 CREATE INDEX idx_users_email             ON users (lower(email));   -- admin search
+CREATE INDEX idx_projects_quota          ON video_projects (user_id, created_at DESC, error_code)
+  WHERE deleted_at IS NULL;                        -- quota accounting (ADR-007)
 ```
 
 The poller index is partial on purpose: it stays small no matter how many completed projects accumulate.
