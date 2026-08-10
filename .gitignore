@@ -1,30 +1,54 @@
-# --- Android / Gradle ---
+# Secrets and machine-local configuration
+.env
+.env.*
+!.env.example
+env
+local.properties
+**/local.properties
+!**/local.properties.example
+*.keystore
+*.jks
+
+# Android / Gradle
 *.iml
 .gradle/
 .kotlin/
-/local.properties
-/.idea/
-# Trailing slash, NOT "/build": these must match at every level, otherwise
-# app/build/ (~1000 generated files) gets committed.
+.idea/
 build/
 captures/
 .externalNativeBuild/
 .cxx/
 *.apk
 *.aab
-*.keystore
-*.jks
 release/
 
-# --- Node / backend ---
+# Node / TypeScript backend
 node_modules/
 dist/
 coverage/
-.env
-.env.*
-!.env.example
 
-# --- OS / editor ---
+# Python / FastAPI backend
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+backend/data/
+backend/media/
+
+# Local AI models and generated output
+models/
+outputs/
+checkpoints/
+
+# Editors and operating systems
+.vscode/
 .DS_Store
 Thumbs.db
+desktop.ini
 *.log

@@ -1,0 +1,13 @@
+# Copy to local.properties at the repository root. The real file is ignored.
+sdk.dir=C\:\\Users\\YOUR_USER\\AppData\\Local\\Android\\Sdk
+
+# Android emulator -> FastAPI running on the Windows host.
+cretona.api.baseUrl.debug=http://10.0.2.2:8000/api/v1/
+
+# Release builds must use HTTPS. This placeholder deliberately cannot resolve.
+cretona.api.baseUrl.release=https://api.example.invalid/api/v1/
+
+# Supabase client values are not service credentials. Populate them only while
+# the accepted Supabase Auth/Storage integration remains active.
+supabase.url=
+supabase.anonKey=
