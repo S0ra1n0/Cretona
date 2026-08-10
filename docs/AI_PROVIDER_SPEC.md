@@ -1,8 +1,14 @@
 # AI Provider Integration Spec
 
-**Version:** 0.1 · **Status:** Draft
+**Version:** 0.2 · **Status:** Contract accepted; one deterministic FastAPI adapter implemented
 
 Defines the boundary between Cretona and any third-party AI video API. Satisfies NFR-5.2: adding a provider means implementing one interface and registering it — nothing above `services/ai` changes.
+
+The TypeScript below is the original executable reference contract. The active
+Python equivalent lives in `backend-fastapi/app/providers.py`; names differ by
+language, but capabilities, normalized states, and secret boundaries must stay
+behaviorally compatible. A fake adapter is currently selected. It returns a
+bundled synthetic MP4 and must never be presented as AI-generated evidence.
 
 ---
 
@@ -145,7 +151,7 @@ Redaction happens **in the adapter, before the row is built** — not at the log
 
 ## 6. Adding a Provider — Checklist
 
-1. Create `backend/src/services/ai/providers/<name>.ts` implementing `VideoProvider`.
+1. Create `backend-fastapi/app/providers/<name>.py` implementing the normalized provider protocol. Keep a TypeScript adapter only when maintaining the Express reference.
 2. Fill in `capabilities` honestly — the values are used for validation, not documentation.
 3. Map the provider's statuses to `JobState` and its errors to `ProviderFailure`.
 4. Add `<NAME>_API_KEY` to config validation and `.env.example`.
@@ -163,10 +169,15 @@ Filled in as each is integrated. Capability values must be verified against live
 
 | Provider | Status | Modes | Notes |
 |---|---|---|---|
-| Runway | not started | text, image, text+image | |
-| Kling | not started | text, image, text+image | |
+| Cretona fake | integrated | deterministic test fixture | Contract/runtime evidence only; not AI output |
+| LTX-Video 2B Q8 | EXP-005 required | text, image | `LOCAL_STANDARD` candidate for the measured 8 GB GPU |
+| FramePack F1 | EXP-005 required | image | `LOCAL_QUALITY` challenger; acceptance depends on measured quality/latency |
+| Runway | not selected | text, image, text+image | Paid path; superseded as launch default by ADR-009 |
+| Kling | not selected | text, image, text+image | Paid path; not compatible with the chosen zero-additional-spend baseline |
 | Pika | not started | text, image | |
 | Luma | not started | text, image | |
 | Google Veo | not started | text, image | |
 
-The launch provider is chosen in [ADR-004](adr/ADR-004-launch-provider.md).
+The old paid launch assumption in ADR-004 is superseded by the evidence gate in
+[ADR-009](adr/ADR-009-zero-spend-provider-gate.md). No real video model is
+selected until EXP-005 succeeds on the actual laptop.

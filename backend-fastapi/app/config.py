@@ -1,0 +1,58 @@
+from __future__ import annotations
+
+from functools import lru_cache
+from pathlib import Path
+from typing import Literal
+
+from pydantic import Field, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+
+
+class Settings(BaseSettings):
+    """Validated configuration loaded only on the server."""
+
+    model_config = SettingsConfigDict(
+        env_file=BACKEND_ROOT / ".env",
+        env_prefix="CRETONA_",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+    environment: Literal["development", "test", "production"] = "development"
+    auth_mode: Literal["dev", "supabase"] = "dev"
+    database_path: Path = BACKEND_ROOT / "data" / "cretona.db"
+    media_dir: Path = BACKEND_ROOT / "assets"
+    default_video_provider: Literal["fake"] = "fake"
+
+    dev_user_id: str = "00000000-0000-4000-8000-000000000001"
+
+    prompt_llm_provider: Literal["deterministic", "ollama"] = "deterministic"
+    ollama_base_url: str = "http://127.0.0.1:11434"
+    ollama_model: str = "qwen3:4b"
+    ollama_timeout_seconds: float = Field(default=45.0, gt=0, le=300)
+
+    fake_polls_before_complete: int = Field(default=1, ge=1, le=20)
+    fake_video_filename: str = "demo-output.mp4"
+
+    @model_validator(mode="after")
+    def reject_development_auth_in_production(self) -> Settings:
+        if self.environment == "production" and self.auth_mode == "dev":
+            raise ValueError("CRETONA_AUTH_MODE=dev is forbidden in production.")
+        return self
+
+    def resolved_database_path(self) -> Path:
+        return self._resolve_from_backend(self.database_path)
+
+    def resolved_media_dir(self) -> Path:
+        return self._resolve_from_backend(self.media_dir)
+
+    @staticmethod
+    def _resolve_from_backend(path: Path) -> Path:
+        return path if path.is_absolute() else BACKEND_ROOT / path
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()

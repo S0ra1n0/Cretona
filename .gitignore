@@ -34,12 +34,15 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.rtk-data/
 .coverage
 htmlcov/
 .venv/
 venv/
 backend/data/
 backend/media/
+backend-fastapi/data/
+backend-fastapi/media/
 
 # Local AI models and generated output
 models/

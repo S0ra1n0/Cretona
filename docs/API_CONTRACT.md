@@ -2,14 +2,14 @@
 
 **Version:** v1 · **Status:** Draft · **Base path:** `/api/v1`
 
-This is the contract between the Android app and the Express backend. It is the source of truth for both sides; change it here first.
+This is the framework-neutral contract between the Android app and the active FastAPI backend. It is the source of truth for both sides; change it here first. The Express implementation under `backend/` remains migration evidence until FastAPI reaches parity.
 
 ---
 
 ## 1. Conventions
 
 ### 1.1 Transport
-- HTTPS only in staging and production. Debug builds may use `http://10.0.2.2:3000` (emulator → host).
+- HTTPS only in staging and production. Debug builds may use `http://10.0.2.2:8000` (emulator → active FastAPI host).
 - `Content-Type: application/json; charset=utf-8` for request and response bodies.
 - All timestamps are ISO-8601 UTC with `Z` (e.g. `2026-08-06T09:14:22Z`).
 - All ids are UUID v4 strings unless stated otherwise.
@@ -31,6 +31,11 @@ The token is the JWT issued by Supabase Auth to the app. The backend verifies it
 | Valid token, insufficient role | 403 | `FORBIDDEN` |
 
 The app must refresh the token via the Supabase SDK on `401 TOKEN_INVALID` and retry the request once. A second 401 forces logout.
+
+The zero-spend local profile is the only exception: when the server is
+explicitly started with `CRETONA_AUTH_MODE=dev`, it supplies a fixed local user
+and accepts `X-Debug-User-Id` for ownership tests. This header is rejected by
+non-development profiles and must never be used as production authentication.
 
 ### 1.3 Error envelope
 Every non-2xx response uses exactly this shape:
@@ -100,9 +105,35 @@ Unauthenticated liveness probe.
 { "status": "ok", "version": "0.1.0" }
 ```
 
+### 2.2 Prompt enhancement
+
+#### `POST /prompts/enhance`
+
+Asks the backend-owned text-LLM adapter to turn a short idea into a clearer
+video prompt. The Android app never calls Ollama, Gemini, or OpenAI directly.
+
+**Body**
+```json
+{ "prompt": "a cat astronaut", "aspectRatio": "16:9" }
+```
+
+**200**
+```json
+{
+  "originalPrompt": "a cat astronaut",
+  "enhancedPrompt": "Cinematic wide shot of a cat astronaut...",
+  "provider": "ollama",
+  "usedFallback": false
+}
+```
+
+`provider: "deterministic"` and `usedFallback: true` mean no live LLM was
+available. This keeps the demo usable but is not evidence that FastAPI called a
+real LLM.
+
 ---
 
-### 2.2 Profile
+### 2.3 Profile
 
 #### `GET /me`
 Returns the caller's profile and current quota.
@@ -132,7 +163,7 @@ Returns the caller's profile and current quota.
 
 ---
 
-### 2.3 Uploads
+### 2.4 Uploads
 
 #### `POST /uploads/sign`
 Issues a short-lived signed URL so the app uploads the source image directly to Supabase Storage. The backend never proxies image bytes.
@@ -158,7 +189,7 @@ The app `PUT`s the image bytes to `uploadUrl`, then passes `storagePath` to `POS
 
 ---
 
-### 2.4 Projects
+### 2.5 Projects
 
 #### `POST /projects`
 Creates a project and queues a generation.
@@ -171,7 +202,7 @@ Creates a project and queues a generation.
   "title": "Neon city flythrough",
   "prompt": "A drone shot flying through a neon-lit cyberpunk city at night",
   "imagePath": "uploads/9f1c2a3d/2026-08-06/2b7e….jpg",
-  "provider": "runway",
+  "provider": "fake",
   "options": { "durationSeconds": 5, "aspectRatio": "16:9" }
 }
 ```
@@ -181,7 +212,7 @@ Creates a project and queues a generation.
 | `title` | no | ≤ 120 chars; derived from the prompt if omitted |
 | `prompt` | conditional | 1–1000 chars. Required unless `imagePath` is present |
 | `imagePath` | conditional | A `storagePath` from `POST /uploads/sign`, owned by the caller. Required unless `prompt` is present |
-| `provider` | no | Defaults to the server's configured provider |
+| `provider` | no | Defaults to the server's configured provider. The zero-spend demo exposes only `fake`; a local LTX/FramePack key is added only after EXP-005 passes. |
 | `options.durationSeconds` | no | Integer, provider-dependent range |
 | `options.aspectRatio` | no | One of `16:9`, `9:16`, `1:1` |
 
@@ -216,7 +247,7 @@ Re-queues a `failed` project. Consumes quota.
 
 ---
 
-### 2.5 Admin
+### 2.6 Admin
 
 All endpoints below require role `admin`; anything else gets `403 FORBIDDEN`.
 
@@ -268,7 +299,7 @@ All endpoints below require role `admin`; anything else gets `403 FORBIDDEN`.
 
 ---
 
-### 2.6 Provider Webhook (post-MVP)
+### 2.7 Provider Webhook (post-MVP)
 
 #### `POST /webhooks/providers/:provider`
 Called by the provider, not by the app. Unauthenticated by JWT; authenticated by provider signature header, verified before the body is parsed. Unknown or unsigned requests are dropped with `401` and logged.

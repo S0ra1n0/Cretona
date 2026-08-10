@@ -1,0 +1,284 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from typing import Any
+from uuid import uuid4
+
+from app.database import Database
+from app.errors import AppError
+from app.providers import PollResult, ProviderRegistry
+from app.schemas import PageInfo, ProjectCreate, ProjectPage, ProjectResponse
+
+FAILURE_MESSAGES = {
+    "content_policy": "The prompt or image could not be used. Try different content.",
+    "invalid_input": "The video request is not supported. Check the input and try again.",
+    "quota": "The video service quota is currently unavailable.",
+    "timeout": "Video generation took too long. Please retry later.",
+    "provider_error": "The video service had a problem. Please try again.",
+    "unknown": "Video generation failed. Please try again.",
+}
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+class ProjectService:
+    def __init__(self, database: Database, providers: ProviderRegistry) -> None:
+        self.database = database
+        self.providers = providers
+
+    def create(
+        self,
+        owner_id: str,
+        request: ProjectCreate,
+        idempotency_key: str | None,
+        base_url: str,
+    ) -> ProjectResponse:
+        if idempotency_key:
+            existing = self.database.find_by_idempotency(owner_id, idempotency_key)
+            if existing:
+                return self.to_response(existing, base_url)
+
+        provider = self.providers.get(request.provider)
+        now = utc_now()
+        prompt = request.prompt
+        title = request.title or self._derive_title(prompt)
+        values: dict[str, Any] = {
+            "id": str(uuid4()),
+            "owner_id": owner_id,
+            "title": title,
+            "prompt": prompt,
+            "image_path": request.image_path,
+            "provider": provider.name,
+            "status": "pending",
+            "provider_job_id": None,
+            "error_code": None,
+            "error_message": None,
+            "duration_seconds": request.options.duration_seconds,
+            "aspect_ratio": request.options.aspect_ratio,
+            "video_path": None,
+            "thumbnail_path": None,
+            "poll_count": 0,
+            "idempotency_key": idempotency_key,
+            "created_at": now,
+            "updated_at": now,
+            "completed_at": None,
+        }
+        row, created = self.database.create_project(values)
+        if not created:
+            return self.to_response(row, base_url)
+
+        try:
+            submitted = provider.submit(prompt=prompt, image_path=request.image_path)
+            updated = self.database.update_project(
+                row["id"],
+                owner_id,
+                {"provider_job_id": submitted.job_id, "updated_at": utc_now()},
+                expected_status="pending",
+            )
+            return self.to_response(updated or row, base_url)
+        except Exception as exc:
+            failed = self.database.update_project(
+                row["id"],
+                owner_id,
+                {
+                    "status": "failed",
+                    "error_code": "provider_error",
+                    "error_message": FAILURE_MESSAGES["provider_error"],
+                    "updated_at": utc_now(),
+                    "completed_at": utc_now(),
+                },
+                expected_status="pending",
+            )
+            if failed is None:  # pragma: no cover - defensive concurrent update guard
+                raise RuntimeError("Could not persist provider submission failure") from exc
+            return self.to_response(failed, base_url)
+
+    def get(self, owner_id: str, project_id: str, base_url: str) -> ProjectResponse:
+        row = self._owned(owner_id, project_id)
+        row = self._advance(row, owner_id)
+        return self.to_response(row, base_url)
+
+    def list(
+        self,
+        owner_id: str,
+        *,
+        limit: int,
+        status: str | None,
+        cursor: str | None,
+        base_url: str,
+    ) -> ProjectPage:
+        try:
+            rows, next_cursor = self.database.list_projects(
+                owner_id,
+                limit=limit,
+                status=status,
+                cursor=cursor,
+            )
+        except ValueError as exc:
+            raise AppError(
+                400,
+                "VALIDATION_ERROR",
+                "The pagination cursor is invalid.",
+                [{"field": "query.cursor", "issue": "invalid_cursor"}],
+            ) from exc
+        return ProjectPage(
+            items=[self.to_response(row, base_url) for row in rows],
+            page=PageInfo(nextCursor=next_cursor, hasMore=next_cursor is not None),
+        )
+
+    def delete(self, owner_id: str, project_id: str) -> None:
+        row = self._owned(owner_id, project_id)
+        if row["status"] == "generating":
+            raise AppError(409, "CONFLICT", "A generating project cannot be deleted.")
+        if not self.database.delete_project(project_id, owner_id):
+            raise AppError(404, "NOT_FOUND", "Project not found.")
+
+    def retry(self, owner_id: str, project_id: str, base_url: str) -> ProjectResponse:
+        row = self._owned(owner_id, project_id)
+        if row["status"] != "failed":
+            raise AppError(409, "CONFLICT", "Only a failed project can be retried.")
+        provider = self.providers.get(row["provider"])
+        submitted = provider.submit(prompt=row["prompt"], image_path=row["image_path"])
+        now = utc_now()
+        updated = self.database.update_project(
+            project_id,
+            owner_id,
+            {
+                "status": "pending",
+                "provider_job_id": submitted.job_id,
+                "error_code": None,
+                "error_message": None,
+                "video_path": None,
+                "thumbnail_path": None,
+                "poll_count": 0,
+                "updated_at": now,
+                "completed_at": None,
+            },
+            expected_status="failed",
+        )
+        if updated is None:
+            raise AppError(409, "CONFLICT", "Project state changed before retry.")
+        return self.to_response(updated, base_url)
+
+    def _advance(self, row: dict[str, Any], owner_id: str) -> dict[str, Any]:
+        if row["status"] == "pending":
+            if not row["provider_job_id"]:
+                return self._mark_failed(row, owner_id, "provider_error")
+            updated = self.database.update_project(
+                row["id"],
+                owner_id,
+                {"status": "generating", "updated_at": utc_now()},
+                expected_status="pending",
+            )
+            return updated or self._owned(owner_id, row["id"])
+
+        if row["status"] != "generating":
+            return row
+
+        provider = self.providers.get(row["provider"])
+        poll_count = int(row["poll_count"]) + 1
+        result = provider.poll(
+            job_id=row["provider_job_id"],
+            prompt=row["prompt"],
+            poll_count=poll_count,
+        )
+        return self._apply_poll(row, owner_id, poll_count, result)
+
+    def _apply_poll(
+        self,
+        row: dict[str, Any],
+        owner_id: str,
+        poll_count: int,
+        result: PollResult,
+    ) -> dict[str, Any]:
+        now = utc_now()
+        if result.status == "running":
+            updated = self.database.update_project(
+                row["id"],
+                owner_id,
+                {"poll_count": poll_count, "updated_at": now},
+                expected_status="generating",
+            )
+        elif result.status == "succeeded":
+            updated = self.database.update_project(
+                row["id"],
+                owner_id,
+                {
+                    "status": "completed",
+                    "video_path": result.video_path,
+                    "duration_seconds": result.duration_seconds,
+                    "poll_count": poll_count,
+                    "updated_at": now,
+                    "completed_at": now,
+                },
+                expected_status="generating",
+            )
+        else:
+            return self._mark_failed(row, owner_id, result.failure or "unknown", poll_count)
+        return updated or self._owned(owner_id, row["id"])
+
+    def _mark_failed(
+        self,
+        row: dict[str, Any],
+        owner_id: str,
+        failure: str,
+        poll_count: int | None = None,
+    ) -> dict[str, Any]:
+        now = utc_now()
+        values: dict[str, Any] = {
+            "status": "failed",
+            "error_code": failure,
+            "error_message": FAILURE_MESSAGES.get(failure, FAILURE_MESSAGES["unknown"]),
+            "updated_at": now,
+            "completed_at": now,
+        }
+        if poll_count is not None:
+            values["poll_count"] = poll_count
+        updated = self.database.update_project(
+            row["id"],
+            owner_id,
+            values,
+            expected_status=row["status"],
+        )
+        return updated or self._owned(owner_id, row["id"])
+
+    def _owned(self, owner_id: str, project_id: str) -> dict[str, Any]:
+        row = self.database.get_project(project_id, owner_id)
+        if row is None:
+            raise AppError(404, "NOT_FOUND", "Project not found.")
+        return row
+
+    @staticmethod
+    def _derive_title(prompt: str | None) -> str:
+        if not prompt:
+            return "Image video"
+        return prompt[:60].strip() or "Untitled video"
+
+    @staticmethod
+    def to_response(row: dict[str, Any], base_url: str) -> ProjectResponse:
+        def media_url(path: str | None) -> str | None:
+            if not path:
+                return None
+            if path.startswith(("http://", "https://")):
+                return path
+            return f"{base_url.rstrip('/')}/{path.lstrip('/')}"
+
+        return ProjectResponse(
+            id=row["id"],
+            title=row["title"],
+            prompt=row["prompt"],
+            imageUrl=media_url(row["image_path"]),
+            videoUrl=media_url(row["video_path"]),
+            thumbnailUrl=media_url(row["thumbnail_path"]),
+            status=row["status"],
+            provider=row["provider"],
+            errorMessage=row["error_message"],
+            durationSeconds=row["duration_seconds"],
+            aspectRatio=row["aspect_ratio"],
+            createdAt=row["created_at"],
+            updatedAt=row["updated_at"],
+            completedAt=row["completed_at"],
+        )
+

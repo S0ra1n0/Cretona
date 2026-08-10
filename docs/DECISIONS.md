@@ -6,7 +6,7 @@ such as ChatGPT or Gemini. No other product or stack constraint is currently
 known. The team authorized decisions `DEC-001` through `DEC-004`, `DEC-006`,
 `DEC-007`, and `DEC-009` as the build baseline on 2026-08-10. Remote integration
 evidence later superseded `DEC-003`, refined `DEC-006`, and expanded `DEC-009`
-through `DEC-011`. Paid activation
+through `DEC-012`. Paid activation
 and the final live video model remain separate decisions.
 
 | ID | Status | Decision owner | Recommended default | Chosen value | Evidence/reason |
@@ -22,6 +22,7 @@ and the final live video model remain separate decisions.
 | `DEC-009` | Expanded by `DEC-011` | Bruce + S0ra1n0 | Python/FastAPI is the final model-orchestration backend | Port the tested Express behavior to FastAPI before feature expansion | Matching Express/Prisma/Supabase implementation now exists; its contracts and tests are migration evidence, not authority to waive the instructor's FastAPI requirement |
 | `DEC-010` | Accepted during remote integration 2026-08-10 | Bruce + S0ra1n0 | Preserve the existing coherent Android implementation | Root Kotlin/Compose/MVVM project; remove the duplicate local `android/` scaffold | Existing codebase and build configuration outrank an unshared alternative; Android remains provider-neutral |
 | `DEC-011` | Accepted migration default 2026-08-10; S0ra1n0 review required | Bruce + S0ra1n0 | Change one major boundary at a time | Express → FastAPI while retaining the existing Supabase Auth/Postgres/Storage contracts initially | Minimizes blast radius and preserves teammate work; SQLite remains a future offline alternative, not a simultaneous migration |
+| `DEC-012` | Accepted local-slice exception 2026-08-10; deployment parity still required | Bruce + S0ra1n0 | Use SQLite and development identity only for the credential-free walking skeleton | FastAPI + SQLite + fake provider is the active local evidence profile | Produces a deterministic end-to-end proof without claiming Supabase or real-model parity; ADR-008 defines the migration exit gate |
 
 The free-to-paid alternatives behind `DEC-005` are compared in
 [`docs/discovery/DEVELOPMENT-OPTIONS-COMPARISON.md`](discovery/DEVELOPMENT-OPTIONS-COMPARISON.md).
