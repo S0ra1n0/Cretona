@@ -10,9 +10,9 @@ first vertical slice and image input starts only after it passes end to end.
 
 | Area | Primary owner | Reviewer | Owned paths after scaffold |
 |---|---|---|---|
-| Android application | Bruce | S0ra1n0 | `android/` |
-| FastAPI, database, auth, provider adapter | S0ra1n0 | Bruce | `backend/` |
-| API behavior and OpenAPI review | S0ra1n0 | Bruce | generated OpenAPI + `docs/api/` |
+| Android application | Bruce | S0ra1n0 | `app/` |
+| FastAPI, database, auth, provider adapter | S0ra1n0 | Bruce | `backend-fastapi/` |
+| API behavior and OpenAPI review | S0ra1n0 | Bruce | generated OpenAPI + `docs/API_CONTRACT.md` |
 | Product scope and acceptance | Bruce | S0ra1n0 | `docs/` |
 | End-to-end integration and demo | Both | Both | cross-system evidence |
 
@@ -34,6 +34,14 @@ Both developers protect these rules:
 6. Every task is complete only with executed evidence, not source code alone.
 
 ## 3. Delivery waves and task contracts
+
+### Verified implementation checkpoint — 2026-08-10
+
+`TASK-A01`, `TASK-B01`, `TASK-I01`, and the fake-provider portions of
+`TASK-B04`, `TASK-B05`, `TASK-A03`, and `TASK-A04` have executable evidence.
+This is a local development slice, not completion of authentication, Supabase
+parity, real model integration, reference-image input, admin, or release scope.
+See `docs/evidence/ANDROID_FASTAPI_E2E.md` before assigning the next tasks.
 
 ### Wave 0 — Decide and contract (both; serialize)
 

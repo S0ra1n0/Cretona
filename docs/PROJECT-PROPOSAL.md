@@ -249,7 +249,8 @@ secret manager, and persistent media storage before the course requires them.
 
 ### Wave 1 — Contract and walking skeleton
 
-- Scaffold `android/` and `backend/`.
+- Extend the root Android project under `app/` and scaffold the active service
+  under `backend-fastapi/`; retain `backend/` as migration reference evidence.
 - Freeze OpenAPI DTOs, error codes, canonical states, and `.env.example`.
 - Prove Android → `/health` → correlated FastAPI log.
 - Run the bounded blind provider benchmark before freezing `Standard` and
@@ -287,7 +288,7 @@ scope; do not parallelize implementation before the API contract is frozen.
 
 ## 11. Team ownership
 
-- Bruce owns `android/`, UX acceptance, Android tests, and final demo flow.
+- Bruce owns `app/`, UX acceptance, Android tests, and final demo flow.
 - S0ra1n0 owns `backend/`, database/auth, provider adapters, and backend tests.
 - S0ra1n0 is primary writer of OpenAPI behavior; Bruce reviews it as the Android
   consumer before implementation.

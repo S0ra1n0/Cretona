@@ -1,35 +1,40 @@
 # Architecture — Cretona
 
-**Version:** 0.1 · **Status:** Draft
+**Version:** 0.2 · **Status:** Implemented local vertical slice; production profile remains draft
 
 ---
 
-## 1. System Overview
+## 1. Current local system
 
 ```mermaid
 flowchart LR
     subgraph Device
         A[Android app<br/>Kotlin · Compose · MVVM]
     end
-    subgraph Cloud
-        B[Express backend<br/>Node.js · Prisma]
-        C[(Supabase Postgres)]
-        D[Supabase Auth]
-        E[Supabase Storage]
+    subgraph Host
+        B[FastAPI<br/>Python · port 8000]
+        C[(SQLite)]
+        D[Deterministic prompt fallback<br/>or optional Ollama]
+        E[Fake video provider<br/>synthetic MP4]
     end
-    P[AI video provider]
 
-    A -- "sign up / sign in / refresh" --> D
-    A -- "REST + Bearer JWT" --> B
-    A -- "PUT image via signed URL" --> E
-    A -- "GET media via signed URL" --> E
-    B -- "verify JWT (JWKS)" --> D
-    B -- "Prisma" --> C
-    B -- "sign URLs · store results" --> E
-    B -- "submit / poll" --> P
+    A -- "REST · X-Debug-User-Id" --> B
+    B -- "persist jobs" --> C
+    B -- "enhance prompt" --> D
+    B -- "submit · poll" --> E
+    E -- "H.264/AAC URL" --> A
 ```
 
-### Why the app talks to Supabase Auth directly
+This is the executable, zero-spend integration profile. It proves the stable
+job contract, persistence, ownership, polling, history, and Android playback.
+It does **not** prove a real video model or deployed authentication. The tested
+Express/Prisma/Supabase service in `backend/` is migration reference evidence;
+the desired deployment profile is still Supabase Auth/Postgres/Storage behind
+FastAPI. See [ADR-008](adr/ADR-008-fastapi-migration.md) and
+[ADR-009](adr/ADR-009-zero-spend-provider-gate.md).
+
+### Why the app will use Supabase Auth directly in the target profile
+
 Auth is the one place where reimplementing the flow in the backend buys nothing: the Supabase SDK already handles sign-up, sign-in, token refresh, and secure session persistence. The backend only needs to *verify* the resulting JWT. This removes a whole class of credential-handling code from our own server. See [ADR-002](adr/ADR-002-auth-strategy.md).
 
 ### Why generation goes through the backend
@@ -50,7 +55,9 @@ Cretona/
 │       ├── domain/             models and use cases, no Android imports
 │       ├── di/                 Hilt modules
 │       └── ui/                 Compose screens, ViewModels, theme, navigation
-├── backend/                    Express + Prisma service (Phase 2)
+├── backend-fastapi/            active FastAPI + SQLite local slice
+├── backend/                    Express + Prisma migration reference
+├── scripts/                    repeatable setup/runtime helpers
 ├── docs/                       this documentation set
 ├── gradle/                     version catalog + wrapper
 ├── build.gradle.kts            root Gradle build
@@ -94,20 +101,28 @@ One-shot effects (navigation, snackbars) go through a separate `Channel`/`Shared
 
 ### 3.3 Error handling
 
-Nothing above `data` sees an exception. Repositories return `AppResult<T>` (`core/result/AppResult.kt`), and HTTP failures are mapped to `AppError` by response code and the backend's `error.code` field. ViewModels turn `AppError` into user-facing text (NFR-4.2).
+Nothing above `data` sees an exception. Repositories return `AppResult<T>`
+(`core/result/AppResult.kt`). The current slice maps HTTP status classes to
+`AppError`; parsing the backend's stable `error.code` field is still required
+before richer error-specific UX. ViewModels turn `AppError` into user-facing
+text (NFR-4.2).
 
 ### 3.4 Generation status
 
 The Android side treats generation as a long-running background fact, not a screen-scoped operation:
 
 - Submitting returns immediately with a `pending` project.
-- A repository-level poller drives `GET /projects/:id` on the schedule in API_CONTRACT §4 and emits updates as a `Flow`.
-- Polling is lifecycle-aware: it stops when the app backgrounds and resumes on foreground. The server keeps working either way, so nothing is lost.
+- The current `HomeViewModel` drives `GET /projects/:id` on a bounded schedule
+  and exposes updates through its screen `StateFlow`.
+- Moving polling into a repository/work manager and resuming it across process
+  or lifecycle changes is still a production-profile task. The server remains
+  the job-state authority either way.
 
 ### 3.5 Media
 
 - **Images:** Coil 3 with the shared OkHttp client, so signed-URL requests reuse the same connection pool and interceptors.
-- **Video:** Media3/ExoPlayer, with the player instance held by the ViewModel and released in `onCleared`.
+- **Video:** Media3/ExoPlayer, with the current player remembered by the video
+  composable and released by `DisposableEffect` when that UI leaves composition.
 - **Signed URLs:** always fetched fresh before playback or download (API_CONTRACT §3.1) and never persisted to DataStore.
 
 ### 3.6 Dependency injection
@@ -116,7 +131,14 @@ Hilt with KSP. `SingletonComponent` provides `Json`, `OkHttpClient`, `Retrofit`,
 
 ---
 
-## 4. Backend Architecture
+## 4. Backend architecture
+
+The active FastAPI slice separates HTTP routes, settings/auth dependencies,
+project services, persistence, and provider adapters under
+`backend-fastapi/app/`. Only the project service owns legal state changes.
+The structure below describes the richer Express reference and the target
+Supabase parity profile; it is not a claim that every component is already
+ported to FastAPI.
 
 ```text
 backend/src/
@@ -167,7 +189,7 @@ Because state lives entirely in Postgres, a backend restart resumes cleanly (NFR
 
 | Concern | Approach |
 |---|---|
-| **Config** | All config from environment; validated at boot, process exits on missing required keys. Android reads per-machine values from `local.properties` into `BuildConfig`. |
+| **Config** | FastAPI uses environment-backed settings with credential-free local defaults; deployment profiles must fail closed on missing auth/provider secrets. Android reads per-machine values from `local.properties` into `BuildConfig`. |
 | **Secrets** | Provider keys and `service_role` exist only in backend env. The app holds only the Supabase URL and anon key. See [SECURITY.md](SECURITY.md). |
 | **Logging** | Structured JSON with `requestId`, `userId`, `projectId`. Authorization headers and API keys redacted at the logger, not at call sites. |
 | **Idempotency** | `Idempotency-Key` on submit, backed by a partial unique index (DATA_MODEL §2.3). |

@@ -28,8 +28,10 @@ the actual laptop.
 ```text
 Cretona/             open this folder in Android Studio
 ├── app/             Android application from the shared remote baseline
-├── backend/         backend implementation and FastAPI migration boundary
+├── backend-fastapi/ active FastAPI local vertical slice (port 8000)
+├── backend/         tested Express/Prisma migration reference
 ├── docs/            requirements, contracts, decisions, ADRs, and evidence
+├── scripts/         repeatable toolchain and local-runtime entry points
 ├── supabase/        teammate-provided database/bootstrap artifacts
 └── gradle/          Android version catalog and wrapper
 ```
@@ -39,6 +41,8 @@ Cretona/             open this folder in Android Studio
 - Start with [docs/README.md](docs/README.md) for the teammate implementation.
 - See [docs/DECISIONS.md](docs/DECISIONS.md) for reconciled team decisions.
 - See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for credential boundaries.
+- See [docs/evidence/ANDROID_FASTAPI_E2E.md](docs/evidence/ANDROID_FASTAPI_E2E.md)
+  for the verified emulator-to-video vertical slice and its evidence limits.
 - See [docs/discovery/FREE-LOCAL-BEST-OUTPUT.md](docs/discovery/FREE-LOCAL-BEST-OUTPUT.md)
   for the evidence-gated local model strategy.
 

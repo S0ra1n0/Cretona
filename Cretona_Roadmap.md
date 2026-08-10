@@ -5,7 +5,14 @@ Task IDs are stable — use them to pick what to implement next (e.g. "do P1-3 a
 
 **Legend:** `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` skipped/deferred
 
-**Current state (2026-08-06):** Phase 0 decisions all recorded as ADRs. Documentation set written. Android scaffold builds and tests clean. Phase 1 schema verified against a real Postgres. Phase 2 is most of the way done — scaffold, middleware, quota, profile and admin endpoints, 48 tests passing. Next: P3-1 … P3-3 (provider interface + storage), which unblocks the `/projects` endpoints.
+**Current state (2026-08-10):** The tested Express/Prisma/Supabase reference has
+77 passing tests plus clean typecheck/build. The active FastAPI local slice has
+17 passing tests and clean Ruff; the Android app has 7 passing tests, clean
+lint/assembly, and recorded emulator evidence for prompt → create → poll →
+playback → history. This uses deterministic prompt/video fakes, SQLite, and
+development identity injection. It does not yet prove a live LLM, a real video
+model, Supabase JWT/Postgres/Storage parity, or release readiness. See
+[executed evidence](docs/evidence/ANDROID_FASTAPI_E2E.md).
 
 ---
 
@@ -14,7 +21,7 @@ Task IDs are stable — use them to pick what to implement next (e.g. "do P1-3 a
 | ID | Task | Outcome |
 |----|------|---------|
 | P0-1 | `[x]` Repo layout decision | Monorepo, Android at repo root — [ADR-001](docs/adr/ADR-001-repo-layout.md) |
-| P0-2 | `[x]` Pick the launch AI provider | **Runway** confirmed, Kling second — [ADR-004](docs/adr/ADR-004-launch-provider.md). The 7-point verification checklist in that ADR still runs before P3-3 |
+| P0-2 | `[~]` Pick the launch AI provider | Paid Runway assumption superseded by [ADR-009](docs/adr/ADR-009-zero-spend-provider-gate.md). Fake is active; LTX/FramePack remain candidates until EXP-005 |
 | P0-3 | `[x]` Secrets strategy | Nothing sensitive on device; `local.properties` for per-machine config — [ADR-005](docs/adr/ADR-005-secrets-management.md) |
 | P0-4 | `[x]` Environments + config matrix | Two deployed envs, three app configurations — [ADR-006](docs/adr/ADR-006-environments.md) |
 | P0-5 | `[x]` Async completion strategy | Server-side polling; webhooks designed for but deferred — [ADR-003](docs/adr/ADR-003-async-strategy.md) |
@@ -34,7 +41,7 @@ Task IDs are stable — use them to pick what to implement next (e.g. "do P1-3 a
 | D-5 | `[x]` [AI provider spec](docs/AI_PROVIDER_SPEC.md) — interface, normalization, failure taxonomy, add-a-provider checklist |
 | D-6 | `[x]` [Setup guide](docs/SETUP.md) — prerequisites, `local.properties` keys, build commands, troubleshooting |
 | D-7 | `[x]` [Security notes](docs/SECURITY.md) — secret classification, authz layers, redaction, pre-release checklist |
-| D-8 | `[x]` [ADR set](docs/adr/README.md) — ADR-001 … ADR-007 |
+| D-8 | `[x]` [ADR set](docs/adr/README.md) — ADR-001 … ADR-009 |
 | D-9 | `[ ]` Keep the contract and data model in sync with code as each phase lands |
 
 ---
@@ -63,9 +70,12 @@ All SQL lives in [`supabase/bootstrap.sql`](supabase/bootstrap.sql). **Executed 
 
 ---
 
-## Phase 2 — Backend (Node.js + Express + Prisma)
+## Phase 2 — Reference backend (Node.js + Express + Prisma)
 
-Core scaffold plus the profile and admin endpoints are built and verified: typecheck clean, **48 tests passing**, production build runs, server boots and serves traffic. Remaining in P2: `/projects` and `/uploads/sign`, both of which need P3's storage and provider services.
+This implementation is preserved as a behavioral migration oracle: typecheck
+and production build pass, and **77 tests pass**. FastAPI is the active course
+runtime under ADR-008; the status table below describes the reference stack and
+must not be read as the active framework plan.
 
 | ID | Task |
 |----|------|
@@ -98,16 +108,16 @@ Core scaffold plus the profile and admin endpoints are built and verified: typec
 
 ---
 
-## Phase 3 — AI Provider Integration
+## Phase 3 — AI provider integration
 
 | ID | Task |
 |----|------|
-| P3-1 | `[ ]` Define `VideoProvider` interface: `submit(input) -> jobId`, `getStatus(jobId) -> {status, videoUrl, error}` |
-| P3-2 | `[ ]` Provider registry/factory keyed by name; config-driven default |
+| P3-1 | `[x]` Define a provider-neutral interface and canonical states; implemented in both the Express reference and FastAPI local slice |
+| P3-2 | `[x]` Select provider by backend configuration; FastAPI currently permits only the deterministic fake |
 | P3-3 | `[ ]` Implement the launch provider chosen in P0-2 |
-| P3-4 | `[ ]` Normalize inputs across modes (text-only, image-only, text+image) and validate per-provider capability |
+| P3-4 | `[~]` Text mode is normalized and validated in FastAPI; image/text+image await the next slice |
 | P3-5 | `[ ]` Write every request/response to `generation_logs` (redact keys) |
-| P3-6 | `[ ]` Job runner: poll pending jobs on an interval, update `video_projects.status` |
+| P3-6 | `[x]` Deterministic local state progression is implemented and proven through Android polling; production worker parity remains open |
 | P3-7 | `[ ]` OR webhook receiver + signature verification (if P0-5 chose webhooks) |
 | P3-8 | `[ ]` On completion: download result, re-upload to Supabase Storage, persist permanent `video_url` (provider URLs expire) |
 | P3-9 | `[ ]` Failure handling: retries with backoff, timeout → `failed` + error message |
@@ -132,12 +142,12 @@ Core scaffold plus the profile and admin endpoints are built and verified: typec
 |----|------|
 | P4-6  | `[ ]` Auth: register, login, logout, session persistence, token refresh |
 | P4-7  | `[ ]` Profile screen: view/edit |
-| P4-8  | `[ ]` Generate screen — text prompt mode |
+| P4-8  | `[~]` Generate screen — text prompt mode works against FastAPI fake; real-model validation remains |
 | P4-9  | `[ ]` Generate screen — image picker + upload to Storage |
 | P4-10 | `[ ]` Generate screen — combined text+image mode + provider/params selector |
-| P4-11 | `[ ]` Generation progress UI: pending/generating states, poll or refresh for result |
-| P4-12 | `[ ]` History list: paginated, status badges, thumbnails, pull-to-refresh |
-| P4-13 | `[ ]` Project detail: video playback (Media3), prompt shown, delete action |
+| P4-11 | `[x]` Generation progress UI: pending/generating/completed states and polling proven on emulator |
+| P4-12 | `[~]` History list: local history renders; pagination, filters, thumbnails, and pull-to-refresh remain |
+| P4-13 | `[~]` Completed result plays through Media3; dedicated detail/delete UX remains |
 | P4-14 | `[ ]` Download video to device storage + share intent |
 | P4-15 | `[ ]` Admin screens: user list, disable/enable, role change, stats dashboard (gated by role) |
 | P4-16 | `[ ]` Global states: loading, empty, error, offline; retry affordances |
@@ -149,11 +159,11 @@ Core scaffold plus the profile and admin endpoints are built and verified: typec
 
 | ID | Task |
 |----|------|
-| P5-1 | `[ ]` Backend unit tests: services, provider adapters (mocked HTTP) |
-| P5-2 | `[ ]` Backend integration tests: auth + RBAC + project lifecycle against a test DB |
-| P5-3 | `[ ]` Android unit tests: ViewModels, repositories |
+| P5-1 | `[~]` FastAPI service/provider tests pass for the local fake profile; real adapter tests remain |
+| P5-2 | `[~]` FastAPI project lifecycle, ownership, idempotency, and persistence tests pass with dev auth/SQLite; deployed auth/database remain |
+| P5-3 | `[~]` Seven Android unit tests pass across existing scaffold, mapping, repository, and ViewModel behavior; expand edge cases with new features |
 | P5-4 | `[ ]` Compose UI tests for the critical paths (login, generate, history) |
-| P5-5 | `[ ]` Manual end-to-end pass: signup → generate → poll → download |
+| P5-5 | `[~]` Emulator generate → poll → playback → history passes with fake/dev profile; signup and real generation remain |
 | P5-6 | `[ ]` Security review: RLS actually enforced, no keys in the APK, signed URLs scoped, IDOR checks on `/projects/:id` |
 | P5-7 | `[ ]` Lint/format/static analysis: ESLint+Prettier, ktlint/detekt |
 
@@ -173,16 +183,19 @@ Core scaffold plus the profile and admin endpoints are built and verified: typec
 
 ---
 
-## Suggested Order
+## Suggested order from the verified vertical slice
 
-**Next up:** P1-1 is yours — create the Supabase project and apply the SQL. Once its verification queries pass, P2 (backend scaffold) is unblocked and is the natural next build. P2-1 … P2-8 can actually be written before then, since they don't need a live database until they run.
+1. Run `EXP-005` and accept/reject LTX Standard and FramePack Quality from
+   measured evidence; do not wire Android to model-specific fields.
+2. Enable Ollama and capture a `usedFallback=false` prompt-enhancement proof.
+3. Port Supabase JWT verification, Postgres persistence, and permanent media
+   storage into FastAPI while retaining the current API tests.
+4. Add reference-image input only after the text path remains green.
+5. Add quota/admin/release evidence, then execute the SRS acceptance suite.
 
-The dependency spine is: **P0 ✅ → P1 → P2 core (P2-1..P2-8) → P3-1..P3-6 → P4-6 → rest of P4 → P5 → P6.**
-
-A good first slice ("vertical MVP" — proves the whole pipeline end to end):
-`P0-1, P0-2, P0-5` → `P1-1..P1-4, P1-6` → `P2-1..P2-4, P2-8, P2-10, P2-12` → `P3-1, P3-3, P3-6, P3-8` → `P4-1..P4-6, P4-8, P4-11`.
-
-Everything after that (admin, image modes, history polish, quotas, second provider) is additive.
+The dependency spine is now: **verified fake vertical slice → EXP-005 model
+decision → real provider adapter → Supabase parity/auth → image mode →
+acceptance/security/release evidence**.
 
 ---
 
