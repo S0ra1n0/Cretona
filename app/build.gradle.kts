@@ -42,7 +42,7 @@ android {
             buildConfigField(
                 "String",
                 "API_BASE_URL",
-                "\"${localProperty("cretona.api.baseUrl.debug", "http://10.0.2.2:3000/api/v1/")}\"",
+                "\"${localProperty("cretona.api.baseUrl.debug", "http://10.0.2.2:8000/api/v1/")}\"",
             )
             buildConfigField(
                 "String",

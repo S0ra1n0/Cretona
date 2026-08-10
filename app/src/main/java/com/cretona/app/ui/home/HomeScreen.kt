@@ -1,79 +1,272 @@
 package com.cretona.app.ui.home
 
+import androidx.annotation.OptIn as AndroidxOptIn
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.focus.FocusManager
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.cretona.app.BuildConfig
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.common.MediaItem
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.compose.PlayerSurface
+import com.cretona.app.domain.model.ProjectStatus
+import com.cretona.app.domain.model.VideoProject
 import com.cretona.app.ui.theme.CretonaTheme
 
-/**
- * Placeholder start destination. It exists so the scaffold is runnable and so
- * the build-time configuration is visible on device while the real screens
- * (P4-6 onwards) are being built.
- */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(modifier: Modifier = Modifier) {
+fun HomeScreen(
+    modifier: Modifier = Modifier,
+    viewModel: HomeViewModel = hiltViewModel(),
+) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    HomeContent(
+        state = state,
+        onPromptChanged = viewModel::onPromptChanged,
+        onEnhance = {
+            hideKeyboard(focusManager, keyboardController)
+            viewModel.enhancePrompt()
+        },
+        onGenerate = {
+            hideKeyboard(focusManager, keyboardController)
+            viewModel.generateVideo()
+        },
+        onRefresh = viewModel::refreshHistory,
+        modifier = modifier,
+    )
+}
+
+@kotlin.OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun HomeContent(
+    state: HomeUiState,
+    onPromptChanged: (String) -> Unit,
+    onEnhance: () -> Unit,
+    onGenerate: () -> Unit,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = { TopAppBar(title = { Text("Cretona") }) },
     ) { innerPadding ->
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(horizontal = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text(
-                text = "AI video generation",
-                style = MaterialTheme.typography.headlineMedium,
-            )
-            Text(
-                text = "Project scaffold is up. Screens land per the roadmap.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Create an AI video", style = MaterialTheme.typography.headlineMedium)
+                    Text(
+                        "FastAPI owns prompt enhancement and the video job lifecycle.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
 
-            ConfigCard(
-                label = "API base URL",
-                value = BuildConfig.API_BASE_URL,
-            )
-            ConfigCard(
-                label = "Supabase URL",
-                value = BuildConfig.SUPABASE_URL.ifBlank { "not configured (see docs/SETUP.md)" },
-            )
-            ConfigCard(
-                label = "Build",
-                value = "${BuildConfig.BUILD_TYPE} · v${BuildConfig.VERSION_NAME}",
-            )
+            item {
+                OutlinedTextField(
+                    value = state.prompt,
+                    onValueChange = onPromptChanged,
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 4,
+                    maxLines = 8,
+                    label = { Text("Describe the video") },
+                    supportingText = {
+                        Text(state.enhancementNote ?: "Fake video provider - zero-spend demo")
+                    },
+                )
+            }
+
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    OutlinedButton(
+                        onClick = onEnhance,
+                        enabled = !state.isEnhancing && !state.isSubmitting,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        if (state.isEnhancing) {
+                            CircularProgressIndicator(modifier = Modifier.padding(2.dp))
+                        } else {
+                            Text("Enhance")
+                        }
+                    }
+                    Button(
+                        onClick = onGenerate,
+                        enabled = !state.isSubmitting && !state.isEnhancing,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        if (state.isSubmitting) {
+                            CircularProgressIndicator(modifier = Modifier.padding(2.dp))
+                        } else {
+                            Text("Generate")
+                        }
+                    }
+                }
+            }
+
+            state.errorMessage?.let { message ->
+                item {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                        ),
+                    ) {
+                        Text(
+                            text = message,
+                            modifier = Modifier.padding(16.dp),
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                        )
+                    }
+                }
+            }
+
+            state.currentProject?.let { project ->
+                item { CurrentProjectCard(project) }
+            }
+
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text("Recent projects", style = MaterialTheme.typography.titleLarge)
+                    OutlinedButton(onClick = onRefresh) { Text("Refresh") }
+                }
+            }
+
+            if (state.projects.isEmpty()) {
+                item { Text("No projects yet. Your first generation will appear here.") }
+            } else {
+                items(state.projects, key = VideoProject::id) { project ->
+                    HistoryCard(project)
+                }
+            }
+        }
+    }
+}
+
+private fun hideKeyboard(
+    focusManager: FocusManager,
+    keyboardController: androidx.compose.ui.platform.SoftwareKeyboardController?,
+) {
+    focusManager.clearFocus()
+    keyboardController?.hide()
+}
+
+@Composable
+private fun CurrentProjectCard(project: VideoProject) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(project.title, style = MaterialTheme.typography.titleLarge)
+            StatusText(project)
+            project.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            if (project.status == ProjectStatus.COMPLETED && project.videoUrl != null) {
+                VideoPlayer(project.videoUrl)
+            }
         }
     }
 }
 
 @Composable
-private fun ConfigCard(label: String, value: String) {
+private fun HistoryCard(project: VideoProject) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text(text = label, style = MaterialTheme.typography.titleMedium)
-            Text(text = value, style = MaterialTheme.typography.bodyMedium)
+            Text(project.title, style = MaterialTheme.typography.titleMedium)
+            StatusText(project)
+            Text(project.provider, style = MaterialTheme.typography.labelMedium)
+        }
+    }
+}
+
+@Composable
+private fun StatusText(project: VideoProject) {
+    val color = when (project.status) {
+        ProjectStatus.COMPLETED -> MaterialTheme.colorScheme.primary
+        ProjectStatus.FAILED -> MaterialTheme.colorScheme.error
+        ProjectStatus.PENDING, ProjectStatus.GENERATING -> MaterialTheme.colorScheme.tertiary
+    }
+    Text(
+        text = project.status.name.lowercase().replaceFirstChar(Char::uppercase),
+        color = color,
+        style = MaterialTheme.typography.labelLarge,
+    )
+}
+
+@AndroidxOptIn(UnstableApi::class)
+@Composable
+private fun VideoPlayer(videoUrl: String) {
+    val context = LocalContext.current
+    val player = remember { ExoPlayer.Builder(context).build() }
+
+    LaunchedEffect(videoUrl) {
+        player.setMediaItem(MediaItem.fromUri(videoUrl))
+        player.prepare()
+        player.playWhenReady = true
+    }
+    DisposableEffect(player) {
+        onDispose(player::release)
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .background(Color.Black),
+        ) {
+            PlayerSurface(player = player, modifier = Modifier.fillMaxSize())
+        }
+        OutlinedButton(onClick = { if (player.isPlaying) player.pause() else player.play() }) {
+            Text("Play / pause")
         }
     }
 }
@@ -81,5 +274,13 @@ private fun ConfigCard(label: String, value: String) {
 @Preview(showBackground = true)
 @Composable
 private fun HomeScreenPreview() {
-    CretonaTheme { HomeScreen() }
+    CretonaTheme {
+        HomeContent(
+            state = HomeUiState(prompt = "A paper dragon flying over a lantern city"),
+            onPromptChanged = {},
+            onEnhance = {},
+            onGenerate = {},
+            onRefresh = {},
+        )
+    }
 }
