@@ -339,6 +339,27 @@ class PostgresDatabase:
             next_cursor = encode_cursor(last["created_at"], last["id"])
         return items, next_cursor
 
+    def count_quota_usage(
+        self,
+        owner_id: str,
+        since: str,
+        not_charged: tuple[str, ...],
+    ) -> tuple[int, str | None]:
+        with self.pool.connection() as connection:
+            row = connection.execute(
+                f"SELECT COUNT(*) AS used, MIN(created_at) AS oldest FROM {TABLE} "
+                "WHERE user_id = %s AND created_at >= %s::timestamptz "
+                "AND deleted_at IS NULL "
+                "AND (error_code IS NULL OR NOT (error_code = ANY(%s)))",
+                (owner_id, since, list(not_charged)),
+            ).fetchone()
+        if row is None:  # pragma: no cover - an aggregate always returns a row
+            return 0, None
+        oldest = row["oldest"]
+        if isinstance(oldest, datetime):
+            oldest = oldest.astimezone(UTC).isoformat().replace("+00:00", "Z")
+        return int(row["used"] or 0), oldest
+
     def soft_delete_project(self, project_id: str, owner_id: str, deleted_at: str) -> bool:
         if not _is_uuid(project_id):
             return False

@@ -397,6 +397,22 @@ class Database:
             next_cursor = encode_cursor(last["created_at"], last["id"])
         return items, next_cursor
 
+    def count_quota_usage(
+        self,
+        owner_id: str,
+        since: str,
+        not_charged: tuple[str, ...],
+    ) -> tuple[int, str | None]:
+        placeholders = ", ".join("?" for _ in not_charged) or "NULL"
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT COUNT(*) AS used, MIN(created_at) AS oldest FROM projects "
+                "WHERE owner_id = ? AND created_at >= ? AND deleted_at IS NULL "
+                f"AND (error_code IS NULL OR error_code NOT IN ({placeholders}))",
+                (owner_id, since, *not_charged),
+            ).fetchone()
+        return int(row["used"] or 0), row["oldest"]
+
     def soft_delete_project(self, project_id: str, owner_id: str, deleted_at: str) -> bool:
         """Soft delete, matching the Express reference.
 

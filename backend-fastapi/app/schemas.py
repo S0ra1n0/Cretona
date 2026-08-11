@@ -84,6 +84,27 @@ class PromptEnhanceResponse(ApiModel):
 RoleName = Literal["user", "admin"]
 
 
+class Quota(ApiModel):
+    limit: int
+    used: int
+    remaining: int
+    resets_at: str = Field(alias="resetsAt")
+
+
+class MeResponse(ApiModel):
+    id: str
+    email: str | None
+    username: str | None
+    role: str
+    is_disabled: bool = Field(alias="isDisabled")
+    created_at: str = Field(alias="createdAt")
+    quota: Quota
+
+
+class MeUpdate(ApiModel):
+    username: Annotated[str, Field(min_length=3, max_length=30, pattern=r"^[A-Za-z0-9_]+$")]
+
+
 class AdminUser(ApiModel):
     id: str
     email: str | None

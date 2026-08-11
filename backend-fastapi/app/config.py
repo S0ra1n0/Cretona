@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     database_url: SecretStr = SecretStr("")
     max_generation_attempts: int = Field(default=3, ge=1, le=10)
     log_level: Literal["debug", "info", "warning", "error"] = "info"
+    generation_quota_limit: int = Field(default=10, ge=1, le=1000)
+    generation_quota_window_hours: int = Field(default=24, ge=1, le=720)
     database_path: Path = BACKEND_ROOT / "data" / "cretona.db"
     media_dir: Path = BACKEND_ROOT / "assets"
     default_video_provider: Literal["fake"] = "fake"

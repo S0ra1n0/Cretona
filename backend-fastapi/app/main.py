@@ -20,6 +20,7 @@ from app.postgres import PostgresDatabase
 from app.project_service import ProjectService
 from app.prompt_service import PromptEnhancer
 from app.providers import FakeVideoProvider, ProviderRegistry
+from app.quota_service import QuotaService
 from app.routes import router
 from app.storage import LocalStorage, SupabaseStorage
 
@@ -88,7 +89,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.state.database = database
     api.state.storage = storage
     api.state.admin_service = AdminService(database)
-    api.state.project_service = ProjectService(database, providers, active_settings, storage)
+    api.state.quota_service = QuotaService(database, active_settings)
+    api.state.project_service = ProjectService(
+        database,
+        providers,
+        active_settings,
+        storage,
+        api.state.quota_service,
+    )
     api.state.prompt_enhancer = PromptEnhancer(active_settings)
 
     @api.middleware("http")

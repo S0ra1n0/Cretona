@@ -7,6 +7,7 @@ from uuid import uuid4
 from app.config import Settings
 from app.errors import AppError
 from app.providers import PollResult, ProviderRegistry
+from app.quota_service import QuotaService
 from app.repository import ProjectRepository
 from app.schemas import PageInfo, ProjectCreate, ProjectPage, ProjectResponse
 from app.storage import StorageBackend, assert_owns_path
@@ -33,11 +34,13 @@ class ProjectService:
         providers: ProviderRegistry,
         settings: Settings,
         storage: StorageBackend,
+        quota: QuotaService,
     ) -> None:
         self.database = database
         self.providers = providers
         self.settings = settings
         self.storage = storage
+        self.quota = quota
 
     def create(
         self,
@@ -57,6 +60,11 @@ class ProjectService:
             assert_owns_path(owner_id, request.image_path)
 
         provider = self.providers.get(request.provider)
+
+        # Before the provider call, never after: checking afterwards is
+        # accounting, not control (ADR-007).
+        self.quota.assert_available(owner_id)
+
         now = utc_now()
         prompt = request.prompt
         title = request.title or self._derive_title(prompt)
@@ -179,6 +187,9 @@ class ProjectService:
         attempts = int(row["attempt_count"] or 0)
         if attempts >= self.settings.max_generation_attempts:
             raise AppError(409, "CONFLICT", "This generation has been retried too many times.")
+
+        # A retry is a real provider call, so it costs an allowance (ADR-007).
+        self.quota.assert_available(owner_id)
 
         provider = self.providers.get(row["provider"])
         submitted = provider.submit(prompt=row["prompt"], image_path=row["image_path"])
