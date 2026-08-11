@@ -80,21 +80,37 @@ def test_owner_cannot_discover_another_users_project(
     assert response.json()["error"]["code"] == "NOT_FOUND"
 
 
-def test_fake_failure_is_mapped_and_can_be_retried(
+def drive_to_failure(
+    client: TestClient,
+    headers: dict[str, str],
+    prompt: str,
+) -> dict:
+    created = create_project(client, headers, prompt=prompt)
+    client.get(f"/api/v1/projects/{created['id']}", headers=headers)
+    failed = client.get(f"/api/v1/projects/{created['id']}", headers=headers)
+    assert failed.status_code == 200
+    assert failed.json()["status"] == "failed"
+    return created
+
+
+def test_fake_failure_is_mapped_to_a_safe_message(
     client: TestClient,
     user_headers: dict[str, str],
 ) -> None:
-    created = create_project(client, user_headers, prompt="fail:content_policy unsafe input")
-    client.get(f"/api/v1/projects/{created['id']}", headers=user_headers)
-    failed = client.get(f"/api/v1/projects/{created['id']}", headers=user_headers)
+    created = drive_to_failure(client, user_headers, "fail:content_policy unsafe input")
+    body = client.get(f"/api/v1/projects/{created['id']}", headers=user_headers).json()
 
-    assert failed.status_code == 200
-    body = failed.json()
-    assert body["status"] == "failed"
     assert body["errorMessage"] == (
         "The prompt or image could not be used. Try different content."
     )
     assert "Fake provider" not in body["errorMessage"]
+
+
+def test_retryable_failure_can_be_retried(
+    client: TestClient,
+    user_headers: dict[str, str],
+) -> None:
+    created = drive_to_failure(client, user_headers, "fail:provider_error upstream down")
 
     retried = client.post(
         f"/api/v1/projects/{created['id']}/retry",
@@ -102,6 +118,44 @@ def test_fake_failure_is_mapped_and_can_be_retried(
     )
     assert retried.status_code == 202
     assert retried.json()["status"] == "pending"
+
+
+def test_rejected_request_cannot_be_retried(
+    client: TestClient,
+    user_headers: dict[str, str],
+) -> None:
+    # Retrying a request the provider refused on its merits would fail again
+    # and charge the user's allowance for the privilege.
+    created = drive_to_failure(client, user_headers, "fail:content_policy unsafe input")
+
+    response = client.post(
+        f"/api/v1/projects/{created['id']}/retry",
+        headers=user_headers,
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "CONFLICT"
+
+
+def test_retry_budget_is_enforced(
+    client: TestClient,
+    user_headers: dict[str, str],
+) -> None:
+    created = drive_to_failure(client, user_headers, "fail:provider_error upstream down")
+    project_id = created["id"]
+
+    # The create already spent attempt 1; the default budget is 3.
+    for _ in range(2):
+        assert client.post(
+            f"/api/v1/projects/{project_id}/retry", headers=user_headers
+        ).status_code == 202
+        client.get(f"/api/v1/projects/{project_id}", headers=user_headers)
+        client.get(f"/api/v1/projects/{project_id}", headers=user_headers)
+
+    exhausted = client.post(f"/api/v1/projects/{project_id}/retry", headers=user_headers)
+
+    assert exhausted.status_code == 409
+    assert "too many times" in exhausted.json()["error"]["message"]
 
 
 def test_generating_project_cannot_be_deleted(

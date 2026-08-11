@@ -4,6 +4,7 @@ import base64
 import hashlib
 import hmac
 import json
+import os
 import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -58,6 +59,50 @@ def supabase_client(tmp_path: Path) -> Iterator[TestClient]:
         supabase_jwt_secret=JWT_SECRET,
         supabase_jwt_audience=JWT_AUDIENCE,
         supabase_jwt_issuer=JWT_ISSUER,
+    )
+    with TestClient(create_app(settings), raise_server_exceptions=False) as test_client:
+        # A verified token still needs a profile row, exactly as the Supabase
+        # signup trigger would have created one.
+        database = test_client.app.state.database
+        database.upsert_user(USER_A, email="a@example.com")
+        database.upsert_user(USER_B, email="b@example.com")
+        yield test_client
+
+
+@pytest.fixture
+def postgres_url() -> str:
+    """The Postgres test target, or skip.
+
+    Credential-free machines still run the whole SQLite suite; only the
+    Postgres parity tests opt out.
+    """
+    url = os.environ.get("CRETONA_TEST_DATABASE_URL", "").strip()
+    if not url:
+        pytest.skip("Set CRETONA_TEST_DATABASE_URL to run the Postgres parity tests.")
+    return url
+
+
+@pytest.fixture
+def postgres_client(tmp_path: Path, postgres_url: str) -> Iterator[TestClient]:
+    psycopg = pytest.importorskip("psycopg")
+
+    schema = (Path(__file__).parent / "postgres_schema.sql").read_text(encoding="utf-8")
+    with psycopg.connect(postgres_url, autocommit=True) as connection:
+        connection.execute(schema)
+        for user_id, email in ((USER_A, "a@example.com"), (USER_B, "b@example.com")):
+            connection.execute(
+                "INSERT INTO public.users (id, email) VALUES (%s, %s)",
+                (user_id, email),
+            )
+
+    settings = _settings(
+        tmp_path,
+        auth_mode="supabase",
+        supabase_jwt_secret=JWT_SECRET,
+        supabase_jwt_audience=JWT_AUDIENCE,
+        supabase_jwt_issuer=JWT_ISSUER,
+        database_backend="postgres",
+        database_url=postgres_url,
     )
     with TestClient(create_app(settings), raise_server_exceptions=False) as test_client:
         yield test_client

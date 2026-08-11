@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import Settings, get_settings
 from app.database import Database
 from app.errors import AppError, app_error_handler, error_payload, validation_error_handler
+from app.postgres import PostgresDatabase
 from app.project_service import ProjectService
 from app.prompt_service import PromptEnhancer
 from app.providers import FakeVideoProvider, ProviderRegistry
@@ -21,9 +22,20 @@ from app.routes import router
 APP_VERSION = "0.1.0"
 
 
+def build_database(settings: Settings) -> Database | PostgresDatabase:
+    """Select the persistence adapter from the config profile (ADR-008).
+
+    Both satisfy the same repository contract, so nothing downstream branches
+    on which one is active.
+    """
+    if settings.database_backend == "postgres":
+        return PostgresDatabase(settings.database_url.get_secret_value())
+    return Database(settings.resolved_database_path())
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     active_settings = settings or get_settings()
-    database = Database(active_settings.resolved_database_path())
+    database = build_database(active_settings)
     provider = FakeVideoProvider(
         polls_before_complete=active_settings.fake_polls_before_complete,
         video_filename=active_settings.fake_video_filename,
@@ -34,7 +46,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         active_settings.resolved_media_dir().mkdir(parents=True, exist_ok=True)
         database.initialize()
-        yield
+        try:
+            yield
+        finally:
+            close = getattr(database, "close", None)
+            if close is not None:
+                close()
 
     api = FastAPI(
         title="Cretona API",
@@ -46,7 +63,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.state.settings = active_settings
     api.state.settings_version = APP_VERSION
     api.state.database = database
-    api.state.project_service = ProjectService(database, providers)
+    api.state.project_service = ProjectService(database, providers, active_settings)
     api.state.prompt_enhancer = PromptEnhancer(active_settings)
 
     @api.middleware("http")

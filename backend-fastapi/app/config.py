@@ -22,6 +22,10 @@ class Settings(BaseSettings):
 
     environment: Literal["development", "test", "production"] = "development"
     auth_mode: Literal["dev", "supabase"] = "dev"
+    database_backend: Literal["sqlite", "postgres"] = "sqlite"
+    # Postgres/Supabase connection string. Kept secret: it carries a password.
+    database_url: SecretStr = SecretStr("")
+    max_generation_attempts: int = Field(default=3, ge=1, le=10)
     database_path: Path = BACKEND_ROOT / "data" / "cretona.db"
     media_dir: Path = BACKEND_ROOT / "assets"
     default_video_provider: Literal["fake"] = "fake"
@@ -51,6 +55,14 @@ class Settings(BaseSettings):
     def reject_development_auth_in_production(self) -> Settings:
         if self.environment == "production" and self.auth_mode == "dev":
             raise ValueError("CRETONA_AUTH_MODE=dev is forbidden in production.")
+        return self
+
+    @model_validator(mode="after")
+    def require_database_url_for_postgres(self) -> Settings:
+        if self.database_backend == "postgres" and not self.database_url.get_secret_value():
+            raise ValueError(
+                "CRETONA_DATABASE_URL is required when CRETONA_DATABASE_BACKEND=postgres."
+            )
         return self
 
     @model_validator(mode="after")

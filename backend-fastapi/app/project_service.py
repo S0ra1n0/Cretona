@@ -4,10 +4,12 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from app.database import Database
+from app.config import Settings
 from app.errors import AppError
 from app.providers import PollResult, ProviderRegistry
+from app.repository import ProjectRepository
 from app.schemas import PageInfo, ProjectCreate, ProjectPage, ProjectResponse
+from app.transitions import assert_transition, is_retryable
 
 FAILURE_MESSAGES = {
     "content_policy": "The prompt or image could not be used. Try different content.",
@@ -24,9 +26,15 @@ def utc_now() -> str:
 
 
 class ProjectService:
-    def __init__(self, database: Database, providers: ProviderRegistry) -> None:
+    def __init__(
+        self,
+        database: ProjectRepository,
+        providers: ProviderRegistry,
+        settings: Settings,
+    ) -> None:
         self.database = database
         self.providers = providers
+        self.settings = settings
 
     def create(
         self,
@@ -60,6 +68,7 @@ class ProjectService:
             "video_path": None,
             "thumbnail_path": None,
             "poll_count": 0,
+            "attempt_count": 0,
             "idempotency_key": idempotency_key,
             "created_at": now,
             "updated_at": now,
@@ -74,7 +83,12 @@ class ProjectService:
             updated = self.database.update_project(
                 row["id"],
                 owner_id,
-                {"provider_job_id": submitted.job_id, "updated_at": utc_now()},
+                {
+                    "provider_job_id": submitted.job_id,
+                    # A submission is the unit a retry budget counts (FR-2.11).
+                    "attempt_count": 1,
+                    "updated_at": utc_now(),
+                },
                 expected_status="pending",
             )
             return self.to_response(updated or row, base_url)
@@ -130,15 +144,30 @@ class ProjectService:
 
     def delete(self, owner_id: str, project_id: str) -> None:
         row = self._owned(owner_id, project_id)
+        # Deleting mid-generation would orphan a provider job that still bills
+        # us and would later write to a row the user believes is gone.
         if row["status"] == "generating":
             raise AppError(409, "CONFLICT", "A generating project cannot be deleted.")
-        if not self.database.delete_project(project_id, owner_id):
+        if not self.database.soft_delete_project(project_id, owner_id, utc_now()):
             raise AppError(404, "NOT_FOUND", "Project not found.")
 
     def retry(self, owner_id: str, project_id: str, base_url: str) -> ProjectResponse:
         row = self._owned(owner_id, project_id)
-        if row["status"] != "failed":
-            raise AppError(409, "CONFLICT", "Only a failed project can be retried.")
+        assert_transition(row["status"], "pending")
+
+        # A request the provider rejected on its merits will be rejected again,
+        # so retrying only burns the user's allowance.
+        if not is_retryable(row["error_code"]):
+            raise AppError(
+                409,
+                "CONFLICT",
+                "This generation cannot be retried because the request itself was rejected.",
+            )
+
+        attempts = int(row["attempt_count"] or 0)
+        if attempts >= self.settings.max_generation_attempts:
+            raise AppError(409, "CONFLICT", "This generation has been retried too many times.")
+
         provider = self.providers.get(row["provider"])
         submitted = provider.submit(prompt=row["prompt"], image_path=row["image_path"])
         now = utc_now()
@@ -153,6 +182,7 @@ class ProjectService:
                 "video_path": None,
                 "thumbnail_path": None,
                 "poll_count": 0,
+                "attempt_count": attempts + 1,
                 "updated_at": now,
                 "completed_at": None,
             },

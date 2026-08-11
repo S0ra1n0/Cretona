@@ -27,6 +27,33 @@ def current_user_id(
     # branch, so a caller cannot assert an identity by sending the header.
     identity = _verified_identity(authorization, settings)
     request.state.auth_email = identity.email
+    return _resolved_account(request, identity)
+
+
+def _resolved_account(request: Request, identity: VerifiedIdentity) -> str:
+    """Resolve the database row behind a verified token.
+
+    A token proves identity; the database decides authority. Roles and disabled
+    state are read here and never from a token claim the client could influence
+    (SECURITY.md 2), mirroring the Express loadUser/rejectIfDisabled chain.
+    """
+    user = request.app.state.database.get_user(identity.user_id)
+
+    if user is None:
+        # The token verifies but no profile exists, so the signup trigger never
+        # fired. Treat as unauthenticated rather than failing downstream.
+        raise AppError(
+            401,
+            "TOKEN_INVALID",
+            "Your account is not set up. Please sign in again.",
+        )
+
+    # Checked before any authorization so a disabled admin is stopped too
+    # (FR-1.8, ARCHITECTURE.md 4.1).
+    if user["is_disabled"]:
+        raise AppError(403, "ACCOUNT_DISABLED", "This account has been disabled.")
+
+    request.state.auth_role = user.get("role", "user")
     return identity.user_id
 
 
