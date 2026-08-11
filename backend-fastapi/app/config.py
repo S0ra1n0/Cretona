@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     database_url: SecretStr = SecretStr("")
     max_generation_attempts: int = Field(default=3, ge=1, le=10)
     log_level: Literal["debug", "info", "warning", "error"] = "info"
+    thumbnails_enabled: bool = True
+    # External binary, not a Python dependency. Absent means no thumbnail, not
+    # a failed generation.
+    ffmpeg_path: str = "ffmpeg"
+    thumbnail_seek_seconds: float = Field(default=1.0, ge=0, le=60)
     poller_enabled: bool = True
     poll_interval_seconds: float = Field(default=5.0, gt=0, le=300)
     poll_batch_size: int = Field(default=20, ge=1, le=500)

@@ -26,6 +26,7 @@ from app.quota_service import QuotaService
 from app.rate_limit import WINDOW_SECONDS, RateLimiter, bucket_for, caller_key
 from app.routes import router
 from app.storage import LocalStorage, SupabaseStorage
+from app.thumbnails import ThumbnailGenerator
 from app.users_service import UsersService
 
 APP_VERSION = "0.1.0"
@@ -110,6 +111,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         storage,
         api.state.quota_service,
         api.state.generation_log,
+        ThumbnailGenerator(
+            ffmpeg_path=active_settings.ffmpeg_path,
+            enabled=active_settings.thumbnails_enabled,
+            seek_seconds=active_settings.thumbnail_seek_seconds,
+        ),
     )
     api.state.prompt_enhancer = PromptEnhancer(active_settings)
     api.state.poller = JobPoller(database, api.state.project_service, active_settings)

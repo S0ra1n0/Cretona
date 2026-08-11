@@ -84,6 +84,14 @@ class StorageBackend(Protocol):
 
     def remove_objects(self, image_path: str | None, video_path: str | None) -> None: ...
 
+    def local_video_path(self, stored_path: str) -> Path | None:
+        """Where the stored video lives on disk, if anywhere.
+
+        Thumbnail extraction needs a real file. A backend that keeps bytes in a
+        bucket returns None rather than pretending otherwise.
+        """
+        ...
+
 
 class LocalStorage:
     """Filesystem-backed storage for the credential-free local profile.
@@ -119,6 +127,12 @@ class LocalStorage:
         if path.startswith(("http://", "https://")):
             return path
         return f"{base_url.rstrip('/')}/{path.lstrip('/')}"
+
+    def local_video_path(self, stored_path: str) -> Path | None:
+        return self._resolve(stored_path)
+
+    def store_thumbnail_path(self, user_id: str, project_id: str) -> str:
+        return f"/media/{user_id}/{project_id}/thumbnail.jpg"
 
     def store_video(self, user_id: str, project_id: str, source: str) -> str:
         # The local fake provider already writes into the media directory, so
@@ -216,6 +230,12 @@ class SupabaseStorage:
             token=body.get("token", ""),
             expires_at=expires_at.isoformat().replace("+00:00", "Z"),
         )
+
+    def local_video_path(self, stored_path: str) -> Path | None:
+        # Bytes live in a bucket. Generating a thumbnail here would need a
+        # download round trip, which is not implemented.
+        del stored_path
+        return None
 
     def read_url(self, path: str | None, base_url: str, *, video: bool = True) -> str | None:
         """Mint a short-lived read URL.

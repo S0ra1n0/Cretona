@@ -12,6 +12,7 @@ from app.quota_service import QuotaService
 from app.repository import ProjectRepository
 from app.schemas import PageInfo, ProjectCreate, ProjectPage, ProjectResponse
 from app.storage import StorageBackend, assert_owns_path
+from app.thumbnails import ThumbnailGenerator
 from app.transitions import assert_transition, is_retryable
 
 FAILURE_MESSAGES = {
@@ -37,7 +38,9 @@ class ProjectService:
         storage: StorageBackend,
         quota: QuotaService,
         generation_log: GenerationLogService,
+        thumbnails: ThumbnailGenerator,
     ) -> None:
+        self.thumbnails = thumbnails
         self.database = database
         self.providers = providers
         self.settings = settings
@@ -289,6 +292,7 @@ class ProjectService:
         elif result.status == "succeeded":
             try:
                 stored_path = self._rehost(row, owner_id, result.video_path)
+                thumbnail_path = self._thumbnail(row, owner_id, stored_path)
             except AppError:
                 # Re-hosting failure fails the project rather than completing
                 # it: a completed project whose video is a provider URL is a
@@ -301,6 +305,7 @@ class ProjectService:
                 {
                     "status": "completed",
                     "video_path": stored_path,
+                    "thumbnail_path": thumbnail_path,
                     "duration_seconds": result.duration_seconds,
                     "poll_count": poll_count,
                     "updated_at": now,
@@ -329,6 +334,24 @@ class ProjectService:
             response={"storedPath": stored},
         )
         return stored
+
+    def _thumbnail(
+        self,
+        row: dict[str, Any],
+        owner_id: str,
+        stored_path: str | None,
+    ) -> str | None:
+        """Best effort. A missing thumbnail must not fail a finished video."""
+        if not stored_path:
+            return None
+
+        source = self.storage.local_video_path(stored_path)
+        if source is None or not source.exists():
+            return None
+
+        target_path = self.storage.store_thumbnail_path(owner_id, row["id"])
+        target = source.parent / "thumbnail.jpg"
+        return target_path if self.thumbnails.extract(source, target) else None
 
     def _mark_failed(
         self,
