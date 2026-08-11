@@ -1,0 +1,36 @@
+{
+    "schemaVersion":  "1.1",
+    "experimentId":  "EXP-005",
+    "profile":  "framepack",
+    "capturedAt":  "2026-08-11T04:55:21.5596668Z",
+    "host":  {
+                 "gpuName":  "NVIDIA GeForce RTX 3070 Ti Laptop GPU",
+                 "gpuVramTotalMiB":  8192,
+                 "gpuVramUsedMiB":  1920,
+                 "gpuVramFreeGiB":  5.96,
+                 "gpuTemperatureC":  43,
+                 "gpuPowerDrawW":  23.3,
+                 "physicalRamTotalGiB":  15.26,
+                 "physicalRamFreeGiB":  4.3,
+                 "virtualMemoryTotalGiB":  43.26,
+                 "virtualMemoryFreeGiB":  14.62,
+                 "driveDFreeGiB":  428.86,
+                 "onAcPower":  true,
+                 "loadedOllamaModelCount":  0
+             },
+    "thresholds":  {
+                       "minimumFreeRamGiB":  6,
+                       "minimumFreeVramGiB":  6,
+                       "minimumFreeDiskGiB":  100,
+                       "minimumFreeVirtualGiB":  48
+                   },
+    "checks":  {
+                   "acPower":  true,
+                   "freeRam":  false,
+                   "freeVram":  false,
+                   "freeDisk":  true,
+                   "freeVirtualMemory":  false,
+                   "noLoadedOllamaModel":  true
+               },
+    "passed":  false
+}

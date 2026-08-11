@@ -1,8 +1,11 @@
 [CmdletBinding()]
 param(
+    [ValidateSet('general', 'framepack')]
+    [string]$Profile = 'general',
     [double]$MinimumFreeRamGiB = 6,
     [double]$MinimumFreeVramGiB = 6,
     [double]$MinimumFreeDiskGiB = 100,
+    [double]$MinimumFreeVirtualGiB = 0,
     [string]$OutputPath
 )
 
@@ -25,6 +28,13 @@ function Find-OllamaExecutable {
 
 $os = Get-CimInstance Win32_OperatingSystem
 $freeRamGiB = [math]::Round(($os.FreePhysicalMemory * 1KB) / 1GB, 2)
+$freeVirtualGiB = [math]::Round(($os.FreeVirtualMemory * 1KB) / 1GB, 2)
+if ($Profile -eq 'framepack' -and $MinimumFreeVirtualGiB -eq 0) {
+    # The pinned FramePack manifest contains about 42.9 GB of model files that
+    # the official launcher initially materializes as CPU modules. Leave a
+    # small margin for Python, CUDA, the OS, and generation tensors.
+    $MinimumFreeVirtualGiB = 48
+}
 
 $gpuLine = & nvidia-smi --query-gpu=name,memory.total,memory.used,memory.free,temperature.gpu,power.draw --format=csv,noheader,nounits
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($gpuLine)) {
@@ -58,13 +68,15 @@ $checks = [ordered]@{
     freeRam = $freeRamGiB -ge $MinimumFreeRamGiB
     freeVram = $freeVramGiB -ge $MinimumFreeVramGiB
     freeDisk = $freeDiskGiB -ge $MinimumFreeDiskGiB
+    freeVirtualMemory = $MinimumFreeVirtualGiB -eq 0 -or $freeVirtualGiB -ge $MinimumFreeVirtualGiB
     noLoadedOllamaModel = $loadedOllamaModels.Count -eq 0
 }
 $passed = -not ($checks.Values -contains $false)
 
 $evidence = [ordered]@{
-    schemaVersion = '1.0'
+    schemaVersion = '1.1'
     experimentId = 'EXP-005'
+    profile = $Profile
     capturedAt = (Get-Date).ToUniversalTime().ToString('o')
     host = [ordered]@{
         gpuName = $gpuValues[0]
@@ -75,6 +87,8 @@ $evidence = [ordered]@{
         gpuPowerDrawW = [double]$gpuValues[5]
         physicalRamTotalGiB = [math]::Round(($os.TotalVisibleMemorySize * 1KB) / 1GB, 2)
         physicalRamFreeGiB = $freeRamGiB
+        virtualMemoryTotalGiB = [math]::Round(($os.TotalVirtualMemorySize * 1KB) / 1GB, 2)
+        virtualMemoryFreeGiB = $freeVirtualGiB
         driveDFreeGiB = $freeDiskGiB
         onAcPower = $onAcPower
         loadedOllamaModelCount = $loadedOllamaModels.Count
@@ -83,6 +97,7 @@ $evidence = [ordered]@{
         minimumFreeRamGiB = $MinimumFreeRamGiB
         minimumFreeVramGiB = $MinimumFreeVramGiB
         minimumFreeDiskGiB = $MinimumFreeDiskGiB
+        minimumFreeVirtualGiB = $MinimumFreeVirtualGiB
     }
     checks = $checks
     passed = $passed

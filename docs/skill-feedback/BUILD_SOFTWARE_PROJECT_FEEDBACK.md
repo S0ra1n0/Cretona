@@ -35,6 +35,23 @@ requirements and not evidence that the skill itself was edited.
 9. **Pull immediately before publishing.** A successful initial pull is not
    enough on a two-developer repo. Commit and verify locally, then pull/rebase
    again directly before push and rerun any gate affected by conflict repair.
+10. **Pre-screen large model experiments before downloading weights.** Resolve
+    exact source/model revisions, dependency sizes, hardware architecture,
+    documented memory paths, and license boundaries first. A manifest-backed
+    rejection is better evidence than a predictable OOM after a multi-GB
+    download.
+11. **Include committed/virtual memory in local-AI resource gates.** Physical
+    RAM and VRAM alone miss Windows pagefile exhaustion. Record total/free
+    virtual memory, define launch headroom before inference, and treat pagefile
+    expansion as a separate user-owned system decision.
+12. **Inspect vendor updater scripts before execution.** Prefer pinned source
+    revisions and safe fast-forward updates. Do not run an updater whose error
+    path performs a destructive reset merely because it ships with an official
+    archive.
+13. **Pin model artifacts as a reproducible toolchain.** Record repository
+    revision, byte size, hash, cache root, incomplete-file check, runtime
+    versions, and fresh-shell probe. “Downloaded” is not equivalent to
+    complete, reproducible, or licensed for release.
 
 ## What should remain project-specific
 

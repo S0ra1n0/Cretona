@@ -5,13 +5,15 @@ Task IDs are stable — use them to pick what to implement next (e.g. "do P1-3 a
 
 **Legend:** `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` skipped/deferred
 
-**Current state (2026-08-10):** The tested Express/Prisma/Supabase reference has
+**Current state (2026-08-11):** The tested Express/Prisma/Supabase reference has
 77 passing tests plus clean typecheck/build. The active FastAPI local slice has
-17 passing tests and clean Ruff; the Android app has 7 passing tests, clean
+20 passing tests and clean Ruff; the Android app has 7 passing tests, clean
 lint/assembly, and recorded emulator evidence for prompt → create → poll →
-playback → history. This uses deterministic prompt/video fakes, SQLite, and
-development identity injection. It does not yet prove a live LLM, a real video
-model, Supabase JWT/Postgres/Storage parity, or release readiness. See
+playback → history. FastAPI has also called pinned local Qwen3-4B with
+`usedFallback=false`. Video still uses the deterministic fake: LTX 2B was
+rejected by pre-screen, while FramePack is installed but blocked before
+inference by resource and license gates. Supabase JWT/Postgres/Storage parity
+and release readiness remain unproven. See
 [executed evidence](docs/evidence/ANDROID_FASTAPI_E2E.md).
 
 ---
@@ -21,7 +23,7 @@ model, Supabase JWT/Postgres/Storage parity, or release readiness. See
 | ID | Task | Outcome |
 |----|------|---------|
 | P0-1 | `[x]` Repo layout decision | Monorepo, Android at repo root — [ADR-001](docs/adr/ADR-001-repo-layout.md) |
-| P0-2 | `[~]` Pick the launch AI provider | Paid Runway assumption superseded by [ADR-009](docs/adr/ADR-009-zero-spend-provider-gate.md). Fake is active; LTX/FramePack remain candidates until EXP-005 |
+| P0-2 | `[~]` Pick the launch AI provider | Paid Runway assumption superseded by [ADR-009](docs/adr/ADR-009-zero-spend-provider-gate.md). Qwen prompt LLM is proven; LTX is rejected; FramePack I2V is installed but blocked; real video remains unselected |
 | P0-3 | `[x]` Secrets strategy | Nothing sensitive on device; `local.properties` for per-machine config — [ADR-005](docs/adr/ADR-005-secrets-management.md) |
 | P0-4 | `[x]` Environments + config matrix | Two deployed envs, three app configurations — [ADR-006](docs/adr/ADR-006-environments.md) |
 | P0-5 | `[x]` Async completion strategy | Server-side polling; webhooks designed for but deferred — [ADR-003](docs/adr/ADR-003-async-strategy.md) |
@@ -185,17 +187,21 @@ must not be read as the active framework plan.
 
 ## Suggested order from the verified vertical slice
 
-1. Run `EXP-005` and accept/reject LTX Standard and FramePack Quality from
-   measured evidence; do not wire Android to model-specific fields.
-2. Enable Ollama and capture a `usedFallback=false` prompt-enhancement proof.
-3. Port Supabase JWT verification, Postgres persistence, and permanent media
+1. Resolve FramePack's host resource/pagefile and downloaded-weight license
+   gates, then run it twice or reject it; do not wire Android to model-specific
+   fields.
+2. Select and gate a replacement text-to-video candidate. LTX 2B must remain
+   rejected unless new pinned Ampere evidence changes its host envelope.
+3. Implement a real FastAPI video adapter only for a candidate that passes;
+   keep the raw model ID server-side.
+4. Port Supabase JWT verification, Postgres persistence, and permanent media
    storage into FastAPI while retaining the current API tests.
-4. Add reference-image input only after the text path remains green.
-5. Add quota/admin/release evidence, then execute the SRS acceptance suite.
+5. Add reference-image input only after the text path remains green.
+6. Add quota/admin/release evidence, then execute the SRS acceptance suite.
 
-The dependency spine is now: **verified fake vertical slice → EXP-005 model
-decision → real provider adapter → Supabase parity/auth → image mode →
-acceptance/security/release evidence**.
+The dependency spine is now: **verified fake vertical slice + real Qwen prompt
+proof → EXP-005 video decision → real provider adapter → Supabase parity/auth
+→ image mode → acceptance/security/release evidence**.
 
 ---
 

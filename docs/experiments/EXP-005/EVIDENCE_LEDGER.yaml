@@ -100,7 +100,7 @@ entries:
     claim: "Video inference was correctly blocked because the measured resource headroom did not meet the safety gate."
     requirement_ids: ["NFR-3.3"]
     decision_ids: ["DEC-008"]
-    contract_ids: ["CRETONA-PERF-EXP-005", "PB-LTX-SAFETY"]
+    contract_ids: ["CRETONA-PERF-EXP-005", "PB-LTX-ENVELOPE"]
     specialist_artifact_ids: []
     task_ids: ["EXP-005-LTX", "EXP-005-FRAMEPACK"]
     release_candidate_id: null
@@ -187,4 +187,98 @@ entries:
     receiver_verified_by: null
     limitations:
       - "Schema validity does not mean either video candidate has passed."
+    blocker_class: null
+
+  - id: "EVD-EXP005-007"
+    claim: "The official FramePack Windows runtime and all pinned model snapshots are installed on drive D without loading the models."
+    requirement_ids: ["FR-2.2", "FR-2.3"]
+    decision_ids: ["DEC-008"]
+    contract_ids: ["CRETONA-PERF-EXP-005", "PB-FOOTPRINT"]
+    specialist_artifact_ids: ["MODEL_RUNTIME_MANIFEST.json"]
+    task_ids: ["EXP-005-FRAMEPACK"]
+    release_candidate_id: null
+    evidence_type: "toolchain, archive, source, and model-manifest verification"
+    observation_method: "Verified WinGet 7-Zip manifest, release asset size/hash/archive, safe fast-forward source update, bundled Python/Torch/CUDA import, required snapshot files, and absence of incomplete files."
+    evidence_level: "installed artifact verification"
+    tool_and_version: "7-Zip 26.02; Hugging Face CLI 1.27.0; FramePack Python 3.10.6; Torch 2.6.0+cu126"
+    policy_standard_or_target_revision: "FramePack source 97fe5dbe06ac1f337ece08935b1076a35eefeeb9 and three model revisions in MODEL_RUNTIME_MANIFEST.json"
+    status: "passed-install-only"
+    command: "scripts/check-toolchain.ps1"
+    working_directory: "D:/1. UMT/3.5. PLUS26/Cretona"
+    environment: "Runtime and 42.9 GB model cache on drive D"
+    executed_at: "2026-08-11"
+    exit_code: 0
+    result_summary: "Every optional FramePack tool/source/runtime/model check passed; runtime plus pinned cache is 48,992,507,473 bytes."
+    artifact_or_log: "MODEL_RUNTIME_MANIFEST.json"
+    source_revision: "7d67fc4 plus local runtime-manifest change set"
+    artifact_digest: "sha256:edf452aa622ed4b728a050d3d009310edcb7bb43260bf746cdec0efbc95577e1 for official Windows archive"
+    workflow_or_deployment_run: "EXP-005 FramePack installation"
+    executed_by: "Codex on Bruce's laptop"
+    independently_verified_by: null
+    receiver_verified_by: null
+    limitations:
+      - "Installation and CUDA import are not inference, output-quality, or Android-playback evidence."
+      - "Model repositories lack explicit license metadata; release use is not cleared."
+    blocker_class: null
+
+  - id: "EVD-EXP005-008"
+    claim: "FramePack inference was not started because its post-install resource preflight failed."
+    requirement_ids: ["NFR-3.3"]
+    decision_ids: ["DEC-008"]
+    contract_ids: ["CRETONA-PERF-EXP-005", "PB-FRAMEPACK-VIRTUAL-HEADROOM"]
+    specialist_artifact_ids: ["MODEL_RUNTIME_MANIFEST.json"]
+    task_ids: ["EXP-005-FRAMEPACK"]
+    release_candidate_id: null
+    evidence_type: "profile-specific resource preflight"
+    observation_method: "Measured physical RAM, VRAM, virtual memory, D free space, AC power, and Ollama residency after model installation."
+    evidence_level: "observed host precondition"
+    tool_and_version: "scripts/check-exp005-preflight.ps1 schema 1.1"
+    policy_standard_or_target_revision: ">=6 GiB free RAM; >=6 GiB free VRAM; >=48 GiB free virtual memory; >=100 GiB free D; AC; no Ollama model"
+    status: "blocked"
+    command: "scripts/check-exp005-preflight.ps1 -Profile framepack -OutputPath docs/experiments/EXP-005/evidence/preflight-framepack-2026-08-11.json"
+    working_directory: "D:/1. UMT/3.5. PLUS26/Cretona"
+    environment: "Windows; FramePack runtime/model cache installed but not loaded"
+    executed_at: "2026-08-11T04:55:21.5596668Z"
+    exit_code: 1
+    result_summary: "AC, disk, and Ollama unload checks passed. Free RAM 4.30 GiB, free VRAM 5.96 GiB, and free virtual memory 14.62 GiB failed."
+    artifact_or_log: "evidence/preflight-framepack-2026-08-11.json"
+    source_revision: "7d67fc4 plus local runtime-manifest change set"
+    artifact_digest: null
+    workflow_or_deployment_run: "EXP-005 FramePack safety gate"
+    executed_by: "Codex on Bruce's laptop"
+    independently_verified_by: null
+    receiver_verified_by: null
+    limitations:
+      - "Closing applications may improve RAM/VRAM but cannot raise the current 43.26 GiB total virtual-memory limit above the 48 GiB gate."
+    blocker_class: "host-virtual-memory-limit"
+
+  - id: "EVD-EXP005-009"
+    claim: "The revised post-pre-screen performance contract and runtime evidence are machine-readable and pass the selected contract validator."
+    requirement_ids: []
+    decision_ids: ["DEC-008"]
+    contract_ids: ["CRETONA-PERF-EXP-005"]
+    specialist_artifact_ids: ["PERFORMANCE_BUDGET_CONTRACT.json", "MODEL_RUNTIME_MANIFEST.json"]
+    task_ids: ["EXP-005"]
+    release_candidate_id: null
+    evidence_type: "contract and structured-artifact validation"
+    observation_method: "Parsed three JSON artifacts and two YAML ledgers, then ran the design-software-performance-budgets validator against the revised contract."
+    evidence_level: "repeatable artifact validation"
+    tool_and_version: "Python 3.12; PyYAML; design-software-performance-budgets schema 1.0 validator"
+    policy_standard_or_target_revision: "LTX rejected; FramePack installed and blocked; no real video profile selected"
+    status: "passed"
+    command: "validate_performance_budget.py docs/experiments/EXP-005/PERFORMANCE_BUDGET_CONTRACT.json plus JSON/YAML parse checks"
+    working_directory: "D:/1. UMT/3.5. PLUS26/Cretona"
+    environment: "fresh local shell"
+    executed_at: "2026-08-11"
+    exit_code: 0
+    result_summary: "Validator returned VALID; structured documents parsed successfully."
+    artifact_or_log: "PERFORMANCE_BUDGET_CONTRACT.json, MODEL_RUNTIME_MANIFEST.json, EVIDENCE_LEDGER.yaml, and SOFTWARE_OPPORTUNITY_BRIEF.yaml"
+    source_revision: "7d67fc4 plus local runtime-manifest change set"
+    artifact_digest: null
+    workflow_or_deployment_run: "EXP-005 post-pre-screen reconciliation"
+    executed_by: "Codex on Bruce's laptop"
+    independently_verified_by: null
+    receiver_verified_by: null
+    limitations:
+      - "Schema and cross-document consistency do not prove video inference, output quality, or release license clearance."
     blocker_class: null

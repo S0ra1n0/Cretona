@@ -1,7 +1,7 @@
 # Cretona development options: free to USD 25
 
 - **Document ID:** `CRETONA-DEV-OPTIONS-001`
-- **Observation date:** 2026-08-06
+- **Observation date:** 2026-08-11 (free-local evidence refreshed; paid prices remain the 2026-08-06 snapshot)
 - **Decision owner:** Bruce and S0ra1n0
 - **Status:** Decision support; no paid generation has been run
 
@@ -24,7 +24,7 @@ benchmark.
 
 | Layer | Technology and boundary |
 |---|---|
-| Android | Kotlin, XML Views, MVVM, Retrofit/OkHttp, Coroutines/StateFlow, Media3 |
+| Android | Kotlin, Jetpack Compose, MVVM, Retrofit/OkHttp, Coroutines/StateFlow, Media3 |
 | Backend | Python 3.12, FastAPI, Pydantic, SQLAlchemy 2, SQLite, JWT, pytest |
 | Text LLM | `PromptEnhancer` boundary: Gemini 2.5 Flash for API-backed options; local Qwen3-4B for the strict zero-paid option |
 | Video domain | `VideoProvider` adapter, canonical job states, server-owned model mapping, deterministic `FakeVideoProvider` |
@@ -36,7 +36,7 @@ benchmark.
 | ID | Provider budget | Video technology | Real business capability delivered | Expected output quality | Demo reliability | Two-developer effort/risk | Evidence confidence |
 |---|---:|---|---|---|---|---|---|
 | `OPT-0A` Free deterministic demo | USD 0 | Gemini free-tier text enhancement + `FakeVideoProvider` + bundled/synthetic MP4 fixtures | The complete app workflow can be implemented and tested, including auth, roles, prompt approval, job lifecycle, history, playback, quota and errors; it does **not** perform live AI video generation | UI/demo can look polished and deterministic; generated-video quality is `not applicable` because the result is a fixture | Very high | Lowest delivery risk; fails the stronger interpretation that Cretona itself must call a live video model | High for feasibility; no claim of real video quality |
-| `OPT-0B` Free local AI | USD 0 API spend, conditional on owned hardware | Local Qwen3-4B prompt LLM + LTX-Video 2B Q8 `LOCAL_STANDARD`; FramePack F1 `LOCAL_QUALITY` challenger; fake fallback | Real text-to-video and image-to-video plus the common business workflow; native generated audio remains out of the first free slice | 720x480 Standard target plus a slower image-conditioned quality mode; both remain unbenchmarked on the measured RTX 3070 Ti Laptop 8 GB/16 GB RAM host | Medium if LTX passes; low for an unmeasured FramePack live run | High setup and inference-time risk, but now bounded by the actual machine and a two-model bake-off | High for published hardware contracts; low for exact local output quality/latency until `EXP-005` |
+| `OPT-0B` Free local AI | USD 0 API spend, conditional on owned hardware | Proven local Qwen3-4B prompt LLM + provider-neutral video worker + fake fallback; LTX 2B rejected; FramePack F1 installed but blocked | Real prompt enhancement plus the common business workflow; real text-to-video is unselected and image-to-video remains an unexecuted candidate | No real local video output may be rated yet; FramePack has a plausible I2V ceiling but no run or blind score | High for prompt/fake demo; low for a real video demo until one candidate passes | High setup, host-memory, license and inference-time risk; bounded by manifest/preflight gates | High for Qwen and installed-artifact evidence; no confidence claim for unobserved video quality/latency |
 | `OPT-1` Minimal live API | Up to USD 5 | Gemini free tier + fal adapter + one economical endpoint, initially Hailuo-02 Pro or Kling 3 Pro + fake fallback | Real text-to-video and image-to-video, canonical async jobs, cost guard, history and playback; only one live quality profile is validated | Good potential at 1080p with Hailuo Pro or stronger controls/audio with Kling; selection would rely mostly on provider claims and a very small spike | Medium to high with recorded/fake fallback | Low integration complexity, but too little budget for a defensible multi-model quality comparison | High for published price and API shape; low for comparative quality |
 | `OPT-2` Balanced mini-benchmark | USD 10-15 | Gemini free tier + fal router; compare Kling 3 Pro and Veo 3.1 Fast; map one winner to `STANDARD` + fake fallback | All MVP business capabilities and a benchmark-backed Standard profile; Premium may exist in the API contract but should not be promised as independently validated | High potential: Kling emphasizes motion/control and optional audio; Veo Fast adds native audio at a moderate rate; only two model families are compared | High if final demo uses a pre-verified prompt and fallback | Balanced workload; enough for six comparison runs, integration checks and a small demo reserve, but limited retry headroom | Medium after the mini-benchmark; currently low before it is run |
 | `OPT-3` Recommended quality-first | Maximum USD 25 | Gemini free tier + fal router; blind benchmark Kling 3 Pro, Veo 3.1 Fast, Veo 3.1 Standard and one eligible challenger; backend maps winners to `STANDARD` and `PREMIUM` + fake fallback | Complete selected MVP: both input modes, two quality profiles, pre-generation price estimate, explicit Premium confirmation, actual cost metadata, quota, admin visibility, history and deterministic fallback | Highest evidence-backed quality ceiling within scope: Standard must pass 70/100; Premium must pass 80/100, both input modes and USD 2.50/clip cap | Highest realistic live-demo confidence, while still retaining a deterministic fallback | Moderate and bounded; no additional Android provider UI and no second provider contract, but the team must execute and document the benchmark | Medium only after the benchmark; currently published capabilities/prices are high-confidence but output quality remains untested |
@@ -61,13 +61,13 @@ immediately before enabling live mode.
 | Capability | `OPT-0A` | `OPT-0B` | `OPT-1` | `OPT-2` | `OPT-3` |
 |---|:---:|:---:|:---:|:---:|:---:|
 | FastAPI calls a real text LLM | Yes | Yes | Yes | Yes | Yes |
-| Live text-to-video | No | Yes | Yes | Yes | Yes |
-| Live reference-image-to-video | No | Yes if LTX/FramePack passes `EXP-005` | Yes | Yes | Yes |
+| Live text-to-video | No | Not yet; candidate unselected | Yes | Yes | Yes |
+| Live reference-image-to-video | No | Not yet; FramePack must pass `EXP-005` | Yes | Yes | Yes |
 | Native generated audio | No | No | Model-dependent | Yes when configured | Yes when selected by benchmark |
 | Auth, roles, quota, history and ownership | Yes | Yes | Yes | Yes | Yes |
 | Deterministic automated tests/fallback | Yes | Yes | Yes | Yes | Yes |
 | Quality decision backed by comparison | No | No | Minimal spike only | Two-model mini-benchmark | Four-candidate blind benchmark |
-| Validated Standard profile | Fake only | Local experimental | One provider profile | Yes | Yes |
+| Validated Standard profile | Fake only | No real video profile yet | One provider profile | Yes | Yes |
 | Validated Premium profile | No | No | No | Not promised | Yes, if threshold passes |
 | Cost estimate and explicit paid confirmation | Simulated | Simulated | Yes | Yes | Yes |
 

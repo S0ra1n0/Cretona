@@ -16,6 +16,9 @@ migration evidence; it is not the active Mobile 1 runtime.
 | Node.js | 20 LTS | Optional: verify the Express reference backend |
 | FFmpeg/FFprobe | recent | Optional: regenerate or inspect video fixtures |
 | Ollama | recent | Optional: real local prompt enhancement |
+| Hugging Face CLI | 1.27+ | Optional: verify pinned model snapshots for EXP-005 |
+| uv | 0.10+ | Optional: isolated Python runtimes for model research |
+| 7-Zip | 26.02+ | Optional: verify/extract the official FramePack Windows archive |
 
 Run the repository-owned preflight first:
 
@@ -118,6 +121,43 @@ On the measured 16 GB laptop, keep `CRETONA_OLLAMA_NUM_CTX=4096`,
 `CRETONA_OLLAMA_NUM_PREDICT=180`, and `CRETONA_OLLAMA_TEMPERATURE=0.2`. FastAPI
 sends `keep_alive: 0` so Ollama unloads Qwen immediately after each request and
 does not compete with the video worker for memory.
+
+### Optional EXP-005 video-research runtime
+
+The large video runtime is machine-local and intentionally excluded from Git.
+On Bruce's measured laptop, durable tools/caches live beside the repository
+root on drive D:
+
+```text
+PLUS26/.ai-runtimes/   extracted/pinned model runtimes
+PLUS26/.ai-models/     Ollama, Hugging Face and Torch caches
+PLUS26/.downloads/     verified vendor archives
+PLUS26/.tools/         portable tools such as Ollama and uv-managed Python
+```
+
+`scripts/check-toolchain.ps1` verifies the exact FramePack source revision,
+bundled Python/Torch/CUDA runtime, three pinned model snapshots, incomplete-file
+absence, and the persistent cache roots. Reproduction metadata—release URL,
+source/model revisions, byte counts, hashes, and license status—is in
+`docs/experiments/EXP-005/MODEL_RUNTIME_MANIFEST.json`.
+
+Do not run FramePack's bundled `update.bat`: its failure path performs
+`git reset --hard`. Update an intentionally clean runtime only with a reviewed,
+explicit fast-forward, then record the new revision in the manifest. Do not
+download LTX 2B weights while its documented Ampere host-envelope gate remains
+failed.
+
+Before any FramePack process starts, run:
+
+```powershell
+.\scripts\check-toolchain.ps1
+.\scripts\check-exp005-preflight.ps1 -Profile framepack
+```
+
+The second command currently fails by design. It requires at least 6 GiB free
+physical RAM, 6 GiB free VRAM, 48 GiB free virtual-memory headroom, 100 GiB free
+on drive D, AC power, and no loaded Ollama model. A Windows pagefile change is
+a separate system-level decision; the setup script does not make it.
 
 ## 4. Express reference backend
 

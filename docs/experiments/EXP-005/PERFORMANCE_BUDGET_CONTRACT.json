@@ -15,14 +15,14 @@
       "NFR-3.3"
     ],
     "target_maturity": "L4",
-    "repository_or_artifact_revision": "90eb776 plus the uncommitted EXP-005 contract change set"
+    "repository_or_artifact_revision": "7d67fc4 plus the current EXP-005 runtime-manifest change set"
   },
   "routing": {
     "orchestrator": "build-software-project",
     "handoff_target": "Bruce and S0ra1n0",
     "specialist_self_activation": false,
     "reroute_recommendations": [
-      "Rerun EXP-005 after the free physical RAM precondition passes.",
+      "Rerun the FramePack profile only after physical RAM, VRAM, virtual-memory, and license preconditions pass.",
       "Do not integrate a video adapter until its profile passes every blocking budget."
     ]
   },
@@ -34,16 +34,17 @@
     ],
     "decisions": [
       "Qwen3 4B is the local prompt-enhancement model.",
-      "LTX-Video 2B v0.9.8 distilled is the LOCAL_STANDARD candidate.",
-      "FramePack F1 is evaluated only as an image-conditioned LOCAL_QUALITY challenger."
+      "LTX-Video 2B v0.9.8 distilled was the LOCAL_STANDARD candidate and has been disconfirmed by the documented memory envelope for this host.",
+      "FramePack F1 is the first installed image-conditioned candidate; it is not selected until execution budgets pass."
     ],
     "conflicts": [
       "The previously proposed LTX Q8 acceleration is documented for NVIDIA Ada; the measured RTX 3070 Ti is Ampere, so that path is not assumed valid."
     ],
     "unknowns": [
-      "Exact low-memory LTX 2B runtime and checkpoint representation that works on this Ampere host",
+      "Whether a future pinned LTX or other text-video path can fit this Ampere host without violating the safety envelope",
       "Peak committed system memory for each video worker",
-      "Human quality scores from both team members"
+      "Human quality scores from both team members",
+      "A feasible text-only video route after LTX pre-screen rejection"
     ]
   },
   "scope": {
@@ -59,8 +60,9 @@
     ],
     "include": [
       "Qwen prompt enhancement through FastAPI",
-      "LTX-Video 2B distilled reference-image generation",
-      "FramePack F1 reference-image generation if Standard passes",
+      "Pinned LTX-Video 2B manifest pre-screen and documented rejection",
+      "FramePack F1 reference-image generation after its resource and license gates pass",
+      "Selection of a separate text-to-video candidate through a new pinned gate",
       "H.264 MP4 normalization and playback verification",
       "Resource, timing, repeatability, footprint, provenance, and quality evidence"
     ],
@@ -98,29 +100,30 @@
       "correctness_oracle": "HTTP success, provider ollama, usedFallback false, non-empty enhancedPrompt, and zero loaded Ollama models after the response"
     },
     {
-      "id": "WL-LTX-I2V",
+      "id": "WL-LTX-PRESCREEN",
       "source_ids": ["FR-2.2", "FR-2.3", "ADR-009"],
-      "description": "Generate the closest supported four-to-five-second clip from the fixed synthetic reference image and motion prompt using LTX-Video 2B v0.9.8 distilled.",
+      "description": "Resolve the exact LTX-Video 2B v0.9.8 source, model, encoder, license, dependency sizes, documented memory path, and GPU-architecture compatibility before downloading weights or starting inference.",
       "platform": "Windows, CUDA, RTX 3070 Ti Laptop 8 GB",
-      "data_profile": "One fixed synthetic near-16:9 PNG, fixed prompt, seed 18426, one output at a time",
-      "concurrency": "1 worker, 1 job, and no other AI model loaded",
-      "correctness_oracle": "Two consecutive non-OOM runs produce decodable H.264 MP4 files matching recorded settings and human score at least 65/100"
+      "data_profile": "Pinned official source and model manifests; no inference input is consumed after rejection",
+      "concurrency": "No worker or model load",
+      "correctness_oracle": "The manifest identifies exact revisions, byte sizes, license locator, hardware mismatch, and a reproducible reject/reopen rule without claiming output quality"
     },
     {
       "id": "WL-FRAMEPACK-I2V",
       "source_ids": ["FR-2.2", "FR-2.3", "ADR-009"],
-      "description": "Generate a five-second-or-shorter clip from the same fixed input using FramePack F1 after Standard passes.",
+      "description": "Generate a five-second-or-shorter clip from the fixed input using FramePack F1 after its resource and weight-license gates pass.",
       "platform": "Windows, CUDA, RTX 3070 Ti Laptop 8 GB",
       "data_profile": "Same reference image, prompt intent, seed policy, duration cap, and scoring rubric as Standard",
       "concurrency": "1 worker, 1 job, and no other AI model loaded",
-      "correctness_oracle": "Two consecutive non-OOM runs produce decodable H.264 MP4 files and beat Standard by at least eight weighted quality points"
+      "correctness_oracle": "Two consecutive non-OOM runs produce decodable H.264 MP4 files, score at least 73/100, and beat a passing comparable baseline by at least eight points when one exists"
     }
   ],
   "measurement_method": {
     "baseline_revision": "90eb776",
     "environments": [
       "Exact GPU name, driver, VRAM, total/free physical RAM, drive-D free space, power state, model revision, dependency manifest, and command are captured for each run.",
-      "Model caches and outputs remain on drive D; no paid or remote inference endpoint is permitted."
+      "Model caches and outputs remain on drive D; no paid or remote inference endpoint is permitted.",
+      "FramePack also records total/free virtual memory because its pinned local model manifest is about 42.9 GB."
     ],
     "data_profiles": [
       "docs/experiments/EXP-005/inputs/paper-dragon-lantern-city.png",
@@ -139,7 +142,7 @@
     ],
     "repetitions_and_duration": [
       "Qwen: one direct model proof plus one FastAPI proof.",
-      "Each video candidate: two consecutive complete runs, each four to five seconds where the runtime supports it.",
+      "Each candidate that passes pre-screen: two consecutive complete runs, each four to five seconds where the runtime supports it.",
       "Capture one-second RAM/VRAM telemetry during video generation."
     ],
     "variance_and_comparison": [
@@ -175,31 +178,31 @@
       "evidence_artifact": "EVIDENCE_LEDGER.yaml#EVD-EXP005-004"
     },
     {
-      "id": "PB-LTX-SAFETY",
+      "id": "PB-LTX-ENVELOPE",
       "source_ids": ["ADR-009"],
       "risk_ids": ["RSK-OS-INSTABILITY", "RSK-OOM"],
-      "workload_id": "WL-LTX-I2V",
-      "metric": "preflight resource headroom",
+      "workload_id": "WL-LTX-PRESCREEN",
+      "metric": "documented runtime envelope versus measured host",
       "unit": "GiB",
-      "aggregation": "immediately before every run",
-      "target": ">= 6 free physical RAM, >= 6 free VRAM, and >= 100 free on drive D",
-      "blocking_threshold": "any target fails, laptop is not on AC power, or another AI model is loaded",
-      "comparison_rule": "fresh one-second system and nvidia-smi observations",
+      "aggregation": "pinned source/model/dependency manifest before weight download",
+      "target": "official or reproducible pinned route fits < 8 VRAM and safe committed-memory headroom on Ampere",
+      "blocking_threshold": "documented route exceeds 8 VRAM, assumes Ada-only acceleration, or cannot demonstrate safe committed memory",
+      "comparison_rule": "exact source/model revisions and official runtime documentation versus this measured host",
       "authority": "ADR-009 and team safety rule",
       "owner": "S0ra1n0",
-      "evidence_artifact": "runs/<candidate>-<run>/preflight.json"
+      "evidence_artifact": "MODEL_RUNTIME_MANIFEST.json#ltxPreScreen"
     },
     {
       "id": "PB-LTX-LATENCY",
       "source_ids": ["ADR-009", "NFR-3.3"],
       "risk_ids": ["RSK-DEMO-LATENCY"],
-      "workload_id": "WL-LTX-I2V",
-      "metric": "end-to-end generation wall time",
+      "workload_id": "WL-LTX-PRESCREEN",
+      "metric": "retired generation-latency target",
       "unit": "seconds",
-      "aggregation": "each of two consecutive runs",
-      "target": "<= 600",
-      "blocking_threshold": "> 600, timeout, OOM, or incomplete output",
-      "comparison_rule": "same fixed input, prompt intent, duration target, seed, and isolated worker conditions",
+      "aggregation": "not measured after pre-screen rejection",
+      "target": "not applicable until PB-LTX-ENVELOPE is reopened and passed",
+      "blocking_threshold": "any inference attempt while PB-LTX-ENVELOPE remains failed",
+      "comparison_rule": "historical target retained only to document why no timing claim exists",
       "authority": "ADR-009",
       "owner": "S0ra1n0",
       "evidence_artifact": "runs/ltx-*/result.json"
@@ -208,13 +211,13 @@
       "id": "PB-LTX-QUALITY",
       "source_ids": ["ADR-009"],
       "risk_ids": ["RSK-LOW-OUTPUT-QUALITY"],
-      "workload_id": "WL-LTX-I2V",
-      "metric": "blind weighted quality score",
+      "workload_id": "WL-LTX-PRESCREEN",
+      "metric": "retired blind-quality target",
       "unit": "points out of 100",
-      "aggregation": "mean of Bruce and S0ra1n0 scores after both runs",
-      "target": ">= 65",
-      "blocking_threshold": "< 65",
-      "comparison_rule": "anonymized files scored with QUALITY_SCORECARD.md before model disclosure",
+      "aggregation": "not measured after pre-screen rejection",
+      "target": "not applicable until PB-LTX-ENVELOPE is reopened and passed",
+      "blocking_threshold": "any quality claim without generated output",
+      "comparison_rule": "historical target retained only to prevent documentation from implying observed quality",
       "authority": "ADR-009",
       "owner": "Bruce",
       "evidence_artifact": "QUALITY_SCORECARD.md"
@@ -223,16 +226,31 @@
       "id": "PB-LTX-PLAYBACK",
       "source_ids": ["FR-2.7"],
       "risk_ids": ["RSK-ANDROID-INCOMPATIBLE-MEDIA"],
-      "workload_id": "WL-LTX-I2V",
-      "metric": "H.264 and Android Media3 playback acceptance",
+      "workload_id": "WL-LTX-PRESCREEN",
+      "metric": "retired playback target",
       "unit": "boolean",
-      "aggregation": "every accepted output",
-      "target": "true",
-      "blocking_threshold": "false or unverified",
-      "comparison_rule": "ffprobe inspection plus foreground Android app playback evidence",
+      "aggregation": "not measured after pre-screen rejection",
+      "target": "not applicable until PB-LTX-ENVELOPE is reopened and passed",
+      "blocking_threshold": "any playback claim without generated output",
+      "comparison_rule": "historical target retained only to document the still-required oracle if the candidate is reopened",
       "authority": "FR-2.7",
       "owner": "Bruce",
       "evidence_artifact": "runs/ltx-*/media.json and Android playback evidence"
+    },
+    {
+      "id": "PB-FRAMEPACK-VIRTUAL-HEADROOM",
+      "source_ids": ["ADR-009"],
+      "risk_ids": ["RSK-COMMIT-LIMIT", "RSK-OS-INSTABILITY"],
+      "workload_id": "WL-FRAMEPACK-I2V",
+      "metric": "free Windows virtual-memory headroom immediately before process start",
+      "unit": "GiB",
+      "aggregation": "single preflight before each run",
+      "target": ">= 48",
+      "blocking_threshold": "< 48",
+      "comparison_rule": "pinned model manifest is 42.9 GB; threshold reserves about 5 GB for Python, CUDA, OS, and generation tensors",
+      "authority": "EXP-005 safety boundary",
+      "owner": "S0ra1n0",
+      "evidence_artifact": "evidence/preflight-framepack-2026-08-11.json"
     },
     {
       "id": "PB-FRAMEPACK-LATENCY",
@@ -250,15 +268,15 @@
       "evidence_artifact": "runs/framepack-*/result.json"
     },
     {
-      "id": "PB-FRAMEPACK-QUALITY-DELTA",
+      "id": "PB-FRAMEPACK-QUALITY",
       "source_ids": ["ADR-009"],
       "risk_ids": ["RSK-COMPLEXITY-WITHOUT-VALUE"],
       "workload_id": "WL-FRAMEPACK-I2V",
-      "metric": "quality score improvement over LOCAL_STANDARD",
+      "metric": "blind weighted quality score and improvement over a passing comparable baseline",
       "unit": "weighted points",
       "aggregation": "mean team score delta",
-      "target": ">= 8",
-      "blocking_threshold": "< 8 or Standard has not passed",
+      "target": ">= 73/100 and, when a passing comparable baseline exists, >= 8 points better",
+      "blocking_threshold": "< 73/100 or < 8-point improvement when a passing comparable baseline exists",
       "comparison_rule": "same anonymized two-reviewer scorecard and fixed input intent",
       "authority": "ADR-009",
       "owner": "Bruce and S0ra1n0",
@@ -268,7 +286,7 @@
       "id": "PB-FOOTPRINT",
       "source_ids": ["DEC-008"],
       "risk_ids": ["RSK-DISK-EXHAUSTION"],
-      "workload_id": "WL-LTX-I2V",
+      "workload_id": "WL-FRAMEPACK-I2V",
       "metric": "permanent model and cache footprint for accepted profiles",
       "unit": "GiB",
       "aggregation": "sum on drive D after accepted candidates are installed",
@@ -288,13 +306,14 @@
     },
     {
       "id": "EXP-005-LTX",
-      "status": "blocked",
-      "blocker": "Latest free physical RAM observation is far below the 6 GiB preflight target. Exact Ampere-safe LTX runtime manifest is still being resolved."
+      "status": "rejected-before-inference",
+      "result": "Official raw dependencies total about 25.9 GB, the current Diffusers memory route is documented at about 10 GB VRAM, and Q8/FP8 acceleration is Ada-oriented. No repeatable Ampere path fits the 8 GB host, so weights were not downloaded."
     },
     {
       "id": "EXP-005-FRAMEPACK",
-      "status": "not-started",
-      "entry_condition": "LTX Standard passes all blocking budgets and the same 6 GiB free-RAM preflight passes."
+      "status": "blocked",
+      "result": "Official Windows runtime, source commit, and 42.9 GB pinned model cache are installed and verified. Inference was not started because free RAM, free VRAM, and free virtual-memory headroom failed the profile preflight.",
+      "entry_condition": "The framepack profile preflight passes immediately before both runs."
     }
   ],
   "regression_control": {
@@ -315,16 +334,19 @@
   },
   "handoff": {
     "decisions_needed": [
-      "Accept or reject LOCAL_STANDARD after both human reviewers score two valid LTX runs.",
-      "Retain LOCAL_QUALITY only when its measured quality delta is at least eight points."
+      "Authorize or reject the Windows pagefile change needed to make the conservative FramePack virtual-memory preflight achievable.",
+      "Accept FramePack only after resource and license gates plus two runs; assign a profile name only after the score passes.",
+      "Select and gate a separate text-to-video candidate."
     ],
     "blockers": [
-      "The latest observed free physical RAM does not meet the 6 GiB video preflight gate.",
+      "The latest FramePack observation has 4.30 GiB free physical RAM, 5.96 GiB free VRAM, and 14.62 GiB free virtual memory; all are below their profile gates.",
+      "The current total Windows virtual-memory limit is only 43.26 GiB, below the conservative 48 GiB FramePack headroom gate.",
       "No LTX or FramePack output has yet run on this laptop."
     ],
     "assumptions": [
       "The team can close memory-heavy applications before a scheduled experiment.",
-      "The generated benchmark image is acceptable as course-project test data."
+      "The generated benchmark image is acceptable as course-project test data.",
+      "Any pagefile expansion will be decided separately because it changes host-level configuration."
     ],
     "limitations": [
       "Qwen success proves text-model orchestration only, not video generation.",
@@ -332,8 +354,9 @@
       "Reference-image performance does not by itself prove text-only video quality."
     ],
     "residual_risks": [
-      "16 GB total RAM may make both candidates unsafe or too slow even after applications are closed.",
-      "Runtime dependencies may require a different low-memory path on Ampere than the official Ada-oriented Q8 path."
+      "16 GB total RAM and the current 43.26 GiB virtual-memory limit may make FramePack unsafe or too slow even after applications are closed.",
+      "FramePack model repositories do not expose explicit license metadata; release/redistribution remains blocked pending license review.",
+      "A text-only local video candidate remains unselected after the LTX pre-screen rejection."
     ],
     "evidence_ledger_targets": [
       "docs/experiments/EXP-005/EVIDENCE_LEDGER.yaml",

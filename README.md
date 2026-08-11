@@ -20,8 +20,10 @@ rules, state transitions, idempotency, and deterministic fake provider before
 any local video model is integrated.
 
 No paid provider call is enabled by the accepted zero-additional-spend path.
-LTX-Video and FramePack remain unverified candidates until `EXP-005` runs on
-the actual laptop.
+Local Qwen3-4B has passed a real FastAPI call. No real video model is selected:
+LTX-Video 2B was rejected by the pinned host-envelope pre-screen, and the
+installed FramePack F1 runtime is blocked before inference by resource and
+weight-license gates in `EXP-005`.
 
 ## Repository layout
 

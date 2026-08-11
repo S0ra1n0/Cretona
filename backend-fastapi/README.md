@@ -17,8 +17,9 @@ tested Express implementation in `../backend/`.
 - optional free local prompt enhancement through Ollama
 
 This is a zero-spend integration profile. The fake provider proves the app and
-job lifecycle; it does not prove real AI video quality. LTX-Video and FramePack
-remain blocked on EXP-005.
+job lifecycle; it does not prove real AI video quality. Qwen prompt enhancement
+has passed live, but no video adapter is selected: LTX-Video 2B was rejected by
+pre-screen and FramePack remains blocked on EXP-005.
 
 ## Run
 

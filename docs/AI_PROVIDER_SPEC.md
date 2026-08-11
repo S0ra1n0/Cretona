@@ -170,8 +170,10 @@ Filled in as each is integrated. Capability values must be verified against live
 | Provider | Status | Modes | Notes |
 |---|---|---|---|
 | Cretona fake | integrated | deterministic test fixture | Contract/runtime evidence only; not AI output |
-| LTX-Video 2B Q8 | EXP-005 required | text, image | `LOCAL_STANDARD` candidate for the measured 8 GB GPU |
-| FramePack F1 | EXP-005 required | image | `LOCAL_QUALITY` challenger; acceptance depends on measured quality/latency |
+| Ollama + Qwen3-4B | live prompt proof passed | text | FastAPI returned `usedFallback=false`; this enhances prompts and does not generate video |
+| LTX-Video 2B Q8 | rejected by EXP-005 pre-screen | text, image | Official dependency/runtime envelope does not fit the measured Ampere 8 GB VRAM/16 GB RAM host; weights were intentionally not downloaded |
+| FramePack F1 | runtime installed; inference blocked | image | Exact source and weights are pinned; resource preflight and weight-license review must pass before the first run or profile selection |
+| Real local text-to-video | unselected | text | Wan2.1 1.3B and CogVideoX 2B are research candidates only; neither is an accepted adapter |
 | Runway | not selected | text, image, text+image | Paid path; superseded as launch default by ADR-009 |
 | Kling | not selected | text, image, text+image | Paid path; not compatible with the chosen zero-additional-spend baseline |
 | Pika | not started | text, image | |
@@ -179,5 +181,6 @@ Filled in as each is integrated. Capability values must be verified against live
 | Google Veo | not started | text, image | |
 
 The old paid launch assumption in ADR-004 is superseded by the evidence gate in
-[ADR-009](adr/ADR-009-zero-spend-provider-gate.md). No real video model is
-selected until EXP-005 succeeds on the actual laptop.
+[ADR-009](adr/ADR-009-zero-spend-provider-gate.md). Qwen is the proven prompt
+LLM, but no real video model is selected until EXP-005 succeeds on the actual
+laptop.

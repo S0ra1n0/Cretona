@@ -1,0 +1,148 @@
+{
+  "schemaVersion": "1.0",
+  "experimentId": "EXP-005",
+  "capturedOn": "2026-08-11",
+  "status": "framepack-runtime-installed-inference-blocked",
+  "cashSpendUsd": 0,
+  "host": {
+    "gpu": "NVIDIA GeForce RTX 3070 Ti Laptop GPU",
+    "gpuArchitecture": "Ampere compute capability 8.6",
+    "vramMiB": 8192,
+    "physicalRamGiB": 15.26,
+    "virtualMemoryTotalGiB": 43.26,
+    "drive": "D",
+    "latestDriveFreeGiB": 428.86
+  },
+  "toolchain": {
+    "ollama": "0.32.6",
+    "huggingFaceCli": "1.27.0",
+    "uv": "0.10.8",
+    "sevenZip": "26.02",
+    "ffmpeg": "8.1.1",
+    "framePackBundledPython": "3.10.6",
+    "framePackTorch": "2.6.0+cu126",
+    "framePackCudaBuild": "12.6",
+    "cudaAvailable": true
+  },
+  "qwenPromptModel": {
+    "ollamaTag": "qwen3:4b-instruct-2507-q4_K_M",
+    "digest": "0edcdef34593eac1aa2be9c7d06c432dcf81945adca5eca2f27662c18f168ba0",
+    "advertisedBytes": 2497293803,
+    "observedDiskBytes": 2497294662,
+    "liveFastApiProof": "passed"
+  },
+  "ltxPreScreen": {
+    "status": "disconfirmed-for-this-host-before-weight-download",
+    "sourceRepository": "https://github.com/Lightricks/LTX-Video",
+    "sourceCommit": "4b2d053057623ddd4d0a1d3e9cd28890e9ef487f",
+    "sourceCheckoutBytes": 742769858,
+    "weightsDownloaded": false,
+    "modelRepository": "Lightricks/LTX-Video",
+    "modelRevision": "8984fa25007f376c1a299016d0957a37a2f797bb",
+    "requiredFiles": [
+      {
+        "file": "ltxv-2b-0.9.8-distilled.safetensors",
+        "bytes": 6340744492,
+        "sha256": "76aa8c4786af752fa6f951947129d5290c3c6c0b2fadcadea6b5e114ae2cad8f"
+      },
+      {
+        "file": "ltxv-spatial-upscaler-0.9.8.safetensors",
+        "bytes": 505024432,
+        "sha256": "5b076031c6f860db9037a54f3bb819f10bfb5532ea26a6d30062292428a0c208"
+      },
+      {
+        "file": "LTX-Video-Open-Weights-License-0.X.txt",
+        "bytes": 14536,
+        "sha256": null
+      }
+    ],
+    "textEncoderRepository": "PixArt-alpha/PixArt-XL-2-1024-MS",
+    "textEncoderRevision": "b89adadeccd9ead2adcb9fa2825d3fabec48d404",
+    "textEncoderAndTokenizerBytes": 19050107394,
+    "documentedRawRuntimeBytes": 25895876318,
+    "disconfirmingEvidence": [
+      "The official 0.9.8 raw config requires the 19.05 GB PixArt T5 text encoder in addition to the 6.34 GB checkpoint and 0.51 GB upscaler.",
+      "The official raw source moves transformer, VAE, and text encoder to the selected device before its runtime offload path can reduce residency.",
+      "The current official Diffusers memory example is documented at approximately 10 GB VRAM.",
+      "The Q8 and optional FP8-kernel acceleration paths are documented for NVIDIA Ada and later; this GPU is Ampere."
+    ],
+    "reconsiderOnlyIf": "A version-pinned, license-reviewed Ampere path demonstrates less than 8 GB peak VRAM and safe committed-memory usage before any full weight download."
+  },
+  "framePackRuntime": {
+    "status": "installed-and-verified-not-executed",
+    "officialRepository": "https://github.com/lllyasviel/FramePack",
+    "sourceCommit": "97fe5dbe06ac1f337ece08935b1076a35eefeeb9",
+    "sourceUpdateMethod": "git pull --ff-only; vendor update.bat was not used because its fallback performs git reset --hard",
+    "releaseAsset": {
+      "url": "https://github.com/lllyasviel/FramePack/releases/download/windows/framepack_cu126_torch26.7z",
+      "publishedBytes": 1811224113,
+      "observedBytes": 1811224113,
+      "sha256": "edf452aa622ed4b728a050d3d009310edcb7bb43260bf746cdec0efbc95577e1",
+      "archiveTest": "passed with 7-Zip 26.02",
+      "extractedFiles": 60623,
+      "extractedBytesBeforeModelDownload": 6125555770
+    },
+    "runtimeAndPinnedCacheBytes": 48992507473,
+    "models": [
+      {
+        "repository": "lllyasviel/FramePack_F1_I2V_HY_20250503",
+        "revision": "ab239828e0b384fed75580f186f078717d4020f7",
+        "localBytes": 25748919242,
+        "files": [
+          {"file": "diffusion_pytorch_model-00001-of-00003.safetensors", "bytes": 9972080992, "sha256": "cdf7c3c5657f39d32fe2be77ecb0b9feff3da2ea44cede43742b0845298ff240"},
+          {"file": "diffusion_pytorch_model-00002-of-00003.safetensors", "bytes": 9987115584, "sha256": "dceab3cb46e2aa764da3741c1dcb643623ea57eee6d160b729cd669fb451e1cd"},
+          {"file": "diffusion_pytorch_model-00003-of-00003.safetensors", "bytes": 5789584816, "sha256": "cea9ec13d707f40293ce3f2a3cdeacf9ccbbe40469d2df35d95ada3780c1d766"}
+        ]
+      },
+      {
+        "repository": "hunyuanvideo-community/HunyuanVideo",
+        "revision": "e8c2aaa66fe3742a32c11a6766aecbf07c56e773",
+        "localBytes": 16261372489,
+        "files": [
+          {"file": "text_encoder/model-00001-of-00004.safetensors", "bytes": 4977222384, "sha256": "f5ad57d3eda300a3195bc9c0bb36ab76ebe88831f128e9851e63440aff4a6741"},
+          {"file": "text_encoder/model-00002-of-00004.safetensors", "bytes": 4999801992, "sha256": "54accb98811931fca7598da4f7239b03b912eaa2bd5fe639f2da00923374f4a0"},
+          {"file": "text_encoder/model-00003-of-00004.safetensors", "bytes": 4915915480, "sha256": "d67c77f57cab4c9bf7f4420c256aed684c8ac7b49c6ab72cff9924e9513db9f1"},
+          {"file": "text_encoder/model-00004-of-00004.safetensors", "bytes": 117465520, "sha256": "c93f133c65ab1aeaa9ed1e998901a306636375b2f57fa53cd279241147a9a0e9"},
+          {"file": "text_encoder_2/model.safetensors", "bytes": 246144152, "sha256": "660c6f5b1abae9dc498ac2d21e1347d2abdb0cf6c0c0c8576cd796491d9a6cdd"},
+          {"file": "vae/diffusion_pytorch_model.safetensors", "bytes": 985943868, "sha256": "7c68a6295f9034a88225fbafb1f3258291a08d57a1fdb938233fa57b1b8f4883"}
+        ]
+      },
+      {
+        "repository": "lllyasviel/flux_redux_bfl",
+        "revision": "45b801affc54ff2af4e5daf1b282e0921901db87",
+        "localBytes": 856508482,
+        "files": [
+          {"file": "image_encoder/model.safetensors", "bytes": 856506120, "sha256": "d769e3a32a6a9bac72d4d93b989e44491f71b50f02bfa14cd9187758d4a68ff1"}
+        ]
+      }
+    ],
+    "verification": {
+      "sourceRevision": "passed",
+      "workingTreeClean": true,
+      "bundledPythonCudaImport": "passed",
+      "allRequiredSnapshotFilesPresent": true,
+      "incompleteDownloadFilesPresent": false,
+      "inferenceRun": "blocked"
+    },
+    "latestPreflight": {
+      "capturedAt": "2026-08-11T04:55:21.5596668Z",
+      "freePhysicalRamGiB": 4.3,
+      "freeVramGiB": 5.96,
+      "freeVirtualMemoryGiB": 14.62,
+      "requiredFreeVirtualMemoryGiB": 48,
+      "driveDFreeGiB": 428.86,
+      "passed": false
+    },
+    "licenseStatus": {
+      "code": "FramePack repository declares Apache-2.0",
+      "weights": "unresolved for release: the three downloaded model repositories expose no explicit license metadata in their model cards",
+      "releaseGate": "Retain and review the applicable Hunyuan and upstream component terms before redistribution or public deployment."
+    }
+  },
+  "nextAuthorizedAction": "Obtain team/user authorization for a Windows pagefile change that can provide at least 48 GiB free virtual-memory headroom, then close memory-heavy applications and rerun the FramePack preflight. No pagefile change has been made.",
+  "forbiddenClaims": [
+    "Do not call FramePack selected, passed, or integrated.",
+    "Do not claim text-to-video from the installed FramePack F1 runtime.",
+    "Do not claim LTX output quality or local feasibility from repository documentation."
+  ]
+}

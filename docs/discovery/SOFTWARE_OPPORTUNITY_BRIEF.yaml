@@ -815,14 +815,14 @@ validation:
     - id: "EXP-005"
       candidate_ids: ["CAND-002"]
       assumption_ids: ["ASM-005"]
-      status: "not-run"
+      status: "active-partially-disconfirmed"
       owner: "Bruce and S0ra1n0"
-      participant_or_source: "Measured Cretona laptop with LTX-Video 2B distilled/Q8 and FramePack F1 official local pipelines"
-      procedure: "Generate the closest comparable four-to-five-second synthetic reference-image clip twice per model, record peak RAM/VRAM, wall-clock time, failures, resolution and parameters, then blind-score composition, motion, prompt adherence, reference consistency and artifacts."
-      observable_threshold: "LTX completes within 10 minutes and scores at least 65/100; FramePack completes within 30 minutes, does not destabilize the host, and beats LTX by at least 8 weighted points; both produce Android-playable H.264 MP4 files and keep permanent model/cache storage below 100 GB."
-      disconfirming_result: "Repeated OOM, OS instability, excess latency, unplayable output, storage overflow, or no material FramePack quality gain invalidates one or both local profiles."
+      participant_or_source: "Measured Cretona laptop, pinned official LTX manifest, and pinned official FramePack Windows runtime/model snapshots"
+      procedure: "Pre-screen exact manifests before large downloads or inference; run any surviving candidate twice only after RAM, VRAM, virtual-memory, license and disk gates pass; then verify H.264/Media3 playback and blind-score the output."
+      observable_threshold: "A text-video candidate finishes within 10 minutes and scores at least 65/100. FramePack finishes within 30 minutes, scores at least 73/100, and beats a passing comparable baseline by at least 8 points when one exists. Both require stable repeat runs, Android-playable H.264, and under 100 GB permanent model/cache storage."
+      disconfirming_result: "LTX 2B was rejected because its pinned official envelope does not fit this Ampere 8 GB host. FramePack inference is blocked because the 6 GiB RAM, 6 GiB VRAM, and 48 GiB free virtual-memory preflight failed; its downloaded-weight license metadata also remains unresolved."
       timebox: "One isolated local model bake-off before selecting the free provider"
-      evidence_destination: "docs/evidence/free-local-video-bakeoff.md"
+      evidence_destination: "docs/experiments/EXP-005/"
       ethics_and_privacy: "Use one synthetic prompt and non-personal reference image; retain license/version provenance and do not download unverified repacks."
   decision_thresholds:
     - "Select CAND-002 as the final MVP when the team accepts one router contract, two backend-mapped quality profiles, one image, bounded storage, and a text-first build order."
@@ -848,10 +848,10 @@ handoff:
     - "DEC-004: Confirm whether a separate text LLM call is mandatory."
     - "DEC-005: Approve Gemini text enhancement plus the fal video router, account ownership, the Standard/Premium benchmark, and the USD 25 bucketed envelope."
     - "DEC-006: Confirm local-network versus public FastAPI deployment for the final demo."
-    - "DEC-008: If zero-additional-spend is selected, approve EXP-005 before mapping LTX Standard or FramePack Quality into the MVP."
+    - "DEC-008: Keep Qwen for prompt enhancement; retain the LTX rejection; authorize any host-memory change separately; map no video profile until a candidate passes EXP-005."
   blockers:
     - "Paid benchmarking and provider-profile mapping are blocked until DEC-005."
-    - "Free-local provider selection is blocked until EXP-005 measures RAM, VRAM, latency, output quality, storage, and repeat-run stability."
+    - "Free-local video selection is blocked until EXP-005 clears FramePack resource/license gates or another text/video candidate passes measured latency, quality, playback, storage, and repeatability thresholds."
     - "Final scope approval is blocked until DEC-001, DEC-002, and DEC-004."
   assumptions:
     - "Authentication and basic user/admin roles remain in scope because they are source-stated in README.md."
