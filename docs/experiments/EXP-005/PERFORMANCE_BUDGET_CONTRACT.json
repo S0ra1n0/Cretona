@@ -1,0 +1,344 @@
+{
+  "schema_version": "1.0",
+  "contract": {
+    "id": "CRETONA-PERF-EXP-005",
+    "status": "blocked",
+    "objective": "Select only a repeatable zero-additional-cash-spend local video profile that is safe and demo-usable on the measured team laptop.",
+    "project_id": "CRETONA",
+    "source_ids": [
+      "DEC-004",
+      "DEC-008",
+      "ADR-009",
+      "FR-2.1",
+      "FR-2.2",
+      "FR-2.3",
+      "NFR-3.3"
+    ],
+    "target_maturity": "L4",
+    "repository_or_artifact_revision": "90eb776 plus the uncommitted EXP-005 contract change set"
+  },
+  "routing": {
+    "orchestrator": "build-software-project",
+    "handoff_target": "Bruce and S0ra1n0",
+    "specialist_self_activation": false,
+    "reroute_recommendations": [
+      "Rerun EXP-005 after the free physical RAM precondition passes.",
+      "Do not integrate a video adapter until its profile passes every blocking budget."
+    ]
+  },
+  "authority": {
+    "approved_targets": [
+      "Zero additional API, subscription, trial-credit, or cloud-GPU spend",
+      "FastAPI remains the model orchestration boundary",
+      "At most 100 GB of permanent model and cache data on drive D"
+    ],
+    "decisions": [
+      "Qwen3 4B is the local prompt-enhancement model.",
+      "LTX-Video 2B v0.9.8 distilled is the LOCAL_STANDARD candidate.",
+      "FramePack F1 is evaluated only as an image-conditioned LOCAL_QUALITY challenger."
+    ],
+    "conflicts": [
+      "The previously proposed LTX Q8 acceleration is documented for NVIDIA Ada; the measured RTX 3070 Ti is Ampere, so that path is not assumed valid."
+    ],
+    "unknowns": [
+      "Exact low-memory LTX 2B runtime and checkpoint representation that works on this Ampere host",
+      "Peak committed system memory for each video worker",
+      "Human quality scores from both team members"
+    ]
+  },
+  "scope": {
+    "platforms": [
+      "Windows 11",
+      "NVIDIA RTX 3070 Ti Laptop GPU 8 GB",
+      "16 GB system RAM",
+      "Android Media3 playback"
+    ],
+    "journey_ids": [
+      "JRN-PROMPT-ENHANCE",
+      "JRN-REFERENCE-IMAGE-TO-VIDEO"
+    ],
+    "include": [
+      "Qwen prompt enhancement through FastAPI",
+      "LTX-Video 2B distilled reference-image generation",
+      "FramePack F1 reference-image generation if Standard passes",
+      "H.264 MP4 normalization and playback verification",
+      "Resource, timing, repeatability, footprint, provenance, and quality evidence"
+    ],
+    "exclude": [
+      "Paid hosted providers",
+      "Cloud GPU trials",
+      "Real-person or copyrighted-character inputs",
+      "Production FastAPI adapter work before a candidate passes"
+    ],
+    "non_goals": [
+      "Claiming parity with Veo, Kling, Sora, or other premium hosted models",
+      "Native generated dialogue or synchronized audio",
+      "Long-form video generation"
+    ]
+  },
+  "ownership": {
+    "contract_owner": "Bruce",
+    "product_owner": "Bruce and S0ra1n0",
+    "performance_owner": "S0ra1n0",
+    "implementation_owners": [
+      "S0ra1n0: isolated worker, model lifecycle, cancellation, and telemetry",
+      "Bruce: fixed input, Android playback evidence, and scorecard coordination"
+    ],
+    "reviewer": "Bruce and S0ra1n0",
+    "integrator": "S0ra1n0"
+  },
+  "workloads": [
+    {
+      "id": "WL-QWEN-PROMPT",
+      "source_ids": ["DEC-004"],
+      "description": "FastAPI enhances the fixed paper-dragon prompt through local Qwen and unloads the model.",
+      "platform": "Windows localhost FastAPI plus Ollama",
+      "data_profile": "Synthetic English prompt without personal or secret data",
+      "concurrency": "1 request and no resident video model",
+      "correctness_oracle": "HTTP success, provider ollama, usedFallback false, non-empty enhancedPrompt, and zero loaded Ollama models after the response"
+    },
+    {
+      "id": "WL-LTX-I2V",
+      "source_ids": ["FR-2.2", "FR-2.3", "ADR-009"],
+      "description": "Generate the closest supported four-to-five-second clip from the fixed synthetic reference image and motion prompt using LTX-Video 2B v0.9.8 distilled.",
+      "platform": "Windows, CUDA, RTX 3070 Ti Laptop 8 GB",
+      "data_profile": "One fixed synthetic near-16:9 PNG, fixed prompt, seed 18426, one output at a time",
+      "concurrency": "1 worker, 1 job, and no other AI model loaded",
+      "correctness_oracle": "Two consecutive non-OOM runs produce decodable H.264 MP4 files matching recorded settings and human score at least 65/100"
+    },
+    {
+      "id": "WL-FRAMEPACK-I2V",
+      "source_ids": ["FR-2.2", "FR-2.3", "ADR-009"],
+      "description": "Generate a five-second-or-shorter clip from the same fixed input using FramePack F1 after Standard passes.",
+      "platform": "Windows, CUDA, RTX 3070 Ti Laptop 8 GB",
+      "data_profile": "Same reference image, prompt intent, seed policy, duration cap, and scoring rubric as Standard",
+      "concurrency": "1 worker, 1 job, and no other AI model loaded",
+      "correctness_oracle": "Two consecutive non-OOM runs produce decodable H.264 MP4 files and beat Standard by at least eight weighted quality points"
+    }
+  ],
+  "measurement_method": {
+    "baseline_revision": "90eb776",
+    "environments": [
+      "Exact GPU name, driver, VRAM, total/free physical RAM, drive-D free space, power state, model revision, dependency manifest, and command are captured for each run.",
+      "Model caches and outputs remain on drive D; no paid or remote inference endpoint is permitted."
+    ],
+    "data_profiles": [
+      "docs/experiments/EXP-005/inputs/paper-dragon-lantern-city.png",
+      "docs/experiments/EXP-005/inputs/motion-prompt.txt",
+      "seed 18426"
+    ],
+    "warmup_and_cache": [
+      "Qwen evidence records model-load time and uses keep_alive 0.",
+      "Video run 1 is cold process/cache evidence; run 2 is a fresh worker process with downloaded weights retained.",
+      "No warmup run may be silently excluded."
+    ],
+    "network_device_runtime": [
+      "Generation is local; network is used only for version-pinned model/dependency download before timing.",
+      "Video timing starts immediately before worker submission and stops after a playable MP4 is finalized.",
+      "Android playback is checked separately using Media3 on emulator or device."
+    ],
+    "repetitions_and_duration": [
+      "Qwen: one direct model proof plus one FastAPI proof.",
+      "Each video candidate: two consecutive complete runs, each four to five seconds where the runtime supports it.",
+      "Capture one-second RAM/VRAM telemetry during video generation."
+    ],
+    "variance_and_comparison": [
+      "Use the same host, power state, fixed image, prompt intent, duration target, and one-job concurrency.",
+      "Compare both video runs individually; a median may be reported but may not conceal a threshold breach.",
+      "Both team members score anonymized outputs independently before model labels are revealed."
+    ],
+    "correctness_oracles": [
+      "ffprobe reports a decodable H.264 video stream with positive duration and expected dimensions.",
+      "Android Media3 plays the final MP4 without a fatal playback error.",
+      "Composition, motion coherence, prompt adherence, reference consistency, and artifact scores sum to 100."
+    ],
+    "privacy_and_safety": [
+      "Use only the committed fictional paper-dragon input and prompt.",
+      "Never record tokens, credentials, signed URLs, or unrelated process command lines.",
+      "Abort on OS instability, out-of-memory, or less than 1 GB free physical RAM at any sample."
+    ]
+  },
+  "budgets": [
+    {
+      "id": "PB-QWEN-LATENCY",
+      "source_ids": ["DEC-004"],
+      "risk_ids": ["RSK-DEMO-LATENCY"],
+      "workload_id": "WL-QWEN-PROMPT",
+      "metric": "FastAPI prompt-enhancement wall time",
+      "unit": "seconds",
+      "aggregation": "single observed live request",
+      "target": "<= 30",
+      "blocking_threshold": "> 30 or usedFallback is true",
+      "comparison_rule": "localhost request with exact configured Qwen tag and no video model loaded",
+      "authority": "DEC-004",
+      "owner": "S0ra1n0",
+      "evidence_artifact": "EVIDENCE_LEDGER.yaml#EVD-EXP005-004"
+    },
+    {
+      "id": "PB-LTX-SAFETY",
+      "source_ids": ["ADR-009"],
+      "risk_ids": ["RSK-OS-INSTABILITY", "RSK-OOM"],
+      "workload_id": "WL-LTX-I2V",
+      "metric": "preflight resource headroom",
+      "unit": "GiB",
+      "aggregation": "immediately before every run",
+      "target": ">= 6 free physical RAM, >= 6 free VRAM, and >= 100 free on drive D",
+      "blocking_threshold": "any target fails, laptop is not on AC power, or another AI model is loaded",
+      "comparison_rule": "fresh one-second system and nvidia-smi observations",
+      "authority": "ADR-009 and team safety rule",
+      "owner": "S0ra1n0",
+      "evidence_artifact": "runs/<candidate>-<run>/preflight.json"
+    },
+    {
+      "id": "PB-LTX-LATENCY",
+      "source_ids": ["ADR-009", "NFR-3.3"],
+      "risk_ids": ["RSK-DEMO-LATENCY"],
+      "workload_id": "WL-LTX-I2V",
+      "metric": "end-to-end generation wall time",
+      "unit": "seconds",
+      "aggregation": "each of two consecutive runs",
+      "target": "<= 600",
+      "blocking_threshold": "> 600, timeout, OOM, or incomplete output",
+      "comparison_rule": "same fixed input, prompt intent, duration target, seed, and isolated worker conditions",
+      "authority": "ADR-009",
+      "owner": "S0ra1n0",
+      "evidence_artifact": "runs/ltx-*/result.json"
+    },
+    {
+      "id": "PB-LTX-QUALITY",
+      "source_ids": ["ADR-009"],
+      "risk_ids": ["RSK-LOW-OUTPUT-QUALITY"],
+      "workload_id": "WL-LTX-I2V",
+      "metric": "blind weighted quality score",
+      "unit": "points out of 100",
+      "aggregation": "mean of Bruce and S0ra1n0 scores after both runs",
+      "target": ">= 65",
+      "blocking_threshold": "< 65",
+      "comparison_rule": "anonymized files scored with QUALITY_SCORECARD.md before model disclosure",
+      "authority": "ADR-009",
+      "owner": "Bruce",
+      "evidence_artifact": "QUALITY_SCORECARD.md"
+    },
+    {
+      "id": "PB-LTX-PLAYBACK",
+      "source_ids": ["FR-2.7"],
+      "risk_ids": ["RSK-ANDROID-INCOMPATIBLE-MEDIA"],
+      "workload_id": "WL-LTX-I2V",
+      "metric": "H.264 and Android Media3 playback acceptance",
+      "unit": "boolean",
+      "aggregation": "every accepted output",
+      "target": "true",
+      "blocking_threshold": "false or unverified",
+      "comparison_rule": "ffprobe inspection plus foreground Android app playback evidence",
+      "authority": "FR-2.7",
+      "owner": "Bruce",
+      "evidence_artifact": "runs/ltx-*/media.json and Android playback evidence"
+    },
+    {
+      "id": "PB-FRAMEPACK-LATENCY",
+      "source_ids": ["ADR-009"],
+      "risk_ids": ["RSK-DEMO-LATENCY", "RSK-OS-INSTABILITY"],
+      "workload_id": "WL-FRAMEPACK-I2V",
+      "metric": "end-to-end generation wall time",
+      "unit": "seconds",
+      "aggregation": "each of two consecutive runs",
+      "target": "<= 1800",
+      "blocking_threshold": "> 1800, timeout, OOM, or incomplete output",
+      "comparison_rule": "same input intent and isolated host conditions as Standard",
+      "authority": "ADR-009",
+      "owner": "S0ra1n0",
+      "evidence_artifact": "runs/framepack-*/result.json"
+    },
+    {
+      "id": "PB-FRAMEPACK-QUALITY-DELTA",
+      "source_ids": ["ADR-009"],
+      "risk_ids": ["RSK-COMPLEXITY-WITHOUT-VALUE"],
+      "workload_id": "WL-FRAMEPACK-I2V",
+      "metric": "quality score improvement over LOCAL_STANDARD",
+      "unit": "weighted points",
+      "aggregation": "mean team score delta",
+      "target": ">= 8",
+      "blocking_threshold": "< 8 or Standard has not passed",
+      "comparison_rule": "same anonymized two-reviewer scorecard and fixed input intent",
+      "authority": "ADR-009",
+      "owner": "Bruce and S0ra1n0",
+      "evidence_artifact": "QUALITY_SCORECARD.md"
+    },
+    {
+      "id": "PB-FOOTPRINT",
+      "source_ids": ["DEC-008"],
+      "risk_ids": ["RSK-DISK-EXHAUSTION"],
+      "workload_id": "WL-LTX-I2V",
+      "metric": "permanent model and cache footprint for accepted profiles",
+      "unit": "GiB",
+      "aggregation": "sum on drive D after accepted candidates are installed",
+      "target": "<= 100",
+      "blocking_threshold": "> 100",
+      "comparison_rule": "resolved model/cache directories only; exclude generated evidence outputs",
+      "authority": "DEC-008",
+      "owner": "S0ra1n0",
+      "evidence_artifact": "runs/footprint.json"
+    }
+  ],
+  "experiments": [
+    {
+      "id": "EXP-005-QWEN",
+      "status": "passed",
+      "result": "Direct Qwen generation completed in 6.39 seconds. FastAPI completed in 6.81 seconds with provider=ollama, usedFallback=false, and zero loaded models afterward."
+    },
+    {
+      "id": "EXP-005-LTX",
+      "status": "blocked",
+      "blocker": "Latest free physical RAM observation is far below the 6 GiB preflight target. Exact Ampere-safe LTX runtime manifest is still being resolved."
+    },
+    {
+      "id": "EXP-005-FRAMEPACK",
+      "status": "not-started",
+      "entry_condition": "LTX Standard passes all blocking budgets and the same 6 GiB free-RAM preflight passes."
+    }
+  ],
+  "regression_control": {
+    "ci_gates": [
+      "Validate this JSON with the skill validator.",
+      "FastAPI Ruff and Pytest remain green.",
+      "A real provider adapter cannot become the default without linked passing run evidence."
+    ],
+    "trend_evidence": [
+      "Retain both runs per candidate; do not replace a failing run with only a later passing artifact."
+    ],
+    "attempt_ledger": [
+      "Every model-install, load, OOM, timeout, cancellation, and completed generation attempt receives an immutable evidence entry."
+    ],
+    "failure_diagnostics": [
+      "Capture exit code, stderr tail with secrets removed, peak RAM/VRAM, last successful phase, and output-file existence."
+    ]
+  },
+  "handoff": {
+    "decisions_needed": [
+      "Accept or reject LOCAL_STANDARD after both human reviewers score two valid LTX runs.",
+      "Retain LOCAL_QUALITY only when its measured quality delta is at least eight points."
+    ],
+    "blockers": [
+      "The latest observed free physical RAM does not meet the 6 GiB video preflight gate.",
+      "No LTX or FramePack output has yet run on this laptop."
+    ],
+    "assumptions": [
+      "The team can close memory-heavy applications before a scheduled experiment.",
+      "The generated benchmark image is acceptable as course-project test data."
+    ],
+    "limitations": [
+      "Qwen success proves text-model orchestration only, not video generation.",
+      "Repository/model-card feasibility claims are not a substitute for local run evidence.",
+      "Reference-image performance does not by itself prove text-only video quality."
+    ],
+    "residual_risks": [
+      "16 GB total RAM may make both candidates unsafe or too slow even after applications are closed.",
+      "Runtime dependencies may require a different low-memory path on Ampere than the official Ada-oriented Q8 path."
+    ],
+    "evidence_ledger_targets": [
+      "docs/experiments/EXP-005/EVIDENCE_LEDGER.yaml",
+      "docs/experiments/EXP-005/runs/<candidate>-<run>/",
+      "docs/experiments/EXP-005/QUALITY_SCORECARD.md"
+    ]
+  }
+}

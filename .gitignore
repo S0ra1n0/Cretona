@@ -48,6 +48,7 @@ backend-fastapi/media/
 models/
 outputs/
 checkpoints/
+docs/experiments/EXP-005/runs/
 
 # Editors and operating systems
 .vscode/

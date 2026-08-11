@@ -1,0 +1,9 @@
+Use case: stylized-concept
+Asset type: fixed synthetic reference input for a reproducible image-to-video benchmark
+Primary request: a handcrafted paper dragon gliding above a lantern city at night
+Scene/backdrop: imaginary hilltop city with glowing paper lanterns, no real people or brands
+Subject: one origami paper dragon, clearly visible in side-three-quarter view, wings extended
+Style/medium: cinematic handcrafted paper diorama, crisp shapes and coherent geometry
+Composition/framing: 16:9 wide shot, dragon centered-left with open flight path to the right, stable horizon
+Lighting/mood: warm lantern glow, cool moonlit sky, calm magical atmosphere
+Constraints: synthetic fictional scene, one dragon only, no text, no logos, no watermark, no copyrighted characters, no photoreal human faces

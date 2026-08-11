@@ -1,0 +1,190 @@
+schema_version: "1.0"
+project_id: "CRETONA"
+entries:
+  - id: "EVD-EXP005-001"
+    claim: "The exact local Qwen model can generate a useful Cretona prompt on the measured laptop."
+    requirement_ids: []
+    decision_ids: ["DEC-004"]
+    contract_ids: ["CRETONA-PERF-EXP-005"]
+    specialist_artifact_ids: []
+    task_ids: ["EXP-005-QWEN"]
+    release_candidate_id: null
+    evidence_type: "live model execution"
+    observation_method: "Direct Ollama generate request with the fixed paper-dragon idea."
+    evidence_level: "observed runtime"
+    tool_and_version: "Ollama 0.32.6; qwen3:4b-instruct-2507-q4_K_M"
+    policy_standard_or_target_revision: "Ollama model digest 0edcdef34593eac1aa2be9c7d06c432dcf81945adca5eca2f27662c18f168ba0"
+    status: "passed"
+    command: "POST http://127.0.0.1:11434/api/generate with stream=false and keep_alive=0"
+    working_directory: "D:/1. UMT/3.5. PLUS26/Cretona"
+    environment: "Windows; RTX 3070 Ti Laptop 8 GB; 16 GB RAM"
+    executed_at: "2026-08-11"
+    exit_code: 0
+    result_summary: "Completed in 6.39 seconds with 44 prompt tokens and 63 output tokens; returned a concise cinematic prompt."
+    artifact_or_log: "This ledger entry preserves the observed summary; no raw prompt payload contained secrets."
+    source_revision: "90eb776"
+    artifact_digest: "sha256:0edcdef34593eac1aa2be9c7d06c432dcf81945adca5eca2f27662c18f168ba0"
+    workflow_or_deployment_run: "local Ollama direct proof"
+    executed_by: "Codex on Bruce's laptop"
+    independently_verified_by: null
+    receiver_verified_by: null
+    limitations:
+      - "This proves text generation only; it is not video-generation evidence."
+      - "The model occupied about 3.2 GB additional VRAM while resident."
+    blocker_class: null
+
+  - id: "EVD-EXP005-002"
+    claim: "FastAPI called the local Qwen model without falling back and released it afterward."
+    requirement_ids: []
+    decision_ids: ["DEC-004", "DEC-009"]
+    contract_ids: ["CRETONA-PERF-EXP-005", "PB-QWEN-LATENCY"]
+    specialist_artifact_ids: []
+    task_ids: ["EXP-005-QWEN"]
+    release_candidate_id: null
+    evidence_type: "localhost integration execution"
+    observation_method: "Started FastAPI on port 8011, called prompt enhancement, then queried loaded Ollama models."
+    evidence_level: "observed integration runtime"
+    tool_and_version: "FastAPI project at 90eb776; Ollama 0.32.6"
+    policy_standard_or_target_revision: "PB-QWEN-LATENCY <=30 seconds; usedFallback=false; zero loaded models afterward"
+    status: "passed"
+    command: "scripts/run-fastapi.ps1 on port 8011 plus POST /api/v1/prompts/enhance"
+    working_directory: "D:/1. UMT/3.5. PLUS26/Cretona"
+    environment: "CRETONA_PROMPT_LLM_PROVIDER=ollama; exact Qwen tag; localhost"
+    executed_at: "2026-08-11"
+    exit_code: 0
+    result_summary: "health=ok; provider=ollama; usedFallback=false; wallSeconds=6.81; loadedAfter=0."
+    artifact_or_log: "Bounded request contract is regression-tested in backend-fastapi/tests/test_health_and_prompts.py."
+    source_revision: "90eb776"
+    artifact_digest: null
+    workflow_or_deployment_run: "local FastAPI-to-Ollama proof"
+    executed_by: "Codex on Bruce's laptop"
+    independently_verified_by: null
+    receiver_verified_by: null
+    limitations:
+      - "The live response summary is recorded here; a raw server log was not committed."
+      - "No video model was loaded during this proof."
+    blocker_class: null
+
+  - id: "EVD-EXP005-003"
+    claim: "The bounded Ollama request is protected by the FastAPI regression suite."
+    requirement_ids: []
+    decision_ids: ["DEC-004", "DEC-009"]
+    contract_ids: ["CRETONA-PERF-EXP-005"]
+    specialist_artifact_ids: []
+    task_ids: ["EXP-005-QWEN"]
+    release_candidate_id: null
+    evidence_type: "static and automated test"
+    observation_method: "Ruff plus complete FastAPI Pytest suite."
+    evidence_level: "repeatable repository gate"
+    tool_and_version: "repository-pinned FastAPI development environment"
+    policy_standard_or_target_revision: "90eb776"
+    status: "passed"
+    command: "backend-fastapi/.venv/Scripts/python.exe -m ruff check backend-fastapi; backend-fastapi/.venv/Scripts/python.exe -m pytest backend-fastapi"
+    working_directory: "D:/1. UMT/3.5. PLUS26/Cretona"
+    environment: "Windows local venv"
+    executed_at: "2026-08-11"
+    exit_code: 0
+    result_summary: "Ruff passed; 20 tests passed; one existing StarletteDeprecationWarning about httpx2 remained visible."
+    artifact_or_log: "backend-fastapi/tests/test_health_and_prompts.py"
+    source_revision: "90eb776"
+    artifact_digest: null
+    workflow_or_deployment_run: "local quality gate"
+    executed_by: "Codex on Bruce's laptop"
+    independently_verified_by: null
+    receiver_verified_by: null
+    limitations:
+      - "MockTransport proves the outbound request shape; EVD-EXP005-002 supplies the real integration evidence."
+    blocker_class: null
+
+  - id: "EVD-EXP005-004"
+    claim: "Video inference was correctly blocked because the measured resource headroom did not meet the safety gate."
+    requirement_ids: ["NFR-3.3"]
+    decision_ids: ["DEC-008"]
+    contract_ids: ["CRETONA-PERF-EXP-005", "PB-LTX-SAFETY"]
+    specialist_artifact_ids: []
+    task_ids: ["EXP-005-LTX", "EXP-005-FRAMEPACK"]
+    release_candidate_id: null
+    evidence_type: "resource preflight"
+    observation_method: "PowerShell CIM, nvidia-smi, drive measurement, power state, and ollama ps."
+    evidence_level: "observed host precondition"
+    tool_and_version: "scripts/check-exp005-preflight.ps1 schema 1.0"
+    policy_standard_or_target_revision: ">=6 GiB free RAM; >=6 GiB free VRAM; >=100 GiB free D; AC; zero loaded Ollama models"
+    status: "blocked"
+    command: "scripts/check-exp005-preflight.ps1 -OutputPath docs/experiments/EXP-005/evidence/preflight-2026-08-11.json"
+    working_directory: "D:/1. UMT/3.5. PLUS26/Cretona"
+    environment: "Windows; NVIDIA RTX 3070 Ti Laptop; AC power"
+    executed_at: "2026-08-11T04:14:49.6204315Z"
+    exit_code: 1
+    result_summary: "AC passed; D free 477.05 GiB passed; zero loaded Ollama models passed; free RAM 4.69 GiB and free VRAM 5.99 GiB failed. No video process was started."
+    artifact_or_log: "evidence/preflight-2026-08-11.json"
+    source_revision: "90eb776 plus EXP-005 change set"
+    artifact_digest: null
+    workflow_or_deployment_run: "EXP-005 safety gate"
+    executed_by: "Codex on Bruce's laptop"
+    independently_verified_by: null
+    receiver_verified_by: null
+    limitations:
+      - "RAM and VRAM availability are transient and must be remeasured immediately before every run."
+    blocker_class: "environment-resource-headroom"
+
+  - id: "EVD-EXP005-005"
+    claim: "EXP-005 has a fixed, synthetic, visually inspected reference image with reproducible provenance."
+    requirement_ids: ["FR-2.2", "FR-2.3"]
+    decision_ids: ["DEC-001", "DEC-008"]
+    contract_ids: ["CRETONA-PERF-EXP-005"]
+    specialist_artifact_ids: []
+    task_ids: ["EXP-005-LTX", "EXP-005-FRAMEPACK"]
+    release_candidate_id: null
+    evidence_type: "synthetic benchmark fixture"
+    observation_method: "Generated for the project with the recorded image prompt, copied unchanged, hashed, and visually inspected."
+    evidence_level: "versioned artifact"
+    tool_and_version: "OpenAI image generation tool; local SHA-256"
+    policy_standard_or_target_revision: "fictional 16:9 scene; no real people, text, logos, watermark, or copied character"
+    status: "passed"
+    command: "Get-FileHash -Algorithm SHA256 docs/experiments/EXP-005/inputs/paper-dragon-lantern-city.png"
+    working_directory: "D:/1. UMT/3.5. PLUS26/Cretona"
+    environment: "1672x941 PNG; 1,919,523 bytes"
+    executed_at: "2026-08-11"
+    exit_code: 0
+    result_summary: "One paper dragon over a lantern city; composition and constraints visually match the fixed benchmark intent."
+    artifact_or_log: "inputs/paper-dragon-lantern-city.png and inputs/reference-image-generation-prompt.txt"
+    source_revision: "90eb776 plus EXP-005 change set"
+    artifact_digest: "sha256:f2b60f167e3e7a279f2e6757b17b247eb8eb053ece8eebdc2d2a85230ee8ee9f"
+    workflow_or_deployment_run: "EXP-005 fixture creation"
+    executed_by: "Codex on Bruce's behalf"
+    independently_verified_by: null
+    receiver_verified_by: null
+    limitations:
+      - "The source dimensions are near-exact 16:9; each runtime must record any resize or padding it applies."
+    blocker_class: null
+
+  - id: "EVD-EXP005-006"
+    claim: "The EXP-005 performance contract conforms to the selected skill schema."
+    requirement_ids: []
+    decision_ids: ["DEC-008"]
+    contract_ids: ["CRETONA-PERF-EXP-005"]
+    specialist_artifact_ids: ["PERFORMANCE_BUDGET_CONTRACT.json"]
+    task_ids: ["EXP-005"]
+    release_candidate_id: null
+    evidence_type: "contract validation"
+    observation_method: "Ran the design-software-performance-budgets validator against the committed JSON candidate."
+    evidence_level: "repeatable artifact validation"
+    tool_and_version: "design-software-performance-budgets validator schema 1.0"
+    policy_standard_or_target_revision: "skill template and validator used on 2026-08-11"
+    status: "passed"
+    command: "python -B validate_performance_budget.py docs/experiments/EXP-005/PERFORMANCE_BUDGET_CONTRACT.json"
+    working_directory: "D:/1. UMT/3.5. PLUS26/Cretona"
+    environment: "local Python"
+    executed_at: "2026-08-11"
+    exit_code: 0
+    result_summary: "VALID"
+    artifact_or_log: "PERFORMANCE_BUDGET_CONTRACT.json"
+    source_revision: "90eb776 plus EXP-005 change set"
+    artifact_digest: null
+    workflow_or_deployment_run: "EXP-005 contract gate"
+    executed_by: "Codex on Bruce's laptop"
+    independently_verified_by: null
+    receiver_verified_by: null
+    limitations:
+      - "Schema validity does not mean either video candidate has passed."
+    blocker_class: null
