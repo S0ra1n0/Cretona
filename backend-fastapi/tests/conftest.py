@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
+from tests.db_safety import assert_disposable_database
 
 USER_A = "10000000-0000-4000-8000-000000000001"
 USER_B = "20000000-0000-4000-8000-000000000002"
@@ -79,6 +80,9 @@ def postgres_url() -> str:
     url = os.environ.get("CRETONA_TEST_DATABASE_URL", "").strip()
     if not url:
         pytest.skip("Set CRETONA_TEST_DATABASE_URL to run the Postgres parity tests.")
+    # Raises rather than skips: pointing this at a real database is a mistake
+    # worth stopping on, not one worth quietly stepping around.
+    assert_disposable_database(url)
     return url
 
 

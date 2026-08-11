@@ -1,5 +1,12 @@
 -- Local Postgres test schema.
 --
+-- ############################################################################
+-- # DESTRUCTIVE. This file DROPs public.video_projects, public.users, and    #
+-- # public.roles before recreating them. It is for a disposable local        #
+-- # database only. tests/db_safety.py refuses to apply it to anything but a  #
+-- # local host, so never point CRETONA_TEST_DATABASE_URL at Supabase.        #
+-- ############################################################################
+--
 -- Mirrors the parts of supabase/bootstrap.sql + 002_add_error_code.sql +
 -- 003_add_fastapi_parity_columns.sql that app/postgres.py actually reads and
 -- writes. Supabase-only concerns are deliberately absent because a plain
