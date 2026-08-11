@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -28,6 +28,14 @@ class Settings(BaseSettings):
 
     dev_user_id: str = "00000000-0000-4000-8000-000000000001"
 
+    # Supabase identity. SecretStr keeps the value out of reprs and logs; it is
+    # read only where a signature is verified.
+    supabase_jwt_secret: SecretStr = SecretStr("")
+    supabase_jwt_audience: str = "authenticated"
+    # Optional; enforced only when set, e.g. https://<ref>.supabase.co/auth/v1.
+    supabase_jwt_issuer: str = ""
+    supabase_jwt_leeway_seconds: int = Field(default=0, ge=0, le=120)
+
     prompt_llm_provider: Literal["deterministic", "ollama"] = "deterministic"
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen3:4b-instruct-2507-q4_K_M"
@@ -43,6 +51,16 @@ class Settings(BaseSettings):
     def reject_development_auth_in_production(self) -> Settings:
         if self.environment == "production" and self.auth_mode == "dev":
             raise ValueError("CRETONA_AUTH_MODE=dev is forbidden in production.")
+        return self
+
+    @model_validator(mode="after")
+    def require_supabase_jwt_secret(self) -> Settings:
+        # Fail at startup rather than on every request, matching how the Express
+        # reference validates SUPABASE_JWT_SECRET when it loads its environment.
+        if self.auth_mode == "supabase" and not self.supabase_jwt_secret.get_secret_value():
+            raise ValueError(
+                "CRETONA_SUPABASE_JWT_SECRET is required when CRETONA_AUTH_MODE=supabase."
+            )
         return self
 
     def resolved_database_path(self) -> Path:
