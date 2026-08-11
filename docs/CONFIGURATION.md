@@ -1,17 +1,70 @@
 # Cretona configuration and secret boundary
 
-Status: accepted baseline on 2026-08-10.
+Status: accepted baseline on 2026-08-10; FastAPI variables added 2026-08-12.
 
 ## Authoritative configuration
 
 - Android machine-local values belong in root `local.properties`, because the
   repository root is the Android Gradle project.
-- Backend environment values belong in `backend/.env`; the committed
-  `backend/.env.example` must mirror the active backend config loader without
-  containing a real value.
-- Only `local.properties.example` and `backend/.env.example` are safe to commit.
+- Backend environment values belong in `backend-fastapi/.env` for the active
+  service, and `backend/.env` for the Express reference. Each committed
+  `.env.example` must mirror its config loader without containing a real value.
+- Only `local.properties.example` and the two `.env.example` files are safe to
+  commit.
 - Android must never receive a provider service key, JWT signing secret, or
   database administrator credential.
+
+## FastAPI variables
+
+Every setting is prefixed `CRETONA_` and loaded by `backend-fastapi/app/config.py`.
+Startup fails rather than degrading when a profile is selected without the
+credentials it needs.
+
+| Variable | Default | Notes |
+|---|---|---|
+| `ENVIRONMENT` | `development` | `production` refuses `AUTH_MODE=dev` |
+| `LOG_LEVEL` | `info` | JSON logs; redaction is central, not per call site |
+| `AUTH_MODE` | `dev` | `dev` injects an identity and honours `X-Debug-User-Id`; `supabase` verifies tokens and ignores that header entirely |
+| **`SUPABASE_JWT_SECRET`** | — | **Secret.** Required when `AUTH_MODE=supabase` |
+| `SUPABASE_JWT_AUDIENCE` | `authenticated` | |
+| `SUPABASE_JWT_ISSUER` | empty | Enforced only when set |
+| `SUPABASE_JWT_LEEWAY_SECONDS` | `0` | Clock-skew tolerance |
+| `DATABASE_BACKEND` | `sqlite` | `postgres` targets Supabase |
+| `DATABASE_PATH` | `data/cretona.db` | SQLite only |
+| **`DATABASE_URL`** | — | **Secret**, carries a password. Required when `DATABASE_BACKEND=postgres`. Prefer the direct connection: psycopg uses prepared statements, which Supabase's transaction pooler does not support |
+| `STORAGE_BACKEND` | `local` | `supabase` uses buckets and signed URLs |
+| `SUPABASE_URL` | — | Required when `STORAGE_BACKEND=supabase` |
+| **`SUPABASE_SERVICE_ROLE_KEY`** | — | **Secret.** Bypasses RLS, so it is server-side only and never reaches the app |
+| `SUPABASE_UPLOADS_BUCKET` / `SUPABASE_VIDEOS_BUCKET` | `uploads` / `videos` | |
+| `SIGNED_URL_TTL_SECONDS` | `3600` | Bounded to 60…604800, so a signed URL cannot be minted permanent |
+| `MEDIA_DIR` | `assets` | Local storage root |
+| `DEFAULT_VIDEO_PROVIDER` | `fake` | `fake` is the only accepted value; see ADR-009 |
+| `MAX_GENERATION_ATTEMPTS` | `3` | Submissions per project before a retry is refused |
+| `GENERATION_QUOTA_LIMIT` | `10` | Per user per window. This is the spend control (ADR-007) |
+| `GENERATION_QUOTA_WINDOW_HOURS` | `24` | |
+| `RATE_LIMIT_ENABLED` | `true` | Burst protection only; in-memory, so per process |
+| `RATE_LIMIT_DEFAULT_PER_MIN` | `120` | |
+| `RATE_LIMIT_GENERATION_PER_MIN` | `10` | Tighter bucket for writes that cost money |
+| `POLLER_ENABLED` | `true` | Advances jobs without waiting for a client read |
+| `POLL_INTERVAL_SECONDS` / `POLL_BATCH_SIZE` | `5` / `20` | |
+| `THUMBNAILS_ENABLED` | `true` | Needs `ffmpeg` on PATH; absent means `thumbnailUrl` stays null |
+| `FFMPEG_PATH` | `ffmpeg` | |
+| `THUMBNAIL_SEEK_SECONDS` | `1.0` | |
+| `PROMPT_LLM_PROVIDER` | `deterministic` | `ollama` uses the pinned local model |
+| `OLLAMA_*` | see `.env.example` | Base URL, model, timeout, context, token budget, temperature |
+| `FAKE_POLLS_BEFORE_COMPLETE` / `FAKE_VIDEO_FILENAME` | `1` / `demo-output.mp4` | Deterministic demo timing |
+
+The four bolded variables are the only secrets. All are `SecretStr`, so they
+are excluded from reprs and logs, and none appear in `.env.example` with a
+value.
+
+### Test-only
+
+`CRETONA_TEST_DATABASE_URL` selects the Postgres parity suite. **It must point
+at a disposable local database**: the fixture drops and recreates tables, so
+aiming it at a real project would destroy data. `tests/db_safety.py` refuses
+any non-local host unless `CRETONA_TEST_DATABASE_ALLOW_REMOTE=1` is set
+explicitly.
 
 ## Teammate-provided local files
 
@@ -56,3 +109,8 @@ Supabase Auth/Postgres/Storage may remain behind FastAPI during the migration so
 the team does not rewrite working identity, data, and storage boundaries at the
 same time. Runway remains disabled; zero-cost local video providers may be
 added only behind the provider interface after `EXP-005` passes.
+
+As of 2026-08-12 that migration is behaviourally complete: identity,
+persistence, storage, authorization, quota, logging, rate limiting, and the job
+runner all exist in `backend-fastapi/`. None of it has run against live
+Supabase, so the credentials above are configured but unexercised.

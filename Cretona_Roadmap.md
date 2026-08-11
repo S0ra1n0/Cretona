@@ -5,16 +5,31 @@ Task IDs are stable — use them to pick what to implement next (e.g. "do P1-3 a
 
 **Legend:** `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` skipped/deferred
 
-**Current state (2026-08-11):** The tested Express/Prisma/Supabase reference has
-77 passing tests plus clean typecheck/build. The active FastAPI local slice has
-20 passing tests and clean Ruff; the Android app has 7 passing tests, clean
-lint/assembly, and recorded emulator evidence for prompt → create → poll →
-playback → history. FastAPI has also called pinned local Qwen3-4B with
-`usedFallback=false`. Video still uses the deterministic fake: LTX 2B was
-rejected by pre-screen, while FramePack is installed but blocked before
-inference by resource and license gates. Supabase JWT/Postgres/Storage parity
-and release readiness remain unproven. See
+**Current state (2026-08-12):** FastAPI has reached behavioural parity with the
+Express/Prisma/Supabase reference. It has **205 passing tests and clean Ruff**
+(222 with a local Postgres configured); the Express reference still has its 77
+tests and clean typecheck/build, and remains migration evidence rather than a
+runtime. The Android app has 7 passing tests, clean lint/assembly, and recorded
+emulator evidence for prompt → create → poll → playback → history. FastAPI has
+also called pinned local Qwen3-4B with `usedFallback=false`.
+
+Ported since the migration slice: Supabase JWT identity, Postgres persistence,
+Supabase Storage, role authorization and the admin surface, `/me`, the spend
+quota, `generation_logs`, rate limiting, a background poller, structured
+logging with central redaction, and thumbnails.
+
+**Two things are still unproven, and they are the important ones.** No code
+has ever run against live Supabase — every green test is local Postgres, a
+local file mount, and locally minted tokens. And video is still the
+deterministic fake: LTX 2B was rejected by pre-screen, FramePack is installed
+but blocked before inference by resource and licence gates, and no real video
+provider is selected. See
 [executed evidence](docs/evidence/ANDROID_FASTAPI_E2E.md).
+
+**Settled 2026-08-12:** the Supabase project signs user tokens with the legacy
+HS256 shared secret, so the shipped verifier is correct and no JWKS work is
+needed. Runway is not a pending task — ADR-009 superseded it, `RUNWAY_API_KEY`
+is deliberately empty, and the FastAPI provider registry does not accept it.
 
 ---
 
