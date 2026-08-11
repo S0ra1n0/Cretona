@@ -23,6 +23,7 @@ from app.providers import FakeVideoProvider, ProviderRegistry
 from app.quota_service import QuotaService
 from app.routes import router
 from app.storage import LocalStorage, SupabaseStorage
+from app.users_service import UsersService
 
 APP_VERSION = "0.1.0"
 
@@ -90,6 +91,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.state.storage = storage
     api.state.admin_service = AdminService(database)
     api.state.quota_service = QuotaService(database, active_settings)
+    api.state.users_service = UsersService(database, api.state.quota_service)
     api.state.project_service = ProjectService(
         database,
         providers,

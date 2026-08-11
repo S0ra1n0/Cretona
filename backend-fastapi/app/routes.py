@@ -15,6 +15,8 @@ from app.schemas import (
     AdminUserPage,
     AdminUserUpdate,
     HealthResponse,
+    MeResponse,
+    MeUpdate,
     ProjectCreate,
     ProjectPage,
     ProjectResponse,
@@ -27,6 +29,7 @@ from app.schemas import (
     UploadSignResponse,
 )
 from app.storage import StorageBackend
+from app.users_service import UsersService
 
 router = APIRouter()
 UserId = Annotated[str, Depends(current_user_id)]
@@ -35,6 +38,10 @@ AdminId = Annotated[str, Depends(require_admin)]
 
 def admin_service(request: Request) -> AdminService:
     return request.app.state.admin_service
+
+
+def users_service(request: Request) -> UsersService:
+    return request.app.state.users_service
 
 
 def project_service(request: Request) -> ProjectService:
@@ -65,6 +72,23 @@ async def enhance_prompt(
     enhancer: Annotated[PromptEnhancer, Depends(prompt_enhancer)],
 ) -> PromptEnhanceResponse:
     return await enhancer.enhance(payload)
+
+
+@router.get("/me", response_model=MeResponse)
+def get_me(
+    user_id: UserId,
+    service: Annotated[UsersService, Depends(users_service)],
+) -> MeResponse:
+    return service.get_me(user_id)
+
+
+@router.patch("/me", response_model=MeResponse)
+def update_me(
+    payload: MeUpdate,
+    user_id: UserId,
+    service: Annotated[UsersService, Depends(users_service)],
+) -> MeResponse:
+    return service.update_me(user_id, payload.username)
 
 
 @router.get("/admin/users", response_model=AdminUserPage)
