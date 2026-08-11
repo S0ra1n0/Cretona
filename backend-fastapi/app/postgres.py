@@ -7,6 +7,7 @@ from uuid import UUID
 import psycopg
 from psycopg import errors as pg_errors
 from psycopg.rows import dict_row
+from psycopg.types.json import Json
 from psycopg_pool import ConnectionPool
 
 from app.repository import (
@@ -338,6 +339,37 @@ class PostgresDatabase:
             last = items[-1]
             next_cursor = encode_cursor(last["created_at"], last["id"])
         return items, next_cursor
+
+    def record_generation_log(self, values: dict[str, Any]) -> None:
+        if not _is_uuid(values["project_id"]):
+            return
+        with self.pool.connection() as connection:
+            connection.execute(
+                "INSERT INTO public.generation_logs "
+                "(project_id, provider, request_id, event, request, response, http_status) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (
+                    values["project_id"],
+                    values["provider"],
+                    values.get("request_id"),
+                    values["event"],
+                    Json(values["request"]) if values.get("request") is not None else None,
+                    Json(values["response"]) if values.get("response") is not None else None,
+                    values.get("http_status"),
+                ),
+            )
+
+    def generation_logs(self, project_id: str) -> list[dict[str, Any]]:
+        if not _is_uuid(project_id):
+            return []
+        with self.pool.connection() as connection:
+            rows = connection.execute(
+                "SELECT id, project_id, provider, request_id, event, request, response, "
+                "http_status, created_at FROM public.generation_logs "
+                "WHERE project_id = %s ORDER BY created_at ASC, id ASC",
+                (project_id,),
+            ).fetchall()
+        return [_to_service_row(row) for row in rows]
 
     def count_quota_usage(
         self,

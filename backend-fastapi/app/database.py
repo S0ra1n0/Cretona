@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -55,6 +56,22 @@ ON projects(owner_id, created_at DESC, id DESC);
 
 CREATE INDEX IF NOT EXISTS projects_status_idx
 ON projects(status, updated_at);
+
+CREATE TABLE IF NOT EXISTS generation_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    request_id TEXT,
+    event TEXT NOT NULL
+        CHECK (event IN ('submit', 'poll', 'webhook', 'download', 'error')),
+    request TEXT,
+    response TEXT,
+    http_status INTEGER,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS logs_project_created_idx
+ON generation_logs(project_id, created_at DESC);
 """
 
 # Columns added after the first release. SQLite has no `ADD COLUMN IF NOT
@@ -70,6 +87,19 @@ ADDED_COLUMNS = {
         "created_at": "TEXT NOT NULL DEFAULT '1970-01-01T00:00:00Z'",
     },
 }
+
+
+def _as_json(value: Any) -> str | None:
+    return None if value is None else json.dumps(value, default=str)
+
+
+def _from_json(value: str | None) -> Any:
+    if not value:
+        return None
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:  # pragma: no cover - we wrote it, it parses
+        return None
 
 
 class Database:
@@ -396,6 +426,39 @@ class Database:
             last = items[-1]
             next_cursor = encode_cursor(last["created_at"], last["id"])
         return items, next_cursor
+
+    def record_generation_log(self, values: dict[str, Any]) -> None:
+        with self.connect() as connection:
+            connection.execute(
+                "INSERT INTO generation_logs "
+                "(project_id, provider, request_id, event, request, response, "
+                " http_status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    values["project_id"],
+                    values["provider"],
+                    values.get("request_id"),
+                    values["event"],
+                    _as_json(values.get("request")),
+                    _as_json(values.get("response")),
+                    values.get("http_status"),
+                    values["created_at"],
+                ),
+            )
+
+    def generation_logs(self, project_id: str) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM generation_logs WHERE project_id = ? "
+                "ORDER BY created_at ASC, id ASC",
+                (project_id,),
+            ).fetchall()
+        entries = []
+        for row in rows:
+            entry = dict(row)
+            entry["request"] = _from_json(entry["request"])
+            entry["response"] = _from_json(entry["response"])
+            entries.append(entry)
+        return entries
 
     def count_quota_usage(
         self,

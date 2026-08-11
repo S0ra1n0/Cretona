@@ -211,6 +211,25 @@ def test_token_without_a_profile_row_is_refused(
     assert response.json()["error"]["code"] == "TOKEN_INVALID"
 
 
+def test_generation_logs_are_written_to_jsonb(
+    postgres_client: TestClient,
+    bearer: BearerFactory,
+) -> None:
+    headers = bearer(subject=USER_A)
+    created = create_project(postgres_client, headers)
+    postgres_client.get(f"/api/v1/projects/{created['id']}", headers=headers)
+    postgres_client.get(f"/api/v1/projects/{created['id']}", headers=headers)
+
+    rows = postgres_client.app.state.database.generation_logs(created["id"])
+
+    # The service swallows write failures by design, so this asserts the rows
+    # actually landed rather than trusting the absence of an exception.
+    assert [row["event"] for row in rows] == ["submit", "poll", "download"]
+    # jsonb round-trips as a dict, not a string.
+    assert rows[0]["request"]["prompt"] == "A paper boat crossing a neon river"
+    assert rows[-1]["response"]["storedPath"].endswith("video.mp4")
+
+
 def make_admin(postgres_url: str, user_id: str) -> None:
     with psycopg.connect(postgres_url, autocommit=True) as connection:
         connection.execute(

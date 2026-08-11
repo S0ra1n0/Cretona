@@ -15,6 +15,7 @@ from app.admin_service import AdminService
 from app.config import Settings, get_settings
 from app.database import Database
 from app.errors import AppError, app_error_handler, error_payload, validation_error_handler
+from app.generation_log_service import GenerationLogService
 from app.logging_setup import configure_logging
 from app.postgres import PostgresDatabase
 from app.project_service import ProjectService
@@ -92,12 +93,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.state.admin_service = AdminService(database)
     api.state.quota_service = QuotaService(database, active_settings)
     api.state.users_service = UsersService(database, api.state.quota_service)
+    api.state.generation_log = GenerationLogService(database)
     api.state.project_service = ProjectService(
         database,
         providers,
         active_settings,
         storage,
         api.state.quota_service,
+        api.state.generation_log,
     )
     api.state.prompt_enhancer = PromptEnhancer(active_settings)
 

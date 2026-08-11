@@ -22,6 +22,7 @@
 -- exists here, so a schema change that breaks the adapter fails a test rather
 -- than only failing in production.
 
+drop table if exists public.generation_logs cascade;
 drop table if exists public.video_projects cascade;
 drop table if exists public.users cascade;
 drop table if exists public.roles cascade;
@@ -86,6 +87,24 @@ create table public.video_projects (
   constraint chk_aspect_ratio check (aspect_ratio in ('16:9', '9:16', '1:1')),
   constraint chk_poll_count_non_negative check (poll_count >= 0)
 );
+
+create table public.generation_logs (
+  id          bigserial   primary key,
+  project_id  uuid        not null references public.video_projects (id) on delete cascade,
+  provider    text        not null,
+  request_id  text,
+  event       text        not null,
+  request     jsonb,
+  response    jsonb,
+  http_status integer,
+  created_at  timestamptz not null default now(),
+
+  constraint chk_log_event
+    check (event in ('submit', 'poll', 'webhook', 'download', 'error'))
+);
+
+create index idx_logs_project_created
+  on public.generation_logs (project_id, created_at desc);
 
 -- Idempotency is scoped per user (API_CONTRACT 1.5).
 create unique index uq_projects_idempotency

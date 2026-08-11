@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from app.config import Settings
 from app.errors import AppError
+from app.generation_log_service import GenerationLogService
 from app.providers import PollResult, ProviderRegistry
 from app.quota_service import QuotaService
 from app.repository import ProjectRepository
@@ -35,12 +36,14 @@ class ProjectService:
         settings: Settings,
         storage: StorageBackend,
         quota: QuotaService,
+        generation_log: GenerationLogService,
     ) -> None:
         self.database = database
         self.providers = providers
         self.settings = settings
         self.storage = storage
         self.quota = quota
+        self.generation_log = generation_log
 
     def create(
         self,
@@ -96,6 +99,13 @@ class ProjectService:
 
         try:
             submitted = provider.submit(prompt=prompt, image_path=request.image_path)
+            self.generation_log.record(
+                project_id=row["id"],
+                provider=provider.name,
+                event="submit",
+                request_id=submitted.job_id,
+                request={"prompt": prompt, "imagePath": request.image_path},
+            )
             updated = self.database.update_project(
                 row["id"],
                 owner_id,
@@ -109,6 +119,13 @@ class ProjectService:
             )
             return self.to_response(updated or row, base_url)
         except Exception as exc:
+            self.generation_log.record(
+                project_id=row["id"],
+                provider=provider.name,
+                event="error",
+                request={"prompt": prompt, "imagePath": request.image_path},
+                response={"message": str(exc)},
+            )
             failed = self.database.update_project(
                 row["id"],
                 owner_id,
@@ -237,6 +254,13 @@ class ProjectService:
             prompt=row["prompt"],
             poll_count=poll_count,
         )
+        self.generation_log.record(
+            project_id=row["id"],
+            provider=provider.name,
+            event="poll",
+            request_id=row["provider_job_id"],
+            response={"status": result.status, "failure": result.failure},
+        )
         return self._apply_poll(row, owner_id, poll_count, result)
 
     def _apply_poll(
@@ -289,7 +313,14 @@ class ProjectService:
         """
         if not source:
             return None
-        return self.storage.store_video(owner_id, row["id"], source)
+        stored = self.storage.store_video(owner_id, row["id"], source)
+        self.generation_log.record(
+            project_id=row["id"],
+            provider=row["provider"],
+            event="download",
+            response={"storedPath": stored},
+        )
+        return stored
 
     def _mark_failed(
         self,
