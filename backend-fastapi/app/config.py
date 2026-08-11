@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     database_url: SecretStr = SecretStr("")
     max_generation_attempts: int = Field(default=3, ge=1, le=10)
     log_level: Literal["debug", "info", "warning", "error"] = "info"
+    rate_limit_enabled: bool = True
+    rate_limit_default_per_min: int = Field(default=120, ge=1, le=10000)
+    rate_limit_generation_per_min: int = Field(default=10, ge=1, le=1000)
     generation_quota_limit: int = Field(default=10, ge=1, le=1000)
     generation_quota_window_hours: int = Field(default=24, ge=1, le=720)
     database_path: Path = BACKEND_ROOT / "data" / "cretona.db"

@@ -22,6 +22,7 @@ from app.project_service import ProjectService
 from app.prompt_service import PromptEnhancer
 from app.providers import FakeVideoProvider, ProviderRegistry
 from app.quota_service import QuotaService
+from app.rate_limit import WINDOW_SECONDS, RateLimiter, bucket_for, caller_key
 from app.routes import router
 from app.storage import LocalStorage, SupabaseStorage
 from app.users_service import UsersService
@@ -94,6 +95,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.state.quota_service = QuotaService(database, active_settings)
     api.state.users_service = UsersService(database, api.state.quota_service)
     api.state.generation_log = GenerationLogService(database)
+    limiter = RateLimiter(
+        default_per_minute=active_settings.rate_limit_default_per_min,
+        generation_per_minute=active_settings.rate_limit_generation_per_min,
+    )
+    api.state.rate_limiter = limiter
     api.state.project_service = ProjectService(
         database,
         providers,
@@ -108,7 +114,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def request_id_middleware(request: Request, call_next):  # type: ignore[no-untyped-def]
         request.state.request_id = request.headers.get("X-Request-ID") or str(uuid4())
         started = perf_counter()
+
+        limit_headers: dict[str, str] = {}
+        if active_settings.rate_limit_enabled and request.url.path != "/api/v1/health":
+            key = caller_key(
+                request.headers.get("Authorization"),
+                request.headers.get("X-Debug-User-Id"),
+                request.client.host if request.client else "unknown",
+            )
+            bucket = bucket_for(request.method, request.url.path)
+            allowed, limit, remaining = limiter.check(key, bucket)
+            limit_headers = {
+                "X-RateLimit-Limit": str(limit),
+                "X-RateLimit-Remaining": str(remaining),
+                "X-RateLimit-Reset": str(WINDOW_SECONDS),
+            }
+            if not allowed:
+                error = AppError(429, "RATE_LIMITED", "Too many requests. Please slow down.")
+                refused = JSONResponse(
+                    status_code=429,
+                    content=error_payload(request, error),
+                    headers={**limit_headers, "Retry-After": str(int(WINDOW_SECONDS))},
+                )
+                refused.headers["X-Request-ID"] = request.state.request_id
+                return refused
+
         response = await call_next(request)
+        for header, value in limit_headers.items():
+            response.headers[header] = value
         response.headers["X-Request-ID"] = request.state.request_id
 
         # Deliberately field-by-field. Logging the request object wholesale is
