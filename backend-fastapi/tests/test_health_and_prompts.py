@@ -1,6 +1,14 @@
 from __future__ import annotations
 
+import asyncio
+import json
+
+import httpx
 from fastapi.testclient import TestClient
+
+from app.config import Settings
+from app.prompt_service import PromptEnhancer
+from app.schemas import PromptEnhanceRequest
 
 
 def test_health_is_public_and_has_request_id(client: TestClient) -> None:
@@ -62,3 +70,29 @@ def test_invalid_debug_user_is_rejected(client: TestClient) -> None:
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "VALIDATION_ERROR"
 
+
+def test_ollama_request_is_bounded_and_unloads_model() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        assert payload["model"] == "qwen3:4b-instruct-2507-q4_K_M"
+        assert payload["stream"] is False
+        assert payload["keep_alive"] == 0
+        assert payload["options"] == {
+            "num_ctx": 4096,
+            "num_predict": 180,
+            "temperature": 0.2,
+        }
+        return httpx.Response(200, json={"response": "A bounded cinematic prompt."})
+
+    enhancer = PromptEnhancer(
+        Settings(prompt_llm_provider="ollama"),
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = asyncio.run(
+        enhancer.enhance(PromptEnhanceRequest(prompt="paper dragon", aspectRatio="16:9"))
+    )
+
+    assert result.provider == "ollama"
+    assert result.used_fallback is False
+    assert result.enhanced_prompt == "A bounded cinematic prompt."

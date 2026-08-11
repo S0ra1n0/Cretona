@@ -7,8 +7,14 @@ from app.schemas import PromptEnhanceRequest, PromptEnhanceResponse
 
 
 class PromptEnhancer:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
         self.settings = settings
+        self.transport = transport
 
     async def enhance(self, request: PromptEnhanceRequest) -> PromptEnhanceResponse:
         original = request.prompt.strip()
@@ -37,13 +43,25 @@ class PromptEnhancer:
             f"User idea: {prompt}"
         )
         try:
-            async with httpx.AsyncClient(timeout=self.settings.ollama_timeout_seconds) as client:
+            async with httpx.AsyncClient(
+                timeout=self.settings.ollama_timeout_seconds,
+                transport=self.transport,
+            ) as client:
                 response = await client.post(
                     f"{self.settings.ollama_base_url.rstrip('/')}/api/generate",
                     json={
                         "model": self.settings.ollama_model,
                         "prompt": instruction,
                         "stream": False,
+                        # This laptop has only 16 GB RAM. Release the model after
+                        # every request so prompt enhancement cannot starve the
+                        # separate video worker.
+                        "keep_alive": 0,
+                        "options": {
+                            "num_ctx": self.settings.ollama_num_ctx,
+                            "num_predict": self.settings.ollama_num_predict,
+                            "temperature": self.settings.ollama_temperature,
+                        },
                     },
                 )
                 response.raise_for_status()
@@ -61,4 +79,3 @@ class PromptEnhancer:
             "environment, smooth camera movement, natural lighting, consistent details, "
             "high visual quality, no text or watermark."
         )[:1000]
-

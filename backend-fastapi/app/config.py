@@ -30,8 +30,11 @@ class Settings(BaseSettings):
 
     prompt_llm_provider: Literal["deterministic", "ollama"] = "deterministic"
     ollama_base_url: str = "http://127.0.0.1:11434"
-    ollama_model: str = "qwen3:4b"
+    ollama_model: str = "qwen3:4b-instruct-2507-q4_K_M"
     ollama_timeout_seconds: float = Field(default=45.0, gt=0, le=300)
+    ollama_num_ctx: int = Field(default=4096, ge=512, le=32768)
+    ollama_num_predict: int = Field(default=180, ge=32, le=1000)
+    ollama_temperature: float = Field(default=0.2, ge=0, le=2)
 
     fake_polls_before_complete: int = Field(default=1, ge=1, le=20)
     fake_video_filename: str = "demo-output.mp4"

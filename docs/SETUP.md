@@ -107,12 +107,17 @@ these values in `backend-fastapi/.env`:
 
 ```properties
 CRETONA_PROMPT_LLM_PROVIDER=ollama
-CRETONA_OLLAMA_MODEL=qwen3:4b
+CRETONA_OLLAMA_MODEL=qwen3:4b-instruct-2507-q4_K_M
 ```
 
 The API response field `usedFallback` is the evidence boundary: `false` means
 Ollama answered; `true` means the deterministic fallback answered. Neither
 state proves a real video model has run.
+
+On the measured 16 GB laptop, keep `CRETONA_OLLAMA_NUM_CTX=4096`,
+`CRETONA_OLLAMA_NUM_PREDICT=180`, and `CRETONA_OLLAMA_TEMPERATURE=0.2`. FastAPI
+sends `keep_alive: 0` so Ollama unloads Qwen immediately after each request and
+does not compete with the video worker for memory.
 
 ## 4. Express reference backend
 

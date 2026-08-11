@@ -40,11 +40,13 @@ and set:
 
 ```properties
 CRETONA_PROMPT_LLM_PROVIDER=ollama
-CRETONA_OLLAMA_MODEL=qwen3:4b
+CRETONA_OLLAMA_MODEL=qwen3:4b-instruct-2507-q4_K_M
 ```
 
 The response field `usedFallback` is the evidence boundary: `false` means
 Ollama answered; `true` means the deterministic enhancer kept the demo usable.
+The request uses a 4K context, a bounded 180-token response, and
+`keep_alive: 0` so the model releases memory before video generation starts.
 
 ## Verify
 
