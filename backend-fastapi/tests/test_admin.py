@@ -1,0 +1,239 @@
+from __future__ import annotations
+
+from typing import Any
+
+import pytest
+from fastapi.testclient import TestClient
+
+from tests.conftest import USER_A, USER_B
+
+ADMIN_ID = "30000000-0000-4000-8000-000000000003"
+ADMIN_HEADERS = {"X-Debug-User-Id": ADMIN_ID}
+USER_HEADERS = {"X-Debug-User-Id": USER_A}
+
+
+@pytest.fixture
+def seeded(client: TestClient) -> TestClient:
+    database = client.app.state.database
+    database.upsert_user(
+        ADMIN_ID, email="admin@example.com", username="theadmin", role="admin",
+        created_at="2026-01-03T00:00:00Z",
+    )
+    database.upsert_user(
+        USER_A, email="alice@example.com", username="alice",
+        created_at="2026-01-02T00:00:00Z",
+    )
+    database.upsert_user(
+        USER_B, email="bob@example.com", username="bob", is_disabled=True,
+        created_at="2026-01-01T00:00:00Z",
+    )
+    return client
+
+
+# --- authorization ----------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("GET", "/api/v1/admin/users"),
+        ("PATCH", f"/api/v1/admin/users/{USER_B}"),
+        ("GET", "/api/v1/admin/stats"),
+    ],
+)
+def test_non_admin_is_forbidden(seeded: TestClient, method: str, path: str) -> None:
+    response = seeded.request(method, path, headers=USER_HEADERS, json={"isDisabled": True})
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "FORBIDDEN"
+
+
+def test_admin_endpoints_require_authentication(supabase_client: TestClient) -> None:
+    assert supabase_client.get("/api/v1/admin/users").status_code == 401
+
+
+def test_role_comes_from_the_database_not_a_header(seeded: TestClient) -> None:
+    # A caller asserting admin-ness via a header they control gets nowhere.
+    response = seeded.get(
+        "/api/v1/admin/users",
+        headers={**USER_HEADERS, "X-Role": "admin", "role": "admin"},
+    )
+
+    assert response.status_code == 403
+
+
+# --- listing ----------------------------------------------------------------
+
+
+def test_admin_can_list_users_newest_first(seeded: TestClient) -> None:
+    body = seeded.get("/api/v1/admin/users", headers=ADMIN_HEADERS).json()
+
+    assert [item["id"] for item in body["items"]] == [ADMIN_ID, USER_A, USER_B]
+    assert body["items"][0]["role"] == "admin"
+
+
+def test_search_matches_email_and_username(seeded: TestClient) -> None:
+    by_email = seeded.get("/api/v1/admin/users?q=alice@", headers=ADMIN_HEADERS).json()
+    by_username = seeded.get("/api/v1/admin/users?q=BOB", headers=ADMIN_HEADERS).json()
+
+    assert [item["id"] for item in by_email["items"]] == [USER_A]
+    # Search is case-insensitive.
+    assert [item["id"] for item in by_username["items"]] == [USER_B]
+
+
+def test_filters_by_role_and_disabled_state(seeded: TestClient) -> None:
+    admins = seeded.get("/api/v1/admin/users?role=admin", headers=ADMIN_HEADERS).json()
+    disabled = seeded.get("/api/v1/admin/users?isDisabled=true", headers=ADMIN_HEADERS).json()
+
+    assert [item["id"] for item in admins["items"]] == [ADMIN_ID]
+    assert [item["id"] for item in disabled["items"]] == [USER_B]
+
+
+def test_listing_is_cursor_paginated(seeded: TestClient) -> None:
+    first = seeded.get("/api/v1/admin/users?limit=2", headers=ADMIN_HEADERS).json()
+    assert len(first["items"]) == 2
+    assert first["page"]["hasMore"] is True
+
+    second = seeded.get(
+        f"/api/v1/admin/users?limit=2&cursor={first['page']['nextCursor']}",
+        headers=ADMIN_HEADERS,
+    ).json()
+
+    assert len(second["items"]) == 1
+    assert second["page"]["hasMore"] is False
+    ids = {item["id"] for item in first["items"] + second["items"]}
+    assert ids == {ADMIN_ID, USER_A, USER_B}
+
+
+def test_project_count_is_reported(seeded: TestClient) -> None:
+    seeded.post("/api/v1/projects", headers=USER_HEADERS, json={"prompt": "one"})
+    seeded.post("/api/v1/projects", headers=USER_HEADERS, json={"prompt": "two"})
+
+    body = seeded.get("/api/v1/admin/users?q=alice", headers=ADMIN_HEADERS).json()
+
+    assert body["items"][0]["projectCount"] == 2
+
+
+def test_invalid_cursor_is_a_validation_error(seeded: TestClient) -> None:
+    response = seeded.get("/api/v1/admin/users?cursor=%%%", headers=ADMIN_HEADERS)
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+# --- updating ---------------------------------------------------------------
+
+
+def test_admin_can_promote_and_disable(seeded: TestClient) -> None:
+    promoted = seeded.patch(
+        f"/api/v1/admin/users/{USER_A}",
+        headers=ADMIN_HEADERS,
+        json={"role": "admin", "isDisabled": True},
+    )
+
+    assert promoted.status_code == 200
+    assert promoted.json()["role"] == "admin"
+    assert promoted.json()["isDisabled"] is True
+
+
+def test_admin_cannot_modify_themselves(seeded: TestClient) -> None:
+    # FR-4.6: otherwise an admin can lock themselves out, or demote the last
+    # admin and leave nobody able to get back in.
+    response = seeded.patch(
+        f"/api/v1/admin/users/{ADMIN_ID}",
+        headers=ADMIN_HEADERS,
+        json={"isDisabled": True},
+    )
+
+    assert response.status_code == 403
+    assert "your own" in response.json()["error"]["message"]
+
+
+def test_unknown_user_is_not_found(seeded: TestClient) -> None:
+    response = seeded.patch(
+        "/api/v1/admin/users/99999999-0000-4000-8000-000000000009",
+        headers=ADMIN_HEADERS,
+        json={"isDisabled": True},
+    )
+
+    assert response.status_code == 404
+
+
+def test_empty_update_is_rejected(seeded: TestClient) -> None:
+    response = seeded.patch(
+        f"/api/v1/admin/users/{USER_A}",
+        headers=ADMIN_HEADERS,
+        json={},
+    )
+
+    assert response.status_code == 400
+
+
+def test_unknown_role_is_rejected(seeded: TestClient) -> None:
+    response = seeded.patch(
+        f"/api/v1/admin/users/{USER_A}",
+        headers=ADMIN_HEADERS,
+        json={"role": "superuser"},
+    )
+
+    assert response.status_code == 400
+
+
+def test_disabling_a_user_takes_effect_immediately(seeded: TestClient) -> None:
+    seeded.patch(
+        f"/api/v1/admin/users/{USER_A}",
+        headers=ADMIN_HEADERS,
+        json={"isDisabled": True},
+    )
+
+    # Dev mode injects identity without a disabled check, so the database is
+    # the observable surface here.
+    assert seeded.app.state.database.get_user(USER_A)["is_disabled"] is True
+
+
+# --- stats ------------------------------------------------------------------
+
+
+def test_stats_reports_totals_and_breakdowns(seeded: TestClient) -> None:
+    created = seeded.post(
+        "/api/v1/projects", headers=USER_HEADERS, json={"prompt": "counted"}
+    ).json()
+    seeded.get(f"/api/v1/projects/{created['id']}", headers=USER_HEADERS)
+    seeded.get(f"/api/v1/projects/{created['id']}", headers=USER_HEADERS)
+
+    body = seeded.get("/api/v1/admin/stats", headers=ADMIN_HEADERS).json()
+
+    assert body["totals"]["users"] == 3
+    assert body["totals"]["activeUsers"] == 2
+    assert body["totals"]["projects"] == 1
+    assert body["projectsByStatus"]["completed"] == 1
+    assert body["projectsByProvider"]["fake"] == 1
+    assert set(body["projectsByStatus"]) == {"pending", "generating", "completed", "failed"}
+
+
+def test_failure_rate_counts_only_finished_work(seeded: TestClient) -> None:
+    def drive(prompt: str) -> None:
+        created = seeded.post(
+            "/api/v1/projects", headers=USER_HEADERS, json={"prompt": prompt}
+        ).json()
+        seeded.get(f"/api/v1/projects/{created['id']}", headers=USER_HEADERS)
+        seeded.get(f"/api/v1/projects/{created['id']}", headers=USER_HEADERS)
+
+    drive("good one")
+    drive("fail:provider_error bad one")
+    # Left pending, so it must not dilute the rate.
+    seeded.post("/api/v1/projects", headers=USER_HEADERS, json={"prompt": "in flight"})
+
+    body: dict[str, Any] = seeded.get("/api/v1/admin/stats", headers=ADMIN_HEADERS).json()
+
+    assert body["failureRate"] == 0.5
+
+
+def test_daily_series_is_bucketed_by_day(seeded: TestClient) -> None:
+    seeded.post("/api/v1/projects", headers=USER_HEADERS, json={"prompt": "today"})
+
+    body = seeded.get("/api/v1/admin/stats?days=7", headers=ADMIN_HEADERS).json()
+
+    assert len(body["daily"]) == 1
+    assert len(body["daily"][0]["date"]) == 10
+    assert body["daily"][0]["created"] == 1

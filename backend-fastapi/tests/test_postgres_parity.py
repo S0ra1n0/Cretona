@@ -211,6 +211,77 @@ def test_token_without_a_profile_row_is_refused(
     assert response.json()["error"]["code"] == "TOKEN_INVALID"
 
 
+def make_admin(postgres_url: str, user_id: str) -> None:
+    with psycopg.connect(postgres_url, autocommit=True) as connection:
+        connection.execute(
+            "UPDATE public.users SET role_id = (SELECT id FROM public.roles "
+            "WHERE name = 'admin') WHERE id = %s",
+            (user_id,),
+        )
+
+
+def test_admin_listing_works_on_postgres(
+    postgres_client: TestClient,
+    bearer: BearerFactory,
+    postgres_url: str,
+) -> None:
+    create_project(postgres_client, bearer(subject=USER_A))
+    make_admin(postgres_url, USER_B)
+    admin = bearer(subject=USER_B)
+
+    body = postgres_client.get("/api/v1/admin/users", headers=admin).json()
+    by_id = {item["id"]: item for item in body["items"]}
+
+    assert set(by_id) == {USER_A, USER_B}
+    assert by_id[USER_A]["projectCount"] == 1
+    assert by_id[USER_B]["role"] == "admin"
+
+    # ILIKE search and the role filter are Postgres-specific SQL.
+    found = postgres_client.get("/api/v1/admin/users?q=A@EXAMPLE", headers=admin).json()
+    assert [item["id"] for item in found["items"]] == [USER_A]
+
+    admins = postgres_client.get("/api/v1/admin/users?role=admin", headers=admin).json()
+    assert [item["id"] for item in admins["items"]] == [USER_B]
+
+
+def test_admin_stats_work_on_postgres(
+    postgres_client: TestClient,
+    bearer: BearerFactory,
+    postgres_url: str,
+) -> None:
+    created = create_project(postgres_client, bearer(subject=USER_A))
+    postgres_client.get(f"/api/v1/projects/{created['id']}", headers=bearer(subject=USER_A))
+    postgres_client.get(f"/api/v1/projects/{created['id']}", headers=bearer(subject=USER_A))
+    make_admin(postgres_url, USER_B)
+
+    body = postgres_client.get("/api/v1/admin/stats", headers=bearer(subject=USER_B)).json()
+
+    assert body["totals"]["users"] == 2
+    assert body["totals"]["projects"] == 1
+    assert body["projectsByStatus"]["completed"] == 1
+    assert body["projectsByProvider"]["fake"] == 1
+    # date_trunc + FILTER are Postgres-specific.
+    assert len(body["daily"]) == 1
+    assert body["daily"][0]["completed"] == 1
+
+
+def test_role_change_resolves_the_role_table_on_postgres(
+    postgres_client: TestClient,
+    bearer: BearerFactory,
+    postgres_url: str,
+) -> None:
+    make_admin(postgres_url, USER_B)
+
+    promoted = postgres_client.patch(
+        f"/api/v1/admin/users/{USER_A}",
+        headers=bearer(subject=USER_B),
+        json={"role": "admin"},
+    )
+
+    assert promoted.status_code == 200
+    assert promoted.json()["role"] == "admin"
+
+
 @pytest.mark.parametrize(
     ("prompt", "expected"),
     [("fail:provider_error upstream down", 202), ("fail:content_policy unsafe", 409)],

@@ -5,11 +5,15 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
 
-from app.auth import current_user_id
+from app.admin_service import AdminService
+from app.auth import current_user_id, require_admin
 from app.errors import AppError
 from app.project_service import ProjectService
 from app.prompt_service import PromptEnhancer
 from app.schemas import (
+    AdminUser,
+    AdminUserPage,
+    AdminUserUpdate,
     HealthResponse,
     ProjectCreate,
     ProjectPage,
@@ -17,6 +21,8 @@ from app.schemas import (
     ProjectStatus,
     PromptEnhanceRequest,
     PromptEnhanceResponse,
+    RoleName,
+    StatsResponse,
     UploadSignRequest,
     UploadSignResponse,
 )
@@ -24,6 +30,11 @@ from app.storage import StorageBackend
 
 router = APIRouter()
 UserId = Annotated[str, Depends(current_user_id)]
+AdminId = Annotated[str, Depends(require_admin)]
+
+
+def admin_service(request: Request) -> AdminService:
+    return request.app.state.admin_service
 
 
 def project_service(request: Request) -> ProjectService:
@@ -54,6 +65,44 @@ async def enhance_prompt(
     enhancer: Annotated[PromptEnhancer, Depends(prompt_enhancer)],
 ) -> PromptEnhanceResponse:
     return await enhancer.enhance(payload)
+
+
+@router.get("/admin/users", response_model=AdminUserPage)
+def list_users(
+    _admin_id: AdminId,
+    service: Annotated[AdminService, Depends(admin_service)],
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    cursor: str | None = None,
+    q: str | None = None,
+    role: RoleName | None = None,
+    is_disabled: Annotated[bool | None, Query(alias="isDisabled")] = None,
+) -> AdminUserPage:
+    return service.list_users(
+        limit=limit,
+        cursor=cursor,
+        query=q,
+        role=role,
+        is_disabled=is_disabled,
+    )
+
+
+@router.patch("/admin/users/{user_id}", response_model=AdminUser)
+def update_user(
+    user_id: str,
+    payload: AdminUserUpdate,
+    admin_id: AdminId,
+    service: Annotated[AdminService, Depends(admin_service)],
+) -> AdminUser:
+    return service.update_user(admin_id, user_id, payload)
+
+
+@router.get("/admin/stats", response_model=StatsResponse)
+def admin_stats(
+    _admin_id: AdminId,
+    service: Annotated[AdminService, Depends(admin_service)],
+    days: Annotated[int, Query(ge=1, le=90)] = 30,
+) -> StatsResponse:
+    return service.stats(days)
 
 
 @router.post("/uploads/sign", response_model=UploadSignResponse)

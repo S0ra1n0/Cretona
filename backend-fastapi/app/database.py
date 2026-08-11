@@ -7,14 +7,22 @@ from pathlib import Path
 from threading import Lock
 from typing import Any
 
-from app.repository import decode_cursor, encode_cursor, reject_immutable_columns
+from app.repository import (
+    UsernameTakenError,
+    build_stats,
+    decode_cursor,
+    encode_cursor,
+    reject_immutable_columns,
+)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     email TEXT,
+    username TEXT UNIQUE,
     role TEXT NOT NULL DEFAULT 'user',
-    is_disabled INTEGER NOT NULL DEFAULT 0
+    is_disabled INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT '1970-01-01T00:00:00Z'
 );
 
 CREATE TABLE IF NOT EXISTS projects (
@@ -53,8 +61,14 @@ ON projects(status, updated_at);
 # EXISTS`, so an existing database file is widened here rather than recreated;
 # dropping the file would lose the local demo history.
 ADDED_COLUMNS = {
-    "attempt_count": "INTEGER NOT NULL DEFAULT 0",
-    "deleted_at": "TEXT",
+    "projects": {
+        "attempt_count": "INTEGER NOT NULL DEFAULT 0",
+        "deleted_at": "TEXT",
+    },
+    "users": {
+        "username": "TEXT",
+        "created_at": "TEXT NOT NULL DEFAULT '1970-01-01T00:00:00Z'",
+    },
 }
 
 
@@ -80,12 +94,14 @@ class Database:
 
     @staticmethod
     def _add_missing_columns(connection: sqlite3.Connection) -> None:
-        existing = {
-            row["name"] for row in connection.execute("PRAGMA table_info(projects)").fetchall()
-        }
-        for column, definition in ADDED_COLUMNS.items():
-            if column not in existing:
-                connection.execute(f"ALTER TABLE projects ADD COLUMN {column} {definition}")
+        for table, columns in ADDED_COLUMNS.items():
+            existing = {
+                row["name"]
+                for row in connection.execute(f"PRAGMA table_info({table})").fetchall()
+            }
+            for column, definition in columns.items():
+                if column not in existing:
+                    connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
@@ -109,23 +125,156 @@ class Database:
         user_id: str,
         *,
         email: str | None = None,
+        username: str | None = None,
         role: str = "user",
         is_disabled: bool = False,
+        created_at: str | None = None,
     ) -> None:
         with self.connect() as connection:
             connection.execute(
-                "INSERT INTO users (id, email, role, is_disabled) VALUES (?, ?, ?, ?) "
+                "INSERT INTO users (id, email, username, role, is_disabled, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(id) DO UPDATE SET email = excluded.email, "
-                "role = excluded.role, is_disabled = excluded.is_disabled",
-                (user_id, email, role, 1 if is_disabled else 0),
+                "username = excluded.username, role = excluded.role, "
+                "is_disabled = excluded.is_disabled",
+                (
+                    user_id,
+                    email,
+                    username,
+                    role,
+                    1 if is_disabled else 0,
+                    created_at or "1970-01-01T00:00:00Z",
+                ),
             )
 
     def get_user(self, user_id: str) -> dict[str, Any] | None:
         with self.connect() as connection:
             row = connection.execute(
-                "SELECT id, email, role, is_disabled FROM users WHERE id = ?",
+                "SELECT id, email, username, role, is_disabled, created_at "
+                "FROM users WHERE id = ?",
                 (user_id,),
             ).fetchone()
+        return self._user_row(row)
+
+    def set_username(self, user_id: str, username: str) -> dict[str, Any] | None:
+        """Rename, letting the unique index decide.
+
+        Checking availability before writing would still race; translating the
+        violation is the only correct version.
+        """
+        try:
+            with self.connect() as connection:
+                cursor = connection.execute(
+                    "UPDATE users SET username = ? WHERE id = ?",
+                    (username, user_id),
+                )
+                if cursor.rowcount == 0:
+                    return None
+        except sqlite3.IntegrityError as exc:
+            raise UsernameTakenError(username) from exc
+        return self.get_user(user_id)
+
+    def list_users(
+        self,
+        *,
+        limit: int,
+        cursor: str | None,
+        query: str | None,
+        role: str | None,
+        is_disabled: bool | None,
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        where: list[str] = ["1 = 1"]
+        parameters: list[Any] = []
+
+        if query:
+            where.append("(lower(email) LIKE ? OR lower(username) LIKE ?)")
+            pattern = f"%{query.lower()}%"
+            parameters.extend([pattern, pattern])
+        if role:
+            where.append("role = ?")
+            parameters.append(role)
+        if is_disabled is not None:
+            where.append("is_disabled = ?")
+            parameters.append(1 if is_disabled else 0)
+        if cursor:
+            created_at, user_id = decode_cursor(cursor)
+            where.append("(created_at < ? OR (created_at = ? AND id < ?))")
+            parameters.extend([created_at, created_at, user_id])
+
+        parameters.append(limit + 1)
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT u.id, u.email, u.username, u.role, u.is_disabled, u.created_at, "
+                "(SELECT COUNT(*) FROM projects p "
+                " WHERE p.owner_id = u.id AND p.deleted_at IS NULL) AS project_count "
+                "FROM users u WHERE " + " AND ".join(where) + " "
+                "ORDER BY u.created_at DESC, u.id DESC LIMIT ?",
+                tuple(parameters),
+            ).fetchall()
+
+        users = [self._user_row(row) for row in rows]
+        items = [user for user in users[:limit] if user]
+        next_cursor = None
+        if len(users) > limit and items:
+            next_cursor = encode_cursor(items[-1]["created_at"], items[-1]["id"])
+        return items, next_cursor
+
+    def update_user_flags(
+        self,
+        user_id: str,
+        *,
+        role: str | None = None,
+        is_disabled: bool | None = None,
+    ) -> dict[str, Any] | None:
+        assignments: list[str] = []
+        parameters: list[Any] = []
+        if role is not None:
+            assignments.append("role = ?")
+            parameters.append(role)
+        if is_disabled is not None:
+            assignments.append("is_disabled = ?")
+            parameters.append(1 if is_disabled else 0)
+        if not assignments:
+            return self.get_user(user_id)
+
+        parameters.append(user_id)
+        with self.connect() as connection:
+            cursor = connection.execute(
+                f"UPDATE users SET {', '.join(assignments)} WHERE id = ?",
+                tuple(parameters),
+            )
+            if cursor.rowcount == 0:
+                return None
+        return self.get_user(user_id)
+
+    def admin_stats(self, since: str) -> dict[str, Any]:
+        with self.connect() as connection:
+            totals = connection.execute(
+                "SELECT (SELECT COUNT(*) FROM users) AS users, "
+                "(SELECT COUNT(*) FROM users WHERE is_disabled = 0) AS active_users, "
+                "(SELECT COUNT(*) FROM projects WHERE deleted_at IS NULL) AS projects"
+            ).fetchone()
+            by_status = connection.execute(
+                "SELECT status, COUNT(*) AS total FROM projects "
+                "WHERE deleted_at IS NULL GROUP BY status"
+            ).fetchall()
+            by_provider = connection.execute(
+                "SELECT provider, COUNT(*) AS total FROM projects "
+                "WHERE deleted_at IS NULL GROUP BY provider"
+            ).fetchall()
+            daily = connection.execute(
+                "SELECT substr(created_at, 1, 10) AS date, COUNT(*) AS created, "
+                "SUM(status = 'completed') AS completed, "
+                "SUM(status = 'failed') AS failed "
+                "FROM projects WHERE deleted_at IS NULL AND created_at >= ? "
+                "GROUP BY 1 ORDER BY 1 DESC",
+                (since,),
+            ).fetchall()
+
+        return build_stats(dict(totals), by_status, by_provider, daily)
+
+    @staticmethod
+    def _user_row(row: sqlite3.Row | None) -> dict[str, Any] | None:
         if row is None:
             return None
         user = dict(row)

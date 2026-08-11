@@ -9,7 +9,17 @@ from psycopg import errors as pg_errors
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
-from app.repository import decode_cursor, encode_cursor, reject_immutable_columns
+from app.repository import (
+    UsernameTakenError,
+    build_stats,
+    decode_cursor,
+    encode_cursor,
+    reject_immutable_columns,
+)
+
+USER_COLUMNS = (
+    "u.id, u.email, u.username, u.is_disabled, u.created_at, r.name AS role"
+)
 
 # The Supabase table spells the owner `user_id` and lives under a different
 # name. Adapters own this translation so ProjectService never learns it.
@@ -78,19 +88,134 @@ class PostgresDatabase:
             return None
         with self.pool.connection() as connection:
             row = connection.execute(
-                "SELECT u.id, u.email, u.is_disabled, r.name AS role "
-                "FROM public.users u JOIN public.roles r ON r.id = u.role_id "
-                "WHERE u.id = %s",
+                f"SELECT {USER_COLUMNS} FROM public.users u "
+                "JOIN public.roles r ON r.id = u.role_id WHERE u.id = %s",
                 (user_id,),
             ).fetchone()
-        if row is None:
+        return _to_user(row)
+
+    def set_username(self, user_id: str, username: str) -> dict[str, Any] | None:
+        if not _is_uuid(user_id):
             return None
-        return {
-            "id": str(row["id"]),
-            "email": row["email"],
-            "role": row["role"],
-            "is_disabled": bool(row["is_disabled"]),
-        }
+        try:
+            with self.pool.connection() as connection:
+                changed = connection.execute(
+                    "UPDATE public.users SET username = %s WHERE id = %s",
+                    (username, user_id),
+                ).rowcount
+        except pg_errors.UniqueViolation as exc:
+            raise UsernameTakenError(username) from exc
+        return self.get_user(user_id) if changed else None
+
+    def list_users(
+        self,
+        *,
+        limit: int,
+        cursor: str | None,
+        query: str | None,
+        role: str | None,
+        is_disabled: bool | None,
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        where = ["TRUE"]
+        parameters: list[Any] = []
+
+        if query:
+            where.append("(u.email ILIKE %s OR u.username ILIKE %s)")
+            pattern = f"%{query}%"
+            parameters.extend([pattern, pattern])
+        if role:
+            where.append("r.name = %s")
+            parameters.append(role)
+        if is_disabled is not None:
+            where.append("u.is_disabled = %s")
+            parameters.append(is_disabled)
+        if cursor:
+            created_at, user_id = decode_cursor(cursor)
+            if not _is_uuid(user_id):
+                raise ValueError("Invalid cursor")
+            where.append(
+                "(u.created_at < %s::timestamptz "
+                "OR (u.created_at = %s::timestamptz AND u.id < %s::uuid))"
+            )
+            parameters.extend([created_at, created_at, user_id])
+
+        parameters.append(limit + 1)
+        with self.pool.connection() as connection:
+            rows = connection.execute(
+                f"SELECT {USER_COLUMNS}, "
+                "(SELECT COUNT(*) FROM public.video_projects p "
+                " WHERE p.user_id = u.id AND p.deleted_at IS NULL) AS project_count "
+                "FROM public.users u JOIN public.roles r ON r.id = u.role_id "
+                "WHERE " + " AND ".join(where) + " "
+                "ORDER BY u.created_at DESC, u.id DESC LIMIT %s",
+                tuple(parameters),
+            ).fetchall()
+
+        users = [user for user in (_to_user(row) for row in rows) if user]
+        items = users[:limit]
+        next_cursor = None
+        if len(users) > limit and items:
+            next_cursor = encode_cursor(items[-1]["created_at"], items[-1]["id"])
+        return items, next_cursor
+
+    def update_user_flags(
+        self,
+        user_id: str,
+        *,
+        role: str | None = None,
+        is_disabled: bool | None = None,
+    ) -> dict[str, Any] | None:
+        if not _is_uuid(user_id):
+            return None
+
+        assignments: list[str] = []
+        parameters: list[Any] = []
+        if role is not None:
+            # Resolved as a subquery so an unknown role name fails the write
+            # rather than silently leaving the row unchanged.
+            assignments.append("role_id = (SELECT id FROM public.roles WHERE name = %s)")
+            parameters.append(role)
+        if is_disabled is not None:
+            assignments.append("is_disabled = %s")
+            parameters.append(is_disabled)
+        if not assignments:
+            return self.get_user(user_id)
+
+        parameters.append(user_id)
+        with self.pool.connection() as connection:
+            changed = connection.execute(
+                f"UPDATE public.users SET {', '.join(assignments)} WHERE id = %s",
+                tuple(parameters),
+            ).rowcount
+        return self.get_user(user_id) if changed else None
+
+    def admin_stats(self, since: str) -> dict[str, Any]:
+        with self.pool.connection() as connection:
+            totals = connection.execute(
+                "SELECT (SELECT COUNT(*) FROM public.users) AS users, "
+                "(SELECT COUNT(*) FROM public.users WHERE NOT is_disabled) AS active_users, "
+                "(SELECT COUNT(*) FROM public.video_projects "
+                " WHERE deleted_at IS NULL) AS projects"
+            ).fetchone()
+            by_status = connection.execute(
+                "SELECT status::text AS status, COUNT(*) AS total "
+                "FROM public.video_projects WHERE deleted_at IS NULL GROUP BY status"
+            ).fetchall()
+            by_provider = connection.execute(
+                "SELECT provider, COUNT(*) AS total "
+                "FROM public.video_projects WHERE deleted_at IS NULL GROUP BY provider"
+            ).fetchall()
+            daily = connection.execute(
+                "SELECT date_trunc('day', created_at)::date AS date, COUNT(*) AS created, "
+                "COUNT(*) FILTER (WHERE status = 'completed') AS completed, "
+                "COUNT(*) FILTER (WHERE status = 'failed') AS failed "
+                "FROM public.video_projects "
+                "WHERE deleted_at IS NULL AND created_at >= %s::timestamptz "
+                "GROUP BY 1 ORDER BY 1 DESC",
+                (since,),
+            ).fetchall()
+
+        return build_stats(dict(totals), by_status, by_provider, daily)
 
     # --- projects ------------------------------------------------------------
 
@@ -242,6 +367,15 @@ def _to_service_row(row: dict[str, Any]) -> dict[str, Any]:
         else:
             normalized[key] = value
     return normalized
+
+
+def _to_user(row: dict[str, Any] | None) -> dict[str, Any] | None:
+    if row is None:
+        return None
+    user = _to_service_row(row)
+    user["id"] = str(user["id"])
+    user["is_disabled"] = bool(user["is_disabled"])
+    return user
 
 
 def _is_uuid(value: str) -> bool:

@@ -81,6 +81,56 @@ class PromptEnhanceResponse(ApiModel):
     used_fallback: bool = Field(alias="usedFallback")
 
 
+RoleName = Literal["user", "admin"]
+
+
+class AdminUser(ApiModel):
+    id: str
+    email: str | None
+    username: str | None
+    role: str
+    is_disabled: bool = Field(alias="isDisabled")
+    project_count: int = Field(alias="projectCount")
+    created_at: str = Field(alias="createdAt")
+
+
+class AdminUserPage(ApiModel):
+    items: list[AdminUser]
+    page: PageInfo
+
+
+class AdminUserUpdate(ApiModel):
+    role: RoleName | None = None
+    is_disabled: bool | None = Field(default=None, alias="isDisabled")
+
+    @model_validator(mode="after")
+    def require_a_change(self) -> AdminUserUpdate:
+        if self.role is None and self.is_disabled is None:
+            raise ValueError("Provide role, isDisabled, or both.")
+        return self
+
+
+class StatsTotals(ApiModel):
+    users: int
+    active_users: int = Field(alias="activeUsers")
+    projects: int
+
+
+class DailyStat(ApiModel):
+    date: str
+    created: int
+    completed: int
+    failed: int
+
+
+class StatsResponse(ApiModel):
+    totals: StatsTotals
+    projects_by_status: dict[str, int] = Field(alias="projectsByStatus")
+    projects_by_provider: dict[str, int] = Field(alias="projectsByProvider")
+    failure_rate: float = Field(alias="failureRate")
+    daily: list[DailyStat]
+
+
 class UploadSignRequest(ApiModel):
     content_type: str = Field(alias="contentType")
     size_bytes: Annotated[int, Field(alias="sizeBytes", gt=0)]

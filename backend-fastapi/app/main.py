@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.admin_service import AdminService
 from app.config import Settings, get_settings
 from app.database import Database
 from app.errors import AppError, app_error_handler, error_payload, validation_error_handler
@@ -86,6 +87,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.state.settings_version = APP_VERSION
     api.state.database = database
     api.state.storage = storage
+    api.state.admin_service = AdminService(database)
     api.state.project_service = ProjectService(database, providers, active_settings, storage)
     api.state.prompt_enhancer = PromptEnhancer(active_settings)
 

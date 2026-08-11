@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import Header, Request
+from fastapi import Depends, Header, Request
 
 from app.config import Settings
 from app.errors import AppError
@@ -21,7 +22,12 @@ def current_user_id(
     settings: Settings = request.app.state.settings
 
     if settings.auth_mode == "dev":
-        return _development_identity(x_debug_user_id, settings)
+        user_id = _development_identity(x_debug_user_id, settings)
+        # Roles still come from the database. A dev profile exercises the admin
+        # surface by seeding a row, never by asserting a header.
+        record = request.app.state.database.get_user(user_id)
+        request.state.auth_role = (record or {}).get("role", "user")
+        return user_id
 
     # Deployed profiles never consult X-Debug-User-Id. It is not read past this
     # branch, so a caller cannot assert an identity by sending the header.
@@ -55,6 +61,21 @@ def _resolved_account(request: Request, identity: VerifiedIdentity) -> str:
 
     request.state.auth_role = user.get("role", "user")
     return identity.user_id
+
+
+def require_admin(
+    request: Request,
+    user_id: Annotated[str, Depends(current_user_id)],
+) -> str:
+    """Role gate (P2-5).
+
+    Runs after identity is established, so `auth_role` is already resolved from
+    the database. Hiding a screen in the app is not authorization; this is
+    (SECURITY.md 3).
+    """
+    if getattr(request.state, "auth_role", "user") != "admin":
+        raise AppError(403, "FORBIDDEN", "You do not have access to this resource.")
+    return user_id
 
 
 def _development_identity(x_debug_user_id: str | None, settings: Settings) -> str:
