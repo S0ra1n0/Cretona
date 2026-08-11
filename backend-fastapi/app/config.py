@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     # Postgres/Supabase connection string. Kept secret: it carries a password.
     database_url: SecretStr = SecretStr("")
     max_generation_attempts: int = Field(default=3, ge=1, le=10)
+    log_level: Literal["debug", "info", "warning", "error"] = "info"
     database_path: Path = BACKEND_ROOT / "data" / "cretona.db"
     media_dir: Path = BACKEND_ROOT / "assets"
     default_video_provider: Literal["fake"] = "fake"
