@@ -81,6 +81,18 @@ class PromptEnhanceResponse(ApiModel):
     used_fallback: bool = Field(alias="usedFallback")
 
 
+class UploadSignRequest(ApiModel):
+    content_type: str = Field(alias="contentType")
+    size_bytes: Annotated[int, Field(alias="sizeBytes", gt=0)]
+
+
+class UploadSignResponse(ApiModel):
+    upload_url: str = Field(alias="uploadUrl")
+    storage_path: str = Field(alias="storagePath")
+    token: str
+    expires_at: str = Field(alias="expiresAt")
+
+
 class HealthResponse(ApiModel):
     status: Literal["ok"] = "ok"
     version: str

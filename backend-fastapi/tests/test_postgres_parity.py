@@ -72,7 +72,8 @@ def test_lifecycle_reaches_a_playable_video(
     completed = postgres_client.get(f"/api/v1/projects/{created['id']}", headers=headers)
     body = completed.json()
     assert body["status"] == "completed"
-    assert body["videoUrl"].endswith("/media/demo-output.mp4")
+    # Re-hosted under an owner-scoped key, not left as the provider's path.
+    assert body["videoUrl"].endswith(f"/media/{USER_A}/{created['id']}/video.mp4")
     assert body["completedAt"]
     # The ratio survived the round trip, which is what migration 003 exists for.
     assert body["aspectRatio"] == "9:16"

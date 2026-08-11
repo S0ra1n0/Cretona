@@ -17,7 +17,10 @@ from app.schemas import (
     ProjectStatus,
     PromptEnhanceRequest,
     PromptEnhanceResponse,
+    UploadSignRequest,
+    UploadSignResponse,
 )
+from app.storage import StorageBackend
 
 router = APIRouter()
 UserId = Annotated[str, Depends(current_user_id)]
@@ -29,6 +32,10 @@ def project_service(request: Request) -> ProjectService:
 
 def prompt_enhancer(request: Request) -> PromptEnhancer:
     return request.app.state.prompt_enhancer
+
+
+def media_storage(request: Request) -> StorageBackend:
+    return request.app.state.storage
 
 
 def request_base_url(request: Request) -> str:
@@ -47,6 +54,32 @@ async def enhance_prompt(
     enhancer: Annotated[PromptEnhancer, Depends(prompt_enhancer)],
 ) -> PromptEnhanceResponse:
     return await enhancer.enhance(payload)
+
+
+@router.post("/uploads/sign", response_model=UploadSignResponse)
+def sign_upload(
+    payload: UploadSignRequest,
+    request: Request,
+    user_id: UserId,
+    storage: Annotated[StorageBackend, Depends(media_storage)],
+) -> UploadSignResponse:
+    """Hand the app a scoped, expiring URL to upload straight to storage.
+
+    Image bytes never pass through this backend. The returned path embeds the
+    caller's id, so the object is owned before it exists.
+    """
+    signed = storage.create_signed_upload(
+        user_id,
+        payload.content_type,
+        payload.size_bytes,
+        request_base_url(request),
+    )
+    return UploadSignResponse(
+        uploadUrl=signed.upload_url,
+        storagePath=signed.storage_path,
+        token=signed.token,
+        expiresAt=signed.expires_at,
+    )
 
 
 @router.post(

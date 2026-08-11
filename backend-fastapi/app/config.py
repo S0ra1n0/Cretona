@@ -30,6 +30,16 @@ class Settings(BaseSettings):
     media_dir: Path = BACKEND_ROOT / "assets"
     default_video_provider: Literal["fake"] = "fake"
 
+    # local keeps media on the filesystem for the credential-free profile;
+    # supabase stores it in a bucket and hands out bounded signed URLs.
+    storage_backend: Literal["local", "supabase"] = "local"
+    supabase_url: str = ""
+    supabase_service_role_key: SecretStr = SecretStr("")
+    supabase_uploads_bucket: str = "uploads"
+    supabase_videos_bucket: str = "videos"
+    # Bounded by construction: a signed URL that never expires is a public one.
+    signed_url_ttl_seconds: int = Field(default=3600, ge=60, le=604800)
+
     dev_user_id: str = "00000000-0000-4000-8000-000000000001"
 
     # Supabase identity. SecretStr keeps the value out of reprs and logs; it is
@@ -55,6 +65,21 @@ class Settings(BaseSettings):
     def reject_development_auth_in_production(self) -> Settings:
         if self.environment == "production" and self.auth_mode == "dev":
             raise ValueError("CRETONA_AUTH_MODE=dev is forbidden in production.")
+        return self
+
+    @model_validator(mode="after")
+    def require_supabase_storage_credentials(self) -> Settings:
+        if self.storage_backend != "supabase":
+            return self
+        if not self.supabase_url:
+            raise ValueError(
+                "CRETONA_SUPABASE_URL is required when CRETONA_STORAGE_BACKEND=supabase."
+            )
+        if not self.supabase_service_role_key.get_secret_value():
+            raise ValueError(
+                "CRETONA_SUPABASE_SERVICE_ROLE_KEY is required when "
+                "CRETONA_STORAGE_BACKEND=supabase."
+            )
         return self
 
     @model_validator(mode="after")

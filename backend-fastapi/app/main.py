@@ -18,6 +18,7 @@ from app.project_service import ProjectService
 from app.prompt_service import PromptEnhancer
 from app.providers import FakeVideoProvider, ProviderRegistry
 from app.routes import router
+from app.storage import LocalStorage, SupabaseStorage
 
 APP_VERSION = "0.1.0"
 
@@ -33,9 +34,27 @@ def build_database(settings: Settings) -> Database | PostgresDatabase:
     return Database(settings.resolved_database_path())
 
 
+def build_storage(settings: Settings) -> LocalStorage | SupabaseStorage:
+    """Select the media backend from the config profile.
+
+    Android is unaffected either way: it consumes whatever URL the response
+    carries and never learns where the bytes live.
+    """
+    if settings.storage_backend == "supabase":
+        return SupabaseStorage(
+            base_url=settings.supabase_url,
+            service_role_key=settings.supabase_service_role_key.get_secret_value(),
+            uploads_bucket=settings.supabase_uploads_bucket,
+            videos_bucket=settings.supabase_videos_bucket,
+            signed_url_ttl_seconds=settings.signed_url_ttl_seconds,
+        )
+    return LocalStorage(settings.resolved_media_dir())
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     active_settings = settings or get_settings()
     database = build_database(active_settings)
+    storage = build_storage(active_settings)
     provider = FakeVideoProvider(
         polls_before_complete=active_settings.fake_polls_before_complete,
         video_filename=active_settings.fake_video_filename,
@@ -63,7 +82,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.state.settings = active_settings
     api.state.settings_version = APP_VERSION
     api.state.database = database
-    api.state.project_service = ProjectService(database, providers, active_settings)
+    api.state.storage = storage
+    api.state.project_service = ProjectService(database, providers, active_settings, storage)
     api.state.prompt_enhancer = PromptEnhancer(active_settings)
 
     @api.middleware("http")

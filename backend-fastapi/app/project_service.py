@@ -9,6 +9,7 @@ from app.errors import AppError
 from app.providers import PollResult, ProviderRegistry
 from app.repository import ProjectRepository
 from app.schemas import PageInfo, ProjectCreate, ProjectPage, ProjectResponse
+from app.storage import StorageBackend, assert_owns_path
 from app.transitions import assert_transition, is_retryable
 
 FAILURE_MESSAGES = {
@@ -31,10 +32,12 @@ class ProjectService:
         database: ProjectRepository,
         providers: ProviderRegistry,
         settings: Settings,
+        storage: StorageBackend,
     ) -> None:
         self.database = database
         self.providers = providers
         self.settings = settings
+        self.storage = storage
 
     def create(
         self,
@@ -47,6 +50,11 @@ class ProjectService:
             existing = self.database.find_by_idempotency(owner_id, idempotency_key)
             if existing:
                 return self.to_response(existing, base_url)
+
+        # A path is only usable by the person who uploaded it; otherwise a user
+        # could attach someone else's image to their own project.
+        if request.image_path:
+            assert_owns_path(owner_id, request.image_path)
 
         provider = self.providers.get(request.provider)
         now = utc_now()
@@ -151,6 +159,10 @@ class ProjectService:
         if not self.database.soft_delete_project(project_id, owner_id, utc_now()):
             raise AppError(404, "NOT_FOUND", "Project not found.")
 
+        # Media is removed eagerly even though the row is only soft-deleted:
+        # storage costs money and the user asked for it to be gone.
+        self.storage.remove_objects(row["image_path"], row["video_path"])
+
     def retry(self, owner_id: str, project_id: str, base_url: str) -> ProjectResponse:
         row = self._owned(owner_id, project_id)
         assert_transition(row["status"], "pending")
@@ -232,12 +244,20 @@ class ProjectService:
                 expected_status="generating",
             )
         elif result.status == "succeeded":
+            try:
+                stored_path = self._rehost(row, owner_id, result.video_path)
+            except AppError:
+                # Re-hosting failure fails the project rather than completing
+                # it: a completed project whose video is a provider URL is a
+                # broken link the moment that URL expires.
+                return self._mark_failed(row, owner_id, "provider_error", poll_count)
+
             updated = self.database.update_project(
                 row["id"],
                 owner_id,
                 {
                     "status": "completed",
-                    "video_path": result.video_path,
+                    "video_path": stored_path,
                     "duration_seconds": result.duration_seconds,
                     "poll_count": poll_count,
                     "updated_at": now,
@@ -248,6 +268,17 @@ class ProjectService:
         else:
             return self._mark_failed(row, owner_id, result.failure or "unknown", poll_count)
         return updated or self._owned(owner_id, row["id"])
+
+    def _rehost(self, row: dict[str, Any], owner_id: str, source: str | None) -> str | None:
+        """Copy a finished result into our own storage before completing.
+
+        Provider URLs expire, so persisting one guarantees a broken link within
+        days (P3-8). The bytes become ours first; only then is the project
+        completed.
+        """
+        if not source:
+            return None
+        return self.storage.store_video(owner_id, row["id"], source)
 
     def _mark_failed(
         self,
@@ -286,20 +317,18 @@ class ProjectService:
             return "Image video"
         return prompt[:60].strip() or "Untitled video"
 
-    @staticmethod
-    def to_response(row: dict[str, Any], base_url: str) -> ProjectResponse:
-        def media_url(path: str | None) -> str | None:
-            if not path:
-                return None
-            if path.startswith(("http://", "https://")):
-                return path
-            return f"{base_url.rstrip('/')}/{path.lstrip('/')}"
+    def to_response(self, row: dict[str, Any], base_url: str) -> ProjectResponse:
+        def media_url(path: str | None, *, video: bool = True) -> str | None:
+            # Storage owns URL shape. On Supabase these are short-lived signed
+            # URLs minted per response and never persisted, because a stored
+            # URL is a guaranteed-stale link once it expires.
+            return self.storage.read_url(path, base_url, video=video)
 
         return ProjectResponse(
             id=row["id"],
             title=row["title"],
             prompt=row["prompt"],
-            imageUrl=media_url(row["image_path"]),
+            imageUrl=media_url(row["image_path"], video=False),
             videoUrl=media_url(row["video_path"]),
             thumbnailUrl=media_url(row["thumbnail_path"]),
             status=row["status"],

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
+
+from tests.conftest import USER_A
 
 
 def create_project(
@@ -44,10 +47,14 @@ def test_project_lifecycle_reaches_playable_completed_video(
     assert completed.status_code == 200
     body = completed.json()
     assert body["status"] == "completed"
-    assert body["videoUrl"].endswith("/media/demo-output.mp4")
     assert body["completedAt"]
 
-    media = client.get("/media/demo-output.mp4")
+    # The result was re-hosted into our own storage under an owner-scoped key
+    # rather than left pointing at whatever the provider returned.
+    video_url = body["videoUrl"]
+    assert video_url.endswith(f"/media/{USER_A}/{created['id']}/video.mp4")
+
+    media = client.get(urlsplit(video_url).path)
     assert media.status_code == 200
     assert media.content == b"test-mp4-bytes"
 
