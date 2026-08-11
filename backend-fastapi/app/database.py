@@ -427,6 +427,22 @@ class Database:
             next_cursor = encode_cursor(last["created_at"], last["id"])
         return items, next_cursor
 
+    def claim_in_flight_projects(self, limit: int) -> list[dict[str, Any]]:
+        """Oldest-updated in-flight projects.
+
+        SQLite is single-writer, so there is no row-level claim to take here.
+        The Postgres adapter uses FOR UPDATE SKIP LOCKED instead, which is what
+        makes more than one poller safe.
+        """
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM projects "
+                "WHERE status IN ('pending', 'generating') AND deleted_at IS NULL "
+                "ORDER BY updated_at ASC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def record_generation_log(self, values: dict[str, Any]) -> None:
         with self.connect() as connection:
             connection.execute(

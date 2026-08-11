@@ -232,6 +232,14 @@ class ProjectService:
             raise AppError(409, "CONFLICT", "Project state changed before retry.")
         return self.to_response(updated, base_url)
 
+    def advance(self, row: dict[str, Any]) -> dict[str, Any]:
+        """Move a project one step, for callers that already hold the row.
+
+        The poller uses this; reads reach the same code through `get`, so both
+        paths share one state machine rather than drifting apart.
+        """
+        return self._advance(row, row["owner_id"])
+
     def _advance(self, row: dict[str, Any], owner_id: str) -> dict[str, Any]:
         if row["status"] == "pending":
             if not row["provider_job_id"]:

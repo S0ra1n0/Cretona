@@ -29,6 +29,7 @@ def limited(tmp_path: Path) -> Iterator[TestClient]:
         fake_polls_before_complete=1,
         rate_limit_default_per_min=3,
         rate_limit_generation_per_min=2,
+        poller_enabled=False,
     )
     with TestClient(create_app(settings), raise_server_exceptions=False) as client:
         yield client
@@ -159,6 +160,7 @@ def test_limiting_can_be_switched_off(tmp_path: Path) -> None:
         media_dir=media,
         rate_limit_enabled=False,
         rate_limit_default_per_min=1,
+        poller_enabled=False,
     )
     with TestClient(create_app(settings), raise_server_exceptions=False) as client:
         for _ in range(5):

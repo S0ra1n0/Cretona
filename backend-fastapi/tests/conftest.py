@@ -40,6 +40,9 @@ def _settings(tmp_path: Path, **overrides: Any) -> Settings:
         "media_dir": media_dir,
         "prompt_llm_provider": "deterministic",
         "fake_polls_before_complete": 1,
+        # Off by default so tests observe the read-driven state machine without
+        # a background task racing them. test_poller.py enables it explicitly.
+        "poller_enabled": False,
     }
     return Settings(**{**defaults, **overrides})
 

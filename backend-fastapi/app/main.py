@@ -17,6 +17,7 @@ from app.database import Database
 from app.errors import AppError, app_error_handler, error_payload, validation_error_handler
 from app.generation_log_service import GenerationLogService
 from app.logging_setup import configure_logging
+from app.poller import JobPoller
 from app.postgres import PostgresDatabase
 from app.project_service import ProjectService
 from app.prompt_service import PromptEnhancer
@@ -73,9 +74,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         active_settings.resolved_media_dir().mkdir(parents=True, exist_ok=True)
         database.initialize()
+        api.state.poller.start()
         try:
             yield
         finally:
+            await api.state.poller.stop()
             close = getattr(database, "close", None)
             if close is not None:
                 close()
@@ -109,6 +112,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         api.state.generation_log,
     )
     api.state.prompt_enhancer = PromptEnhancer(active_settings)
+    api.state.poller = JobPoller(database, api.state.project_service, active_settings)
 
     @api.middleware("http")
     async def request_id_middleware(request: Request, call_next):  # type: ignore[no-untyped-def]

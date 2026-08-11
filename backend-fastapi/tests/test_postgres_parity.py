@@ -211,6 +211,26 @@ def test_token_without_a_profile_row_is_refused(
     assert response.json()["error"]["code"] == "TOKEN_INVALID"
 
 
+def test_poller_claims_in_flight_work_on_postgres(
+    postgres_client: TestClient,
+    bearer: BearerFactory,
+) -> None:
+    headers = bearer(subject=USER_A)
+    created = create_project(postgres_client, headers)
+
+    # FOR UPDATE SKIP LOCKED is Postgres-only syntax, so this is the only
+    # place the poller's claim query actually runs.
+    poller = postgres_client.app.state.poller
+    assert poller.run_once() == 1
+    assert poller.run_once() == 1
+
+    row = postgres_client.app.state.database.get_project(created["id"], USER_A)
+    assert row["status"] == "completed"
+
+    # Nothing in flight left to claim.
+    assert poller.run_once() == 0
+
+
 def test_generation_logs_are_written_to_jsonb(
     postgres_client: TestClient,
     bearer: BearerFactory,

@@ -28,6 +28,7 @@ def quota_client(tmp_path: Path) -> Iterator[TestClient]:
         prompt_llm_provider="deterministic",
         fake_polls_before_complete=1,
         generation_quota_limit=2,
+        poller_enabled=False,
     )
     with TestClient(create_app(settings), raise_server_exceptions=False) as client:
         yield client

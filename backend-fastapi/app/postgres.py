@@ -340,6 +340,22 @@ class PostgresDatabase:
             next_cursor = encode_cursor(last["created_at"], last["id"])
         return items, next_cursor
 
+    def claim_in_flight_projects(self, limit: int) -> list[dict[str, Any]]:
+        """Claim a batch, skipping rows another poller already holds.
+
+        FOR UPDATE SKIP LOCKED is what makes running more than one instance
+        safe: two pollers take disjoint batches instead of both advancing the
+        same project and double-submitting it to the provider.
+        """
+        with self.pool.connection() as connection:
+            rows = connection.execute(
+                f"SELECT {SELECTED_COLUMNS} FROM {TABLE} "
+                "WHERE status IN ('pending', 'generating') AND deleted_at IS NULL "
+                "ORDER BY updated_at ASC LIMIT %s FOR UPDATE SKIP LOCKED",
+                (limit,),
+            ).fetchall()
+        return [_to_service_row(row) for row in rows]
+
     def record_generation_log(self, values: dict[str, Any]) -> None:
         if not _is_uuid(values["project_id"]):
             return
