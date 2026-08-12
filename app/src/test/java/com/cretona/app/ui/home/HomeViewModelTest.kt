@@ -179,10 +179,12 @@ private class FakeRepository(
             title = "Paper dragon",
             prompt = "A paper dragon",
             videoUrl = videoUrl,
+            thumbnailUrl = null,
             status = status,
             provider = "fake",
             errorMessage = null,
             durationSeconds = 5,
+            aspectRatio = "16:9",
             createdAt = "2026-08-10T00:00:00Z",
         )
     }

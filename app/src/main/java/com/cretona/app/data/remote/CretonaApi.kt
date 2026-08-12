@@ -93,6 +93,7 @@ data class ProjectDto(
     val title: String,
     val prompt: String? = null,
     val videoUrl: String? = null,
+    val thumbnailUrl: String? = null,
     val status: String,
     val provider: String,
     val errorMessage: String? = null,

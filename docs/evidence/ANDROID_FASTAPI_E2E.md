@@ -30,6 +30,26 @@ Supabase credential. This is observed Android → FastAPI integration evidence,
 not live Supabase Auth/Postgres evidence. The happy path is visually observed;
 exhausted and network-error states are contract/unit evidence, not screenshots.
 
+## B-9 history thumbnails — 2026-08-12
+
+The `Pixel_10_Pro_XL` AVD then loaded a completed project's real
+`thumbnailUrl` from the local FastAPI media route through Coil 3.5 and rendered
+it above the history metadata. The screenshot uses the previous B-8 evidence
+image as a deliberate local media fixture, which makes the successful image
+load visually distinguishable from the neutral `Preview unavailable` fallback.
+
+![B-9 Android history thumbnail](B9_THUMBNAIL_UI.png)
+
+The implementation preserves the API's `16:9`, `9:16`, and `1:1` project
+aspect ratios instead of forcing every preview into a landscape crop. Completed
+projects with a null or failed URL keep their title, status, and provider and
+show `Preview unavailable`; loading displays a bounded progress indicator.
+`AsyncImage` is used rather than subcomposition inside the lazy history list.
+
+Supporting gates after the aspect-ratio fix: 12 Android unit tests, 0
+failures/errors; `lintDebug` passed; `assembleDebug` passed. The runtime media
+fixture and SQLite database were temporary and removed after capture.
+
 ## Proven journey
 
 On the `Pixel_10_Pro_XL` Android emulator, package

@@ -29,10 +29,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalContext
@@ -45,6 +48,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.compose.PlayerSurface
+import coil3.compose.AsyncImage
 import com.cretona.app.domain.model.GenerationQuota
 import com.cretona.app.domain.model.ProjectStatus
 import com.cretona.app.domain.model.UserProfile
@@ -331,15 +335,76 @@ private fun CurrentProjectCard(project: VideoProject) {
 @Composable
 private fun HistoryCard(project: VideoProject) {
     Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(project.title, style = MaterialTheme.typography.titleMedium)
-            StatusText(project)
-            Text(project.provider, style = MaterialTheme.typography.labelMedium)
+        Column {
+            if (project.status == ProjectStatus.COMPLETED) {
+                ProjectThumbnail(
+                    thumbnailUrl = project.thumbnailUrl,
+                    title = project.title,
+                    aspectRatio = project.thumbnailAspectRatio,
+                )
+            }
+            Column(
+                modifier = Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(project.title, style = MaterialTheme.typography.titleMedium)
+                StatusText(project)
+                Text(project.provider, style = MaterialTheme.typography.labelMedium)
+            }
         }
     }
+}
+
+@Composable
+private fun ProjectThumbnail(
+    thumbnailUrl: String?,
+    title: String,
+    aspectRatio: Float,
+) {
+    var loadState by remember(thumbnailUrl) {
+        mutableStateOf(
+            if (thumbnailUrl == null) ThumbnailLoadState.Unavailable
+            else ThumbnailLoadState.Loading,
+        )
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(aspectRatio)
+            .background(MaterialTheme.colorScheme.surfaceVariant),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (thumbnailUrl != null) {
+            AsyncImage(
+                model = thumbnailUrl,
+                contentDescription = "Preview for $title",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+                onLoading = { loadState = ThumbnailLoadState.Loading },
+                onSuccess = { loadState = ThumbnailLoadState.Loaded },
+                onError = { loadState = ThumbnailLoadState.Unavailable },
+            )
+        }
+        when (loadState) {
+            ThumbnailLoadState.Loading -> CircularProgressIndicator(
+                modifier = Modifier.size(28.dp),
+                strokeWidth = 2.dp,
+            )
+
+            ThumbnailLoadState.Unavailable -> Text(
+                "Preview unavailable",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+
+            ThumbnailLoadState.Loaded -> Unit
+        }
+    }
+}
+
+private enum class ThumbnailLoadState {
+    Loading,
+    Loaded,
+    Unavailable,
 }
 
 @Composable

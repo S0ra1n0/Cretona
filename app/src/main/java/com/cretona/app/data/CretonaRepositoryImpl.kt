@@ -69,6 +69,7 @@ internal fun ProjectDto.toDomain(): VideoProject = VideoProject(
     title = title,
     prompt = prompt,
     videoUrl = videoUrl,
+    thumbnailUrl = thumbnailUrl,
     status = when (status) {
         "pending" -> ProjectStatus.PENDING
         "generating" -> ProjectStatus.GENERATING
@@ -79,6 +80,7 @@ internal fun ProjectDto.toDomain(): VideoProject = VideoProject(
     provider = provider,
     errorMessage = errorMessage ?: if (status in knownStatuses) null else "Unknown job status.",
     durationSeconds = durationSeconds,
+    aspectRatio = aspectRatio,
     createdAt = createdAt,
 )
 

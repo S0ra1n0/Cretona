@@ -17,6 +17,10 @@ also called pinned local Qwen3-4B with `usedFallback=false`.
 Android now also consumes `/me` and shows the rolling quota before submission;
 the rendered AVD result is recorded in
 [the E2E evidence](docs/evidence/ANDROID_FASTAPI_E2E.md#b-8-quota-surface--2026-08-12).
+Completed history cards now consume `thumbnailUrl` through Coil, preserve the
+project's `16:9`, `9:16`, or `1:1` ratio, and degrade to a labelled fallback;
+[B-9 AVD evidence](docs/evidence/ANDROID_FASTAPI_E2E.md#b-9-history-thumbnails--2026-08-12)
+records the rendered result.
 
 Ported since the migration slice: Supabase JWT identity, Postgres persistence,
 Supabase Storage, role authorization and the admin surface, `/me`, the spend

@@ -12,6 +12,7 @@ Express reference. Last updated 2026-08-12 after B-4.
 | B-3 | Shared-store rate limiting | Next in Tier 1. Blocked on an infrastructure choice: Redis, or a Postgres table. Postgres adds no new service and is probably right at this scale |
 | B-4 | `generation_logs` retention | **Done** — 180-day, oldest-first bounded cleanup with metadata-only aggregation; verified 239 passed / 19 Postgres-only skipped; live migration remains unapplied |
 | B-8 | Android consumes `/me` | **Done** — quota/identity loading, retry, exhausted-state prevention, post-submit refresh, and AVD evidence; 12 Android tests plus clean lint/assembly |
+| B-9 | Android shows thumbnails | **Done** — Coil history preview with loading/error fallback, project aspect ratio, and AVD evidence; 12 Android tests plus clean lint/assembly |
 
 **Three migrations are prepared and unapplied**, all additive and re-runnable.
 Apply them in numeric order:
@@ -90,7 +91,7 @@ The system works but is hard to run and hard to diagnose.
 | ID | Item | Why | Effort | Mark |
 |---|---|---|---|---|
 | ~~B-8~~ | ~~Android consumes `/me`~~ | **Done.** Home shows remaining quota before Generate, explains loading/exhaustion, retries read failures, and refreshes after submit | M | P |
-| B-9 | Android shows thumbnails | `thumbnailUrl` is populated and unused | S | P |
+| ~~B-9~~ | ~~Android shows thumbnails~~ | **Done.** Completed history cards load `thumbnailUrl`, preserve project ratio, and retain usable metadata when the preview is absent or fails | S | P |
 | B-10 | Android admin screens | `/admin/*` exists with no client | L | P |
 | B-11 | Provider webhook receiver | P3-7, deferred by ADR-003. `verify_webhook` is on the interface and unimplemented | M | R |
 | B-12 | Bucket-backed thumbnails | `SupabaseStorage.local_video_path` returns None, so bucket deployments get no thumbnails at all | M | D |
@@ -115,7 +116,7 @@ These need a human decision, not just implementation time.
 
 1. ~~**B-1, B-2**~~ — done.
 2. ~~**B-4**~~ — done.
-3. ~~**B-8**~~ — done. **B-9** is the next visible client gap.
+3. ~~**B-8, B-9**~~ — done.
 4. **B-3** — required before any multi-instance deployment, pointless before
    one. Needs the Redis-vs-Postgres call first.
 5. Everything else, as the situation demands.

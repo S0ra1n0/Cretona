@@ -14,9 +14,11 @@ class ProjectDtoMappingTest {
             title = "Lantern city",
             prompt = "A paper dragon",
             videoUrl = "http://example.test/media/demo.mp4",
+            thumbnailUrl = "http://example.test/media/demo-thumbnail.jpg",
             status = "completed",
             provider = "fake",
             durationSeconds = 5,
+            aspectRatio = "9:16",
             createdAt = "2026-08-10T00:00:00Z",
             updatedAt = "2026-08-10T00:00:01Z",
             completedAt = "2026-08-10T00:00:01Z",
@@ -24,7 +26,10 @@ class ProjectDtoMappingTest {
 
         assertEquals(ProjectStatus.COMPLETED, project.status)
         assertEquals("http://example.test/media/demo.mp4", project.videoUrl)
+        assertEquals("http://example.test/media/demo-thumbnail.jpg", project.thumbnailUrl)
         assertEquals(5, project.durationSeconds)
+        assertEquals("9:16", project.aspectRatio)
+        assertEquals(9f / 16f, project.thumbnailAspectRatio)
         assertNull(project.errorMessage)
     }
 
@@ -41,5 +46,6 @@ class ProjectDtoMappingTest {
 
         assertEquals(ProjectStatus.FAILED, project.status)
         assertEquals("Unknown job status.", project.errorMessage)
+        assertNull(project.thumbnailUrl)
     }
 }
