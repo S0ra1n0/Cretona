@@ -200,6 +200,11 @@ create unique index if not exists uq_projects_idempotency
 create index if not exists idx_logs_project_created
   on public.generation_logs (project_id, created_at desc);
 
+-- Oldest-first bounded retention scan (B-4). Without this, every daily sweep
+-- must inspect the full audit table as it grows.
+create index if not exists idx_logs_retention
+  on public.generation_logs (created_at asc, id asc);
+
 -- Admin search (FR-4.1).
 create index if not exists idx_users_email_lower
   on public.users (lower(email));

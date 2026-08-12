@@ -159,7 +159,9 @@ Any other transition is a bug. Enforced in the service layer, and asserted in te
 
 ### 2.4 `generation_logs`
 
-Append-only audit of every provider interaction (FR-2.10).
+Append-only audit of every provider interaction during its retention window
+(FR-2.10). The only delete path is the server-owned retention worker described
+in section 7; clients never write or prune this table.
 
 | Column | Type | Constraints | Notes |
 |---|---|---|---|
@@ -186,6 +188,7 @@ CREATE INDEX idx_projects_status_created ON video_projects (status, created_at)
   WHERE status IN ('pending', 'generating');       -- poller scan (FR-2.7)
 CREATE INDEX idx_projects_provider_job   ON video_projects (provider, provider_job_id);
 CREATE INDEX idx_logs_project_created    ON generation_logs (project_id, created_at DESC);
+CREATE INDEX idx_logs_retention          ON generation_logs (created_at ASC, id ASC);
 CREATE INDEX idx_users_email             ON users (lower(email));   -- admin search
 CREATE INDEX idx_projects_quota          ON video_projects (user_id, created_at DESC, error_code)
   WHERE deleted_at IS NULL;                        -- quota accounting (ADR-007)
@@ -268,7 +271,18 @@ Embedding `{user_id}` as the first path segment lets Storage policies authorize 
 | Data | Policy |
 |---|---|
 | Soft-deleted projects | purged after 30 days |
-| `generation_logs` | retained 180 days, then aggregated and dropped |
+| `generation_logs` | raw rows retained 180 days; a bounded oldest-first worker emits counts grouped by provider, event, and HTTP status to structured logs, then atomically deletes the batch |
 | Source images | deleted with the project |
 | Generated videos | deleted with the project |
 | Account deletion | cascades to projects and media; logs anonymized (`user_id` nulled on the project) |
+
+The worker runs once on FastAPI startup and then daily by default. Postgres
+uses `FOR UPDATE SKIP LOCKED`, so concurrent instances delete disjoint batches;
+SQLite uses one atomic `DELETE ... RETURNING` statement. Neither path selects
+the raw `request` or `response` payload for aggregation. The aggregate is only
+as durable as the structured-log destination: persistent shipping and sampling
+remain B-7, and must be configured before claiming long-term aggregate history.
+
+`supabase/006_add_generation_log_retention_index.sql` is prepared but not
+applied. It builds the table-wide cutoff index concurrently; the existing
+project-scoped index cannot efficiently serve this maintenance query.

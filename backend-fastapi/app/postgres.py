@@ -421,6 +421,29 @@ class PostgresDatabase:
             ).fetchall()
         return [_to_service_row(row) for row in rows]
 
+    def prune_generation_logs(self, before: str, limit: int) -> list[dict[str, Any]]:
+        """Delete one disjoint batch, safe when several instances sweep.
+
+        `SKIP LOCKED` prevents two workers from summarizing the same rows. The
+        delete and its metadata-only RETURNING projection share one
+        transaction; raw request/response JSON never leaves the database.
+        """
+        with self.pool.connection() as connection:
+            rows = connection.execute(
+                "WITH candidates AS ("
+                "  SELECT id FROM public.generation_logs "
+                "  WHERE created_at < %s::timestamptz "
+                "  ORDER BY created_at ASC, id ASC LIMIT %s "
+                "  FOR UPDATE SKIP LOCKED"
+                "), deleted AS ("
+                "  DELETE FROM public.generation_logs logs "
+                "  USING candidates WHERE logs.id = candidates.id "
+                "  RETURNING logs.provider, logs.event, logs.http_status"
+                ") SELECT provider, event, http_status FROM deleted",
+                (before, limit),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def count_quota_usage(
         self,
         owner_id: str,

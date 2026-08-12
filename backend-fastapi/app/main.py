@@ -15,6 +15,7 @@ from app.admin_service import AdminService
 from app.config import Settings, get_settings
 from app.database import Database
 from app.errors import AppError, app_error_handler, error_payload, validation_error_handler
+from app.generation_log_retention import GenerationLogRetentionWorker
 from app.generation_log_service import GenerationLogService
 from app.logging_setup import configure_logging
 from app.poller import JobPoller
@@ -75,10 +76,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         active_settings.resolved_media_dir().mkdir(parents=True, exist_ok=True)
         database.initialize()
+        api.state.generation_log_retention.start()
         api.state.poller.start()
         try:
             yield
         finally:
+            await api.state.generation_log_retention.stop()
             await api.state.poller.stop()
             close = getattr(database, "close", None)
             if close is not None:
@@ -99,6 +102,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.state.quota_service = QuotaService(database, active_settings)
     api.state.users_service = UsersService(database, api.state.quota_service)
     api.state.generation_log = GenerationLogService(database)
+    api.state.generation_log_retention = GenerationLogRetentionWorker(
+        api.state.generation_log, active_settings
+    )
     limiter = RateLimiter(
         default_per_minute=active_settings.rate_limit_default_per_min,
         generation_per_minute=active_settings.rate_limit_generation_per_min,

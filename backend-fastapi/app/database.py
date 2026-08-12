@@ -75,6 +75,9 @@ CREATE TABLE IF NOT EXISTS generation_logs (
 
 CREATE INDEX IF NOT EXISTS logs_project_created_idx
 ON generation_logs(project_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS logs_created_idx
+ON generation_logs(created_at ASC, id ASC);
 """
 
 # Columns added after the first release. SQLite has no `ADD COLUMN IF NOT
@@ -526,6 +529,23 @@ class Database:
             entry["response"] = _from_json(entry["response"])
             entries.append(entry)
         return entries
+
+    def prune_generation_logs(self, before: str, limit: int) -> list[dict[str, Any]]:
+        """Atomically delete one oldest-first batch and return metadata only.
+
+        The provider payload columns are deliberately not returned. Retention
+        summaries must never become a second, longer-lived copy of prompts or
+        provider responses.
+        """
+        with self.connect() as connection:
+            rows = connection.execute(
+                "DELETE FROM generation_logs WHERE id IN ("
+                "SELECT id FROM generation_logs WHERE created_at < ? "
+                "ORDER BY created_at ASC, id ASC LIMIT ?"
+                ") RETURNING provider, event, http_status",
+                (before, limit),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def count_quota_usage(
         self,

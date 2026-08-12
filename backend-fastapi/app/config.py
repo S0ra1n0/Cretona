@@ -39,6 +39,15 @@ class Settings(BaseSettings):
     # Must exceed how long a batch takes, or a slow batch's rows are re-claimed
     # by another instance while this one is still working on them.
     poll_lease_seconds: int = Field(default=120, ge=5, le=3600)
+    # Raw provider audit entries are useful for diagnosis but may contain user
+    # prompts. Keep them only for the accepted 180-day contract and prune in
+    # bounded batches so maintenance cannot monopolize the database.
+    generation_log_retention_enabled: bool = True
+    generation_log_retention_days: int = Field(default=180, ge=1, le=3650)
+    generation_log_retention_interval_seconds: int = Field(
+        default=86400, ge=60, le=604800
+    )
+    generation_log_retention_batch_size: int = Field(default=10000, ge=1, le=100000)
     rate_limit_enabled: bool = True
     rate_limit_default_per_min: int = Field(default=120, ge=1, le=10000)
     rate_limit_generation_per_min: int = Field(default=10, ge=1, le=1000)

@@ -43,6 +43,9 @@ def _settings(tmp_path: Path, **overrides: Any) -> Settings:
         # Off by default so tests observe the read-driven state machine without
         # a background task racing them. test_poller.py enables it explicitly.
         "poller_enabled": False,
+        # Retention has its own lifecycle. Tests call it explicitly so an
+        # immediate startup sweep cannot make time-sensitive assertions race.
+        "generation_log_retention_enabled": False,
     }
     return Settings(**{**defaults, **overrides})
 

@@ -110,6 +110,9 @@ create table public.generation_logs (
 create index idx_logs_project_created
   on public.generation_logs (project_id, created_at desc);
 
+create index idx_logs_retention
+  on public.generation_logs (created_at asc, id asc);
+
 -- Idempotency is scoped per user (API_CONTRACT 1.5).
 create unique index uq_projects_idempotency
   on public.video_projects (user_id, idempotency_key)

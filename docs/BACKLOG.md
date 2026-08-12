@@ -1,7 +1,7 @@
 # Cretona — post-parity backlog
 
 Status: written 2026-08-12, after FastAPI reached behavioural parity with the
-Express reference. Last updated 2026-08-12 after B-1 and B-2.
+Express reference. Last updated 2026-08-12 after B-4.
 
 ## Progress
 
@@ -10,16 +10,20 @@ Express reference. Last updated 2026-08-12 after B-1 and B-2.
 | B-1 | Per-attempt `started_at` | **Done** — `1f1b39c`, verified 239 passed |
 | B-2 | Poller lease fencing | **Done** — `32b6b0d`, verified 245 passed |
 | B-3 | Shared-store rate limiting | Next in Tier 1. Blocked on an infrastructure choice: Redis, or a Postgres table. Postgres adds no new service and is probably right at this scale |
+| B-4 | `generation_logs` retention | **Done** — 180-day, oldest-first bounded cleanup with metadata-only aggregation; verified 239 passed / 19 Postgres-only skipped; live migration remains unapplied |
 
-**Two migrations are prepared and unapplied**, both additive and re-runnable,
-and 004 must go before 005:
+**Three migrations are prepared and unapplied**, all additive and re-runnable.
+Apply them in numeric order:
 
 - `supabase/004_add_started_at.sql` (B-1)
 - `supabase/005_add_poll_lease.sql` (B-2)
+- `supabase/006_add_generation_log_retention_index.sql` (B-4)
 
-Until they are applied, `CRETONA_DATABASE_BACKEND=postgres` against Supabase
-refuses to start and names the files to run. That is the intended behaviour,
-not a fault. Local Postgres already has both via `tests/postgres_schema.sql`.
+Until 004 and 005 are applied, `CRETONA_DATABASE_BACKEND=postgres` against
+Supabase refuses to start and names the files to run. That is the intended
+behaviour, not a fault. Missing 006 does not change correctness, but leaves the
+retention sweep without its table-wide cutoff index. Local Postgres already
+has all three changes via `tests/postgres_schema.sql`.
 
 ## How to read this
 
@@ -75,7 +79,7 @@ The system works but is hard to run and hard to diagnose.
 
 | ID | Item | Why | Effort | Mark |
 |---|---|---|---|---|
-| B-4 | `generation_logs` retention | The table grows without bound and nothing prunes it | S | D |
+| ~~B-4~~ | ~~`generation_logs` retention~~ | **Done.** Raw rows expire after 180 days; cleanup is atomic and batch-bounded, while only non-sensitive aggregate counts leave the table | S | D |
 | B-5 | Admin read endpoint for logs | Diagnosing a failed generation currently needs direct database access | M | P |
 | B-6 | Queryable admin audit | Admin actions are logged to stdout only, so "who disabled this account" is not answerable after log rotation | M | D |
 | B-7 | Log shipping and sampling | Every request logs a line, with no sampling and nowhere to ship it | M | D |
@@ -109,7 +113,7 @@ These need a human decision, not just implementation time.
 ## Suggested order
 
 1. ~~**B-1, B-2**~~ — done.
-2. **B-4** — an hour, removes an unbounded growth problem, needs no decision.
+2. ~~**B-4**~~ — done.
 3. **B-8, B-9** — the client catches up with the server, and the work becomes
    visible to whoever is judging the project.
 4. **B-3** — required before any multi-instance deployment, pointless before

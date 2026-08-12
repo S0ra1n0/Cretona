@@ -15,6 +15,7 @@ tested Express implementation in `../backend/`.
 - safe error envelopes with request IDs
 - static serving of the bundled synthetic H.264/AAC demo MP4
 - optional free local prompt enhancement through Ollama
+- bounded 180-day `generation_logs` retention with metadata-only summaries
 
 This is a zero-spend integration profile. The fake provider proves the app and
 job lifecycle; it does not prove real AI video quality. Qwen prompt enhancement

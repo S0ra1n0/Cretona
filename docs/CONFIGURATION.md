@@ -48,6 +48,10 @@ credentials it needs.
 | `POLLER_ENABLED` | `true` | Advances jobs without waiting for a client read |
 | `POLL_INTERVAL_SECONDS` / `POLL_BATCH_SIZE` | `5` / `20` | |
 | `POLL_LEASE_SECONDS` | `120` | Durable claim on a batch. Must exceed batch duration, or another instance re-claims rows still being worked |
+| `GENERATION_LOG_RETENTION_ENABLED` | `true` | Runs one cleanup batch at startup and then on the configured interval |
+| `GENERATION_LOG_RETENTION_DAYS` | `180` | Raw provider audit lifetime; rows exactly at the cutoff are retained |
+| `GENERATION_LOG_RETENTION_INTERVAL_SECONDS` | `86400` | Cleanup cadence; bounded to 60...604800 seconds |
+| `GENERATION_LOG_RETENTION_BATCH_SIZE` | `10000` | Oldest-first delete ceiling per pass; bounded to 1...100000 |
 | `GENERATION_TIMEOUT_SECONDS` | `600` | Per attempt, measured from `started_at`; sweeps stuck jobs to `failed` |
 | `THUMBNAILS_ENABLED` | `true` | Needs `ffmpeg` on PATH; absent means `thumbnailUrl` stays null |
 | `FFMPEG_PATH` | `ffmpeg` | |

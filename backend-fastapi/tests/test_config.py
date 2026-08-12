@@ -31,3 +31,25 @@ def test_jwt_secret_is_not_exposed_by_repr() -> None:
 
     assert "super-secret-value" not in repr(settings)
     assert settings.supabase_jwt_secret.get_secret_value() == "super-secret-value"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("generation_log_retention_days", 0),
+        ("generation_log_retention_interval_seconds", 59),
+        ("generation_log_retention_batch_size", 0),
+    ],
+)
+def test_generation_log_retention_rejects_unsafe_bounds(field: str, value: int) -> None:
+    with pytest.raises(ValidationError):
+        Settings(**{field: value})
+
+
+def test_generation_log_retention_defaults_to_the_data_contract() -> None:
+    settings = Settings()
+
+    assert settings.generation_log_retention_enabled is True
+    assert settings.generation_log_retention_days == 180
+    assert settings.generation_log_retention_interval_seconds == 86400
+    assert settings.generation_log_retention_batch_size == 10000

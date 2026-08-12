@@ -6,10 +6,12 @@ Task IDs are stable — use them to pick what to implement next (e.g. "do P1-3 a
 **Legend:** `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` skipped/deferred
 
 **Current state (2026-08-12):** FastAPI has reached behavioural parity with the
-Express/Prisma/Supabase reference. It has **228 passing tests and clean Ruff**
-(245 with a local Postgres configured); the Express reference still has its 77
-tests and clean typecheck/build, and remains migration evidence rather than a
-runtime. The Android app has 7 passing tests, clean lint/assembly, and recorded
+Express/Prisma/Supabase reference. Its credential-free suite has **239 passing
+tests, 19 Postgres-only skips, and clean Ruff**. The expanded 258-test run is
+pending because local Docker/Postgres was unavailable for B-4 verification;
+the Express reference still has its 77 tests and clean typecheck/build, and
+remains migration evidence rather than a runtime. The Android app has 7
+passing tests, clean lint/assembly, and recorded
 emulator evidence for prompt → create → poll → playback → history. FastAPI has
 also called pinned local Qwen3-4B with `usedFallback=false`.
 
@@ -17,6 +19,8 @@ Ported since the migration slice: Supabase JWT identity, Postgres persistence,
 Supabase Storage, role authorization and the admin surface, `/me`, the spend
 quota, `generation_logs`, rate limiting, a background poller, structured
 logging with central redaction, and thumbnails.
+The raw provider audit now also has bounded 180-day retention; its Postgres
+cutoff index is prepared in migration 006 but remains unapplied to Supabase.
 
 **Two things are still unproven, and they are the important ones.** No code
 has ever run against live Supabase — every green test is local Postgres, a

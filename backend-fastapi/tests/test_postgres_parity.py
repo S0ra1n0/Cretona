@@ -9,6 +9,7 @@ or pagination would be invisible to the SQLite suite.
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Any
 
 import psycopg
@@ -248,6 +249,51 @@ def test_generation_logs_are_written_to_jsonb(
     # jsonb round-trips as a dict, not a string.
     assert rows[0]["request"]["prompt"] == "A paper boat crossing a neon river"
     assert rows[-1]["response"]["storedPath"].endswith("video.mp4")
+
+
+def test_generation_log_retention_is_atomic_on_postgres(
+    postgres_client: TestClient,
+    bearer: BearerFactory,
+    postgres_url: str,
+) -> None:
+    created = create_project(postgres_client, bearer(subject=USER_A))
+    with psycopg.connect(postgres_url) as connection:
+        connection.execute(
+            "UPDATE public.generation_logs SET created_at = '2000-01-01T00:00:00Z' "
+            "WHERE project_id = %s",
+            (created["id"],),
+        )
+
+    # A current row proves the cutoff is selective rather than a table wipe.
+    postgres_client.app.state.generation_log.record(
+        project_id=created["id"], provider="fake", event="poll", http_status=200
+    )
+
+    summary = postgres_client.app.state.generation_log.prune(
+        retention_days=180,
+        batch_size=10,
+        now=datetime(2026, 8, 12, 12, tzinfo=UTC),
+    )
+
+    assert summary.deleted == 1
+    assert [
+        row["event"]
+        for row in postgres_client.app.state.database.generation_logs(created["id"])
+    ] == ["poll"]
+
+
+def test_postgres_schema_has_the_retention_index(
+    postgres_client: TestClient,
+    postgres_url: str,
+) -> None:
+    with psycopg.connect(postgres_url) as connection:
+        row = connection.execute(
+            "SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' "
+            "AND indexname = 'idx_logs_retention'"
+        ).fetchone()
+
+    assert row is not None
+    assert "created_at" in row[0]
 
 
 def make_admin(postgres_url: str, user_id: str) -> None:
