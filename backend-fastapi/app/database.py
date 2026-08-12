@@ -44,6 +44,8 @@ CREATE TABLE IF NOT EXISTS projects (
     poll_count INTEGER NOT NULL DEFAULT 0,
     attempt_count INTEGER NOT NULL DEFAULT 0,
     idempotency_key TEXT,
+    lease_owner TEXT,
+    lease_expires_at TEXT,
     started_at TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -85,6 +87,8 @@ ADDED_COLUMNS = {
         # Nullable: rows written before this column existed fall back to
         # created_at rather than being read as "started at the epoch".
         "started_at": "TEXT",
+        "lease_owner": "TEXT",
+        "lease_expires_at": "TEXT",
     },
     "users": {
         "username": "TEXT",
@@ -439,21 +443,56 @@ class Database:
             next_cursor = encode_cursor(last["created_at"], last["id"])
         return items, next_cursor
 
-    def claim_in_flight_projects(self, limit: int) -> list[dict[str, Any]]:
-        """Oldest-updated in-flight projects.
+    def claim_in_flight_projects(
+        self,
+        limit: int,
+        *,
+        owner: str,
+        now: str,
+        lease_until: str,
+    ) -> list[dict[str, Any]]:
+        """Take a durable lease on a batch of in-flight projects.
 
-        SQLite is single-writer, so there is no row-level claim to take here.
-        The Postgres adapter uses FOR UPDATE SKIP LOCKED instead, which is what
-        makes more than one poller safe.
+        The claim is written to the row rather than held as a lock, because the
+        work that follows is HTTP calls to a provider and must not run inside an
+        open transaction. A lock would be released the moment this returns.
         """
         with self.connect() as connection:
             rows = connection.execute(
-                "SELECT * FROM projects "
+                "SELECT id FROM projects "
                 "WHERE status IN ('pending', 'generating') AND deleted_at IS NULL "
+                "  AND (lease_expires_at IS NULL OR lease_expires_at < ?) "
                 "ORDER BY updated_at ASC LIMIT ?",
-                (limit,),
+                (now, limit),
             ).fetchall()
-        return [dict(row) for row in rows]
+            claimed = [row["id"] for row in rows]
+            if not claimed:
+                return []
+
+            placeholders = ", ".join("?" for _ in claimed)
+            connection.execute(
+                f"UPDATE projects SET lease_owner = ?, lease_expires_at = ? "
+                f"WHERE id IN ({placeholders})",
+                (owner, lease_until, *claimed),
+            )
+            leased = connection.execute(
+                f"SELECT * FROM projects WHERE id IN ({placeholders})",
+                tuple(claimed),
+            ).fetchall()
+        return [dict(row) for row in leased]
+
+    def release_lease(self, project_id: str, owner: str) -> None:
+        """Give the row back, so the next pass can pick it up immediately.
+
+        Scoped to the owner: a poller whose lease already expired and was taken
+        by someone else must not clear the new holder's claim.
+        """
+        with self.connect() as connection:
+            connection.execute(
+                "UPDATE projects SET lease_owner = NULL, lease_expires_at = NULL "
+                "WHERE id = ? AND lease_owner = ?",
+                (project_id, owner),
+            )
 
     def record_generation_log(self, values: dict[str, Any]) -> None:
         with self.connect() as connection:

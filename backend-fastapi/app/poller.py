@@ -3,7 +3,13 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+from datetime import UTC, datetime, timedelta
 from typing import Any
+from uuid import uuid4
+
+
+def _iso(moment: datetime) -> str:
+    return moment.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 logger = logging.getLogger("cretona.poller")
 
@@ -20,11 +26,21 @@ class JobPoller:
         self.database = database
         self.project_service = project_service
         self.settings = settings
+        # Identifies this instance's claims. Regenerated per process, so a
+        # restarted poller does not inherit its own stale leases -- it waits
+        # for them to expire like any other holder would.
+        self.instance_id = f"poller-{uuid4()}"
         self._task: asyncio.Task[None] | None = None
 
     def run_once(self) -> int:
-        """Advance one batch. Returns how many projects were touched."""
-        rows = self.database.claim_in_flight_projects(self.settings.poll_batch_size)
+        """Advance one leased batch. Returns how many projects were touched."""
+        now = datetime.now(UTC)
+        rows = self.database.claim_in_flight_projects(
+            self.settings.poll_batch_size,
+            owner=self.instance_id,
+            now=_iso(now),
+            lease_until=_iso(now + timedelta(seconds=self.settings.poll_lease_seconds)),
+        )
         advanced = 0
 
         for row in rows:
@@ -38,7 +54,19 @@ class JobPoller:
                     "poll_failed",
                     extra={"projectId": row.get("id"), "provider": row.get("provider")},
                 )
+            finally:
+                # Released even when advancing failed, so a transient error
+                # does not hold the row hostage for the whole lease.
+                self._release(row)
         return advanced
+
+    def _release(self, row: dict[str, Any]) -> None:
+        try:
+            self.database.release_lease(row["id"], self.instance_id)
+        except Exception:
+            # The lease expires on its own, so a failed release costs a delay
+            # rather than the row.
+            logger.warning("lease_release_failed", extra={"projectId": row.get("id")})
 
     async def run_forever(self) -> None:
         interval = self.settings.poll_interval_seconds

@@ -47,6 +47,8 @@ credentials it needs.
 | `RATE_LIMIT_GENERATION_PER_MIN` | `10` | Tighter bucket for writes that cost money |
 | `POLLER_ENABLED` | `true` | Advances jobs without waiting for a client read |
 | `POLL_INTERVAL_SECONDS` / `POLL_BATCH_SIZE` | `5` / `20` | |
+| `POLL_LEASE_SECONDS` | `120` | Durable claim on a batch. Must exceed batch duration, or another instance re-claims rows still being worked |
+| `GENERATION_TIMEOUT_SECONDS` | `600` | Per attempt, measured from `started_at`; sweeps stuck jobs to `failed` |
 | `THUMBNAILS_ENABLED` | `true` | Needs `ffmpeg` on PATH; absent means `thumbnailUrl` stays null |
 | `FFMPEG_PATH` | `ffmpeg` | |
 | `THUMBNAIL_SEEK_SECONDS` | `1.0` | |

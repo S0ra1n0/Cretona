@@ -67,6 +67,8 @@ create table public.video_projects (
   idempotency_key  text,
   attempt_count    smallint       not null default 0,
   started_at       timestamptz,
+  lease_owner      text,
+  lease_expires_at timestamptz,
   created_at       timestamptz    not null default now(),
   updated_at       timestamptz    not null default now(),
   completed_at     timestamptz,
