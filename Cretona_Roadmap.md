@@ -6,8 +6,8 @@ Task IDs are stable — use them to pick what to implement next (e.g. "do P1-3 a
 **Legend:** `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` skipped/deferred
 
 **Current state (2026-08-12):** FastAPI has reached behavioural parity with the
-Express/Prisma/Supabase reference. It has **205 passing tests and clean Ruff**
-(222 with a local Postgres configured); the Express reference still has its 77
+Express/Prisma/Supabase reference. It has **228 passing tests and clean Ruff**
+(245 with a local Postgres configured); the Express reference still has its 77
 tests and clean typecheck/build, and remains migration evidence rather than a
 runtime. The Android app has 7 passing tests, clean lint/assembly, and recorded
 emulator evidence for prompt → create → poll → playback → history. FastAPI has

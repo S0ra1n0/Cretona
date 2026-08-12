@@ -1,7 +1,25 @@
 # Cretona — post-parity backlog
 
 Status: written 2026-08-12, after FastAPI reached behavioural parity with the
-Express reference.
+Express reference. Last updated 2026-08-12 after B-1 and B-2.
+
+## Progress
+
+| | Item | State |
+|---|---|---|
+| B-1 | Per-attempt `started_at` | **Done** — `1f1b39c`, verified 239 passed |
+| B-2 | Poller lease fencing | **Done** — `32b6b0d`, verified 245 passed |
+| B-3 | Shared-store rate limiting | Next in Tier 1. Blocked on an infrastructure choice: Redis, or a Postgres table. Postgres adds no new service and is probably right at this scale |
+
+**Two migrations are prepared and unapplied**, both additive and re-runnable,
+and 004 must go before 005:
+
+- `supabase/004_add_started_at.sql` (B-1)
+- `supabase/005_add_poll_lease.sql` (B-2)
+
+Until they are applied, `CRETONA_DATABASE_BACKEND=postgres` against Supabase
+refuses to start and names the files to run. That is the intended behaviour,
+not a fault. Local Postgres already has both via `tests/postgres_schema.sql`.
 
 ## How to read this
 
@@ -44,8 +62,8 @@ than merely incomplete.
 
 | ID | Item | Why | Effort | Mark |
 |---|---|---|---|---|
-| B-1 | Per-attempt `started_at` column | The generation timeout measures from `created_at`, so a retried project inherits the original clock and can time out immediately. Needs migration 004, prepared not applied | M | D |
-| B-2 | Lease fencing on poller claims | `FOR UPDATE SKIP LOCKED` holds a row only for the transaction. A poller that hangs mid-batch releases its claim and a second poller can double-submit to the provider | M | D |
+| ~~B-1~~ | ~~Per-attempt `started_at`~~ | **Done.** Timeout now measures per attempt; retry gets a fresh budget | M | D |
+| ~~B-2~~ | ~~Lease fencing on poller claims~~ | **Done.** The claim is now data that survives the transaction, not a lock that evaporated before the work started | M | D |
 | B-3 | Shared-store rate limiting | In-memory means per process. Two instances each permit the full rate; a restart forgets every window. Must land **before** running more than one instance | M | D |
 
 B-3 needs an infrastructure decision first (Redis vs a Postgres table). The
@@ -90,13 +108,12 @@ These need a human decision, not just implementation time.
 
 ## Suggested order
 
-1. **B-1, B-2** — correctness bugs with concrete failure modes, and both are
-   contained to the backend.
-2. **B-4** — an hour, removes an unbounded growth problem.
+1. ~~**B-1, B-2**~~ — done.
+2. **B-4** — an hour, removes an unbounded growth problem, needs no decision.
 3. **B-8, B-9** — the client catches up with the server, and the work becomes
    visible to whoever is judging the project.
 4. **B-3** — required before any multi-instance deployment, pointless before
-   one.
+   one. Needs the Redis-vs-Postgres call first.
 5. Everything else, as the situation demands.
 
 Do not start B-15 until live Supabase verification has happened. Renaming the
