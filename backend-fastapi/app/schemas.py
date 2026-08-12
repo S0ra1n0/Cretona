@@ -102,7 +102,12 @@ class MeResponse(ApiModel):
 
 
 class MeUpdate(ApiModel):
-    username: Annotated[str, Field(min_length=3, max_length=30, pattern=r"^[A-Za-z0-9_]+$")]
+    # Explicitly nullable: sending null releases the name, which is the only
+    # way to give one up once taken.
+    username: Annotated[
+        str | None,
+        Field(min_length=3, max_length=30, pattern=r"^[A-Za-z0-9_]+$"),
+    ]
 
 
 class AdminUser(ApiModel):

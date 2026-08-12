@@ -95,7 +95,7 @@ class PostgresDatabase:
             ).fetchone()
         return _to_user(row)
 
-    def set_username(self, user_id: str, username: str) -> dict[str, Any] | None:
+    def set_username(self, user_id: str, username: str | None) -> dict[str, Any] | None:
         if not _is_uuid(user_id):
             return None
         try:
@@ -189,6 +189,15 @@ class PostgresDatabase:
                 tuple(parameters),
             ).rowcount
         return self.get_user(user_id) if changed else None
+
+    def count_enabled_admins(self) -> int:
+        with self.pool.connection() as connection:
+            row = connection.execute(
+                "SELECT COUNT(*) AS total FROM public.users u "
+                "JOIN public.roles r ON r.id = u.role_id "
+                "WHERE r.name = 'admin' AND NOT u.is_disabled"
+            ).fetchone()
+        return int(row["total"] or 0) if row else 0
 
     def admin_stats(self, since: str) -> dict[str, Any]:
         with self.pool.connection() as connection:

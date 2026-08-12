@@ -186,7 +186,7 @@ class Database:
             ).fetchone()
         return self._user_row(row)
 
-    def set_username(self, user_id: str, username: str) -> dict[str, Any] | None:
+    def set_username(self, user_id: str, username: str | None) -> dict[str, Any] | None:
         """Rename, letting the unique index decide.
 
         Checking availability before writing would still race; translating the
@@ -276,6 +276,14 @@ class Database:
             if cursor.rowcount == 0:
                 return None
         return self.get_user(user_id)
+
+    def count_enabled_admins(self) -> int:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT COUNT(*) AS total FROM users "
+                "WHERE role = 'admin' AND is_disabled = 0"
+            ).fetchone()
+        return int(row["total"] or 0)
 
     def admin_stats(self, since: str) -> dict[str, Any]:
         with self.connect() as connection:

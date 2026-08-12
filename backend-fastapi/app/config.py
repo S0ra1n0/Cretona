@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     database_url: SecretStr = SecretStr("")
     max_generation_attempts: int = Field(default=3, ge=1, le=10)
     log_level: Literal["debug", "info", "warning", "error"] = "info"
+    generation_timeout_seconds: int = Field(default=600, ge=30, le=86400)
     thumbnails_enabled: bool = True
     # External binary, not a Python dependency. Absent means no thumbnail, not
     # a failed generation.

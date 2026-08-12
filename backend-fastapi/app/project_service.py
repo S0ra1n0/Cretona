@@ -13,7 +13,7 @@ from app.repository import ProjectRepository
 from app.schemas import PageInfo, ProjectCreate, ProjectPage, ProjectResponse
 from app.storage import StorageBackend, assert_owns_path
 from app.thumbnails import ThumbnailGenerator
-from app.transitions import assert_transition, is_retryable
+from app.transitions import IN_FLIGHT, assert_transition, is_retryable
 
 FAILURE_MESSAGES = {
     "content_policy": "The prompt or image could not be used. Try different content.",
@@ -27,6 +27,16 @@ FAILURE_MESSAGES = {
 
 def utc_now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _parse_timestamp(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
 class ProjectService:
@@ -244,6 +254,12 @@ class ProjectService:
         return self._advance(row, row["owner_id"])
 
     def _advance(self, row: dict[str, Any], owner_id: str) -> dict[str, Any]:
+        # Checked before anything else, so a provider that accepted a job and
+        # then went quiet cannot hold a project in flight forever. Without
+        # this the poller re-polls a dead job on every pass, indefinitely.
+        if row["status"] in IN_FLIGHT and self._timed_out(row):
+            return self._mark_failed(row, owner_id, "timeout")
+
         if row["status"] == "pending":
             if not row["provider_job_id"]:
                 return self._mark_failed(row, owner_id, "provider_error")
@@ -334,6 +350,20 @@ class ProjectService:
             response={"storedPath": stored},
         )
         return stored
+
+    def _timed_out(self, row: dict[str, Any]) -> bool:
+        """Has this generation been in flight too long?
+
+        Measured from `created_at`, so a retried project inherits the original
+        clock rather than getting a fresh budget. Doing that properly needs a
+        per-attempt `started_at` column; until then a timeout is a safety net
+        against stuck jobs, not precise instrumentation.
+        """
+        started = _parse_timestamp(row.get("created_at"))
+        if started is None:
+            return False
+        age = (datetime.now(UTC) - started).total_seconds()
+        return age > self.settings.generation_timeout_seconds
 
     def _thumbnail(
         self,

@@ -19,7 +19,7 @@ class UsersService:
             raise AppError(404, "NOT_FOUND", "User not found.")
         return self._to_response(row, user_id)
 
-    def update_me(self, user_id: str, username: str) -> MeResponse:
+    def update_me(self, user_id: str, username: str | None) -> MeResponse:
         try:
             row = self.database.set_username(user_id, username)
         except UsernameTakenError as exc:
