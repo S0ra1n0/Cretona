@@ -1,0 +1,111 @@
+# Cretona — post-parity backlog
+
+Status: written 2026-08-12, after FastAPI reached behavioural parity with the
+Express reference.
+
+## How to read this
+
+**Most of this list is a proposal, not an assignment.** The original handoff
+assigned three tasks (Supabase JWT, Postgres, Storage); all three are done. The
+provenance column says where each item actually comes from, so nobody treats a
+suggestion as a commitment:
+
+| Mark | Meaning |
+|---|---|
+| **R** | Comes from the repo — an ADR, a roadmap task ID, or a documented spec |
+| **D** | Debt created by the parity work, named in the commit that created it |
+| **P** | My proposal. Legitimate to drop |
+
+Effort is rough: **S** ≈ under an hour, **M** ≈ a few hours, **L** ≈ a day or more.
+
+---
+
+## Not on this list: the two things that matter most
+
+Neither is doable right now, and neither should be forgotten because of that.
+
+**Live Supabase verification.** Nothing has ever run against the real project.
+Every green test is local Postgres, a local file mount, and locally minted
+tokens. This can invalidate work already committed, so it outranks everything
+below. Blocked on `backend-fastapi/.env` and permission to write to a live
+project.
+
+**A real video provider.** The fake proves the workflow and nothing about
+video. LTX 2B was rejected at pre-screen; FramePack is installed but blocked
+before inference by resource and licence gates. Blocked on EXP-005, and on a
+hardware decision that is explicitly not mine to make.
+
+---
+
+## Tier 1 — Correctness and safety
+
+Do these first. Each one is a case where the system is currently wrong rather
+than merely incomplete.
+
+| ID | Item | Why | Effort | Mark |
+|---|---|---|---|---|
+| B-1 | Per-attempt `started_at` column | The generation timeout measures from `created_at`, so a retried project inherits the original clock and can time out immediately. Needs migration 004, prepared not applied | M | D |
+| B-2 | Lease fencing on poller claims | `FOR UPDATE SKIP LOCKED` holds a row only for the transaction. A poller that hangs mid-batch releases its claim and a second poller can double-submit to the provider | M | D |
+| B-3 | Shared-store rate limiting | In-memory means per process. Two instances each permit the full rate; a restart forgets every window. Must land **before** running more than one instance | M | D |
+
+B-3 needs an infrastructure decision first (Redis vs a Postgres table). The
+Postgres option adds no new service and is probably right at this scale.
+
+## Tier 2 — Operability
+
+The system works but is hard to run and hard to diagnose.
+
+| ID | Item | Why | Effort | Mark |
+|---|---|---|---|---|
+| B-4 | `generation_logs` retention | The table grows without bound and nothing prunes it | S | D |
+| B-5 | Admin read endpoint for logs | Diagnosing a failed generation currently needs direct database access | M | P |
+| B-6 | Queryable admin audit | Admin actions are logged to stdout only, so "who disabled this account" is not answerable after log rotation | M | D |
+| B-7 | Log shipping and sampling | Every request logs a line, with no sampling and nowhere to ship it | M | D |
+
+## Tier 3 — Product surface
+
+| ID | Item | Why | Effort | Mark |
+|---|---|---|---|---|
+| B-8 | Android consumes `/me` | Quota is now served and the app cannot show it. Most visible gap to an actual user | M | P |
+| B-9 | Android shows thumbnails | `thumbnailUrl` is populated and unused | S | P |
+| B-10 | Android admin screens | `/admin/*` exists with no client | L | P |
+| B-11 | Provider webhook receiver | P3-7, deferred by ADR-003. `verify_webhook` is on the interface and unimplemented | M | R |
+| B-12 | Bucket-backed thumbnails | `SupabaseStorage.local_video_path` returns None, so bucket deployments get no thumbnails at all | M | D |
+| B-13 | Thumbnail backfill | Projects completed before thumbnails existed have none | S | D |
+| B-14 | Quota cost weighting | Every generation counts as 1 regardless of duration or provider price. Needs a product decision on weights before it is codeable | M | D |
+
+B-8 through B-10 are the only items here a user would notice. The backend is
+currently ahead of the client.
+
+## Tier 4 — Structural decisions
+
+These need a human decision, not just implementation time.
+
+| ID | Item | Why | Effort | Mark |
+|---|---|---|---|---|
+| B-15 | ADR-008 folder rename | Its "Revisit when" triggers once FastAPI has parity and Android E2E is recorded. Android evidence exists; parity is behavioural but **unverified against live Supabase**, so the trigger is arguably not yet met. Renaming `backend-fastapi/` to `backend/` and archiving Express is a large, reviewable commit | L | R |
+| B-16 | Second provider | P3-10, to prove the abstraction. Blocked behind a first real provider | L | R |
+
+---
+
+## Suggested order
+
+1. **B-1, B-2** — correctness bugs with concrete failure modes, and both are
+   contained to the backend.
+2. **B-4** — an hour, removes an unbounded growth problem.
+3. **B-8, B-9** — the client catches up with the server, and the work becomes
+   visible to whoever is judging the project.
+4. **B-3** — required before any multi-instance deployment, pointless before
+   one.
+5. Everything else, as the situation demands.
+
+Do not start B-15 until live Supabase verification has happened. Renaming the
+active backend on the strength of unverified parity would make the first real
+integration failure much harder to attribute.
+
+## What this list deliberately omits
+
+- Anything requiring credentials I do not have
+- Anything gated behind EXP-005
+- Anything requiring a hardware or spend decision
+- Test coverage as its own item; each entry above carries its own tests

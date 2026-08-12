@@ -26,6 +26,10 @@ but blocked before inference by resource and licence gates, and no real video
 provider is selected. See
 [executed evidence](docs/evidence/ANDROID_FASTAPI_E2E.md).
 
+Post-parity work is tracked separately in [docs/BACKLOG.md](docs/BACKLOG.md),
+which marks each item by provenance so a proposal is not mistaken for an
+assignment.
+
 **Settled 2026-08-12:** the Supabase project signs user tokens with the legacy
 HS256 shared secret, so the shipped verifier is correct and no JWKS work is
 needed. Runway is not a pending task — ADR-009 superseded it, `RUNWAY_API_KEY`
