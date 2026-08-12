@@ -10,10 +10,13 @@ Express/Prisma/Supabase reference. Its credential-free suite has **239 passing
 tests, 19 Postgres-only skips, and clean Ruff**. The expanded 258-test run is
 pending because local Docker/Postgres was unavailable for B-4 verification;
 the Express reference still has its 77 tests and clean typecheck/build, and
-remains migration evidence rather than a runtime. The Android app has 7
+remains migration evidence rather than a runtime. The Android app has 12
 passing tests, clean lint/assembly, and recorded
 emulator evidence for prompt → create → poll → playback → history. FastAPI has
 also called pinned local Qwen3-4B with `usedFallback=false`.
+Android now also consumes `/me` and shows the rolling quota before submission;
+the rendered AVD result is recorded in
+[the E2E evidence](docs/evidence/ANDROID_FASTAPI_E2E.md#b-8-quota-surface--2026-08-12).
 
 Ported since the migration slice: Supabase JWT identity, Postgres persistence,
 Supabase Storage, role authorization and the admin surface, `/me`, the spend
@@ -112,7 +115,7 @@ must not be read as the active framework plan.
 | P2-6 | `[x]` `AppError` + error-code table + the single error-envelope handler |
 | P2-7 | `[x]` pino structured logging with central redaction; `X-Request-Id` assigned and echoed |
 | P2-8 | `[x]` `GET /health` (liveness) and `GET /health/ready` (503 when the DB is down) |
-| P2-18 | `[~]` Rate limiting middleware built and emitting `X-RateLimit-*`. Per-user **quota** (the actual spend control) still to do |
+| P2-18 | `[x]` Rate limiting emits `X-RateLimit-*`; the database-backed per-user quota is the actual spend control, and Android now displays it before submission |
 | P2-19 | `[~]` `validate()` middleware built; per-route schemas arrive with each endpoint |
 
 ### API surface

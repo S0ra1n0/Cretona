@@ -26,7 +26,32 @@ class HomeViewModel @Inject constructor(
     private var pollingJob: Job? = null
 
     init {
+        refreshAccount()
         refreshHistory()
+    }
+
+    fun refreshAccount() {
+        viewModelScope.launch { refreshAccountInternal() }
+    }
+
+    private suspend fun refreshAccountInternal() {
+        _state.update { it.copy(isAccountLoading = true, accountErrorMessage = null) }
+        when (val result = repository.getCurrentUser()) {
+            is AppResult.Success -> _state.update {
+                it.copy(
+                    account = result.data,
+                    isAccountLoading = false,
+                    accountErrorMessage = null,
+                )
+            }
+
+            is AppResult.Failure -> _state.update {
+                it.copy(
+                    isAccountLoading = false,
+                    accountErrorMessage = result.error.message,
+                )
+            }
+        }
     }
 
     fun onPromptChanged(prompt: String) {
@@ -68,6 +93,14 @@ class HomeViewModel @Inject constructor(
             _state.update { it.copy(errorMessage = "Enter a prompt before generating.") }
             return
         }
+        if (state.value.isQuotaExhausted) {
+            _state.update {
+                it.copy(
+                    errorMessage = "Generation quota is exhausted. Try again after it resets.",
+                )
+            }
+            return
+        }
 
         pollingJob?.cancel()
         viewModelScope.launch {
@@ -83,6 +116,7 @@ class HomeViewModel @Inject constructor(
                         it.copy(isSubmitting = false, currentProject = result.data)
                     }
                     refreshHistoryInternal()
+                    refreshAccountInternal()
                     poll(result.data)
                 }
 

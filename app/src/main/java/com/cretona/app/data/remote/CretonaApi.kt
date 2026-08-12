@@ -16,6 +16,9 @@ interface CretonaApi {
     @GET("health")
     suspend fun health(): HealthResponse
 
+    @GET("me")
+    suspend fun getCurrentUser(): MeDto
+
     @POST("prompts/enhance")
     suspend fun enhancePrompt(@Body request: PromptEnhanceRequest): PromptEnhanceResponse
 
@@ -50,6 +53,25 @@ data class PromptEnhanceResponse(
     val enhancedPrompt: String,
     val provider: String,
     val usedFallback: Boolean,
+)
+
+@Serializable
+data class MeDto(
+    val id: String,
+    val email: String? = null,
+    val username: String? = null,
+    val role: String,
+    val isDisabled: Boolean,
+    val createdAt: String,
+    val quota: QuotaDto,
+)
+
+@Serializable
+data class QuotaDto(
+    val limit: Int,
+    val used: Int,
+    val remaining: Int,
+    val resetsAt: String? = null,
 )
 
 @Serializable

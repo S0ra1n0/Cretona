@@ -3,11 +3,14 @@ package com.cretona.app.data
 import com.cretona.app.core.result.AppError
 import com.cretona.app.core.result.AppResult
 import com.cretona.app.data.remote.CretonaApi
+import com.cretona.app.data.remote.MeDto
 import com.cretona.app.data.remote.ProjectCreateRequest
 import com.cretona.app.data.remote.ProjectDto
 import com.cretona.app.data.remote.PromptEnhanceRequest
 import com.cretona.app.domain.model.EnhancedPrompt
+import com.cretona.app.domain.model.GenerationQuota
 import com.cretona.app.domain.model.ProjectStatus
+import com.cretona.app.domain.model.UserProfile
 import com.cretona.app.domain.model.VideoProject
 import com.cretona.app.domain.repository.CretonaRepository
 import retrofit2.HttpException
@@ -19,6 +22,10 @@ import javax.inject.Singleton
 class CretonaRepositoryImpl @Inject constructor(
     private val api: CretonaApi,
 ) : CretonaRepository {
+    override suspend fun getCurrentUser(): AppResult<UserProfile> = apiCall {
+        api.getCurrentUser().toDomain()
+    }
+
     override suspend fun enhancePrompt(prompt: String): AppResult<EnhancedPrompt> = apiCall {
         val response = api.enhancePrompt(PromptEnhanceRequest(prompt = prompt))
         EnhancedPrompt(
@@ -73,6 +80,21 @@ internal fun ProjectDto.toDomain(): VideoProject = VideoProject(
     errorMessage = errorMessage ?: if (status in knownStatuses) null else "Unknown job status.",
     durationSeconds = durationSeconds,
     createdAt = createdAt,
+)
+
+internal fun MeDto.toDomain(): UserProfile = UserProfile(
+    id = id,
+    email = email,
+    username = username,
+    role = role,
+    isDisabled = isDisabled,
+    createdAt = createdAt,
+    quota = GenerationQuota(
+        limit = quota.limit,
+        used = quota.used,
+        remaining = quota.remaining,
+        resetsAt = quota.resetsAt,
+    ),
 )
 
 private val knownStatuses = setOf("pending", "generating", "completed", "failed")

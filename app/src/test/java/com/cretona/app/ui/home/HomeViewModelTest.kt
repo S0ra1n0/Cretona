@@ -1,8 +1,11 @@
 package com.cretona.app.ui.home
 
+import com.cretona.app.core.result.AppError
 import com.cretona.app.core.result.AppResult
 import com.cretona.app.domain.model.EnhancedPrompt
+import com.cretona.app.domain.model.GenerationQuota
 import com.cretona.app.domain.model.ProjectStatus
+import com.cretona.app.domain.model.UserProfile
 import com.cretona.app.domain.model.VideoProject
 import com.cretona.app.domain.repository.CretonaRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -33,6 +36,7 @@ class HomeViewModelTest {
         assertNotNull(state.currentProject?.videoUrl)
         assertFalse(state.isSubmitting)
         assertEquals(1, state.projects.size)
+        assertEquals(2, repository.accountCalls)
     }
 
     @Test
@@ -60,15 +64,88 @@ class HomeViewModelTest {
         assertEquals("Enter a prompt before generating.", viewModel.state.value.errorMessage)
         assertEquals(0, repository.createCalls)
     }
+
+    @Test
+    fun `opening home loads current quota`() = runTest(mainDispatcherRule.dispatcher) {
+        val viewModel = HomeViewModel(FakeRepository(quotaRemaining = 7))
+
+        advanceUntilIdle()
+
+        assertEquals(7, viewModel.state.value.account?.quota?.remaining)
+        assertFalse(viewModel.state.value.isAccountLoading)
+    }
+
+    @Test
+    fun `confirmed exhausted quota blocks generation before repository call`() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val repository = FakeRepository(quotaRemaining = 0)
+            val viewModel = HomeViewModel(repository)
+            advanceUntilIdle()
+            viewModel.onPromptChanged("A paper dragon over a lantern city")
+
+            viewModel.generateVideo()
+            advanceUntilIdle()
+
+            assertEquals(0, repository.createCalls)
+            assertEquals(
+                "Generation quota is exhausted. Try again after it resets.",
+                viewModel.state.value.errorMessage,
+            )
+        }
+
+    @Test
+    fun `quota failure is recoverable and does not block server-side verification`() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val repository = FakeRepository(accountFailure = true)
+            val viewModel = HomeViewModel(repository)
+            advanceUntilIdle()
+
+            assertFalse(viewModel.state.value.isAccountLoading)
+            assertEquals(
+                "Cannot load quota.",
+                viewModel.state.value.accountErrorMessage,
+            )
+
+            viewModel.onPromptChanged("A recoverable request")
+            viewModel.generateVideo()
+            advanceUntilIdle()
+
+            assertEquals(1, repository.createCalls)
+        }
 }
 
-private class FakeRepository : CretonaRepository {
+private class FakeRepository(
+    private val quotaRemaining: Int = 7,
+    private val accountFailure: Boolean = false,
+) : CretonaRepository {
     private val pending = project(ProjectStatus.PENDING)
     private val completed = project(
         status = ProjectStatus.COMPLETED,
         videoUrl = "http://example.test/media/demo-output.mp4",
     )
     var createCalls = 0
+    var accountCalls = 0
+
+    override suspend fun getCurrentUser(): AppResult<UserProfile> {
+        accountCalls += 1
+        if (accountFailure) return AppResult.Failure(AppError.Network("Cannot load quota."))
+        return AppResult.Success(
+            UserProfile(
+                id = "user-1",
+                email = "student@example.com",
+                username = "bruce",
+                role = "user",
+                isDisabled = false,
+                createdAt = "2026-08-01T00:00:00Z",
+                quota = GenerationQuota(
+                    limit = 10,
+                    used = 10 - quotaRemaining,
+                    remaining = quotaRemaining,
+                    resetsAt = "2026-08-13T12:00:00Z",
+                ),
+            ),
+        )
+    }
 
     override suspend fun enhancePrompt(prompt: String): AppResult<EnhancedPrompt> =
         AppResult.Success(

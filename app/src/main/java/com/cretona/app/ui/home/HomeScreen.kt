@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
@@ -17,6 +18,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -43,9 +45,15 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.compose.PlayerSurface
+import com.cretona.app.domain.model.GenerationQuota
 import com.cretona.app.domain.model.ProjectStatus
+import com.cretona.app.domain.model.UserProfile
 import com.cretona.app.domain.model.VideoProject
 import com.cretona.app.ui.theme.CretonaTheme
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 
 @Composable
 fun HomeScreen(
@@ -66,6 +74,7 @@ fun HomeScreen(
             hideKeyboard(focusManager, keyboardController)
             viewModel.generateVideo()
         },
+        onRefreshAccount = viewModel::refreshAccount,
         onRefresh = viewModel::refreshHistory,
         modifier = modifier,
     )
@@ -78,6 +87,7 @@ private fun HomeContent(
     onPromptChanged: (String) -> Unit,
     onEnhance: () -> Unit,
     onGenerate: () -> Unit,
+    onRefreshAccount: () -> Unit,
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -100,6 +110,15 @@ private fun HomeContent(
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
+            }
+
+            item {
+                QuotaCard(
+                    account = state.account,
+                    isLoading = state.isAccountLoading,
+                    errorMessage = state.accountErrorMessage,
+                    onRetry = onRefreshAccount,
+                )
             }
 
             item {
@@ -134,7 +153,10 @@ private fun HomeContent(
                     }
                     Button(
                         onClick = onGenerate,
-                        enabled = !state.isSubmitting && !state.isEnhancing,
+                        enabled = !state.isSubmitting &&
+                            !state.isEnhancing &&
+                            !state.isAccountLoading &&
+                            !state.isQuotaExhausted,
                         modifier = Modifier.weight(1f),
                     ) {
                         if (state.isSubmitting) {
@@ -143,6 +165,18 @@ private fun HomeContent(
                             Text("Generate")
                         }
                     }
+                }
+                if (state.isAccountLoading) {
+                    Text(
+                        "Checking quota before generation.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                } else if (state.isQuotaExhausted) {
+                    Text(
+                        "Generation is unavailable until your quota resets.",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
             }
 
@@ -186,6 +220,87 @@ private fun HomeContent(
             }
         }
     }
+}
+
+@Composable
+private fun QuotaCard(
+    account: UserProfile?,
+    isLoading: Boolean,
+    errorMessage: String?,
+    onRetry: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("Generation quota", style = MaterialTheme.typography.titleMedium)
+            when {
+                isLoading -> Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    Text("Checking remaining generations...")
+                }
+
+                errorMessage != null -> {
+                    Text("Quota unavailable. $errorMessage")
+                    Text(
+                        "Retry now, or continue after the server verifies quota at submission.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    OutlinedButton(onClick = onRetry) { Text("Retry quota") }
+                }
+
+                account != null -> QuotaDetails(account)
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuotaDetails(account: UserProfile) {
+    val quota = account.quota
+    val fraction = if (quota.limit == 0) 0f else quota.remaining.toFloat() / quota.limit
+    Text("Signed in as ${account.displayName}", style = MaterialTheme.typography.bodySmall)
+    Text(
+        "${quota.remaining} of ${quota.limit} generations remaining",
+        style = MaterialTheme.typography.titleLarge,
+    )
+    LinearProgressIndicator(
+        progress = { fraction.coerceIn(0f, 1f) },
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Text(
+        if (quota.remaining == 0) {
+            resetCopy(quota)
+        } else {
+            "${quota.used} used in the current rolling window."
+        },
+        color = if (quota.remaining == 0) {
+            MaterialTheme.colorScheme.error
+        } else {
+            MaterialTheme.colorScheme.onSecondaryContainer
+        },
+        style = MaterialTheme.typography.bodyMedium,
+    )
+}
+
+private fun resetCopy(quota: GenerationQuota): String {
+    val formatted = quota.resetsAt?.let { value ->
+        runCatching {
+            DateTimeFormatter.ofLocalizedDateTime(FormatStyle.SHORT)
+                .format(Instant.parse(value).atZone(ZoneId.systemDefault()))
+        }.getOrNull()
+    }
+    return formatted?.let { "Quota used. Next generation becomes available after $it." }
+        ?: "Quota used. Refresh later to check when a generation becomes available."
 }
 
 private fun hideKeyboard(
@@ -276,10 +391,28 @@ private fun VideoPlayer(videoUrl: String) {
 private fun HomeScreenPreview() {
     CretonaTheme {
         HomeContent(
-            state = HomeUiState(prompt = "A paper dragon flying over a lantern city"),
+            state = HomeUiState(
+                prompt = "A paper dragon flying over a lantern city",
+                account = UserProfile(
+                    id = "preview-user",
+                    email = "student@example.com",
+                    username = "bruce",
+                    role = "user",
+                    isDisabled = false,
+                    createdAt = "2026-08-01T00:00:00Z",
+                    quota = GenerationQuota(
+                        limit = 10,
+                        used = 3,
+                        remaining = 7,
+                        resetsAt = "2026-08-13T12:00:00Z",
+                    ),
+                ),
+                isAccountLoading = false,
+            ),
             onPromptChanged = {},
             onEnhance = {},
             onGenerate = {},
+            onRefreshAccount = {},
             onRefresh = {},
         )
     }

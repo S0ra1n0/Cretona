@@ -4,6 +4,32 @@
 **Profile:** local development, zero additional cash spend  
 **Result:** PASS within the evidence boundary below
 
+## B-8 quota surface — 2026-08-12
+
+The same `Pixel_10_Pro_XL` AVD cold-started package
+`com.cretona.app.debug` against a dedicated local FastAPI/SQLite QA profile.
+Android called `GET /api/v1/me` through `10.0.2.2`, then rendered the returned
+identity and rolling quota **before** the prompt and Generate action:
+
+- profile: `local_demo`;
+- quota: `10 of 10 generations remaining`, `0 used`;
+- Generate remained enabled because quota was available;
+- the card, prompt, both actions, history heading, and empty state fit the
+  compact portrait viewport without horizontal clipping.
+
+![B-8 Android quota UI](B8_QUOTA_UI.png)
+
+Supporting gates for this increment: 12 Android unit tests, 0 failures/errors;
+`lintDebug` passed; `assembleDebug` passed. Unit coverage includes loading the
+profile, the username-to-email display fallback, post-submit quota refresh,
+confirmed exhaustion blocking a repository call, and `/me` failure remaining
+recoverable without inventing a client-side lockout.
+
+The AVD used a deliberately seeded local development profile and contains no
+Supabase credential. This is observed Android → FastAPI integration evidence,
+not live Supabase Auth/Postgres evidence. The happy path is visually observed;
+exhausted and network-error states are contract/unit evidence, not screenshots.
+
 ## Proven journey
 
 On the `Pixel_10_Pro_XL` Android emulator, package
