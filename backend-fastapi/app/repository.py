@@ -27,6 +27,7 @@ ROW_KEYS = (
     "poll_count",
     "attempt_count",
     "idempotency_key",
+    "started_at",
     "created_at",
     "updated_at",
     "completed_at",
@@ -48,6 +49,8 @@ MUTABLE_COLUMNS = frozenset(
         "attempt_count",
         "updated_at",
         "completed_at",
+        # Reset on every retry so each attempt gets a full timeout budget.
+        "started_at",
     }
 )
 

@@ -40,12 +40,17 @@ def impatient(tmp_path: Path) -> Iterator[TestClient]:
         yield client
 
 
-def age_project(client: TestClient, project_id: str, created_at: str) -> None:
+def age_project(client: TestClient, project_id: str, moment: str) -> None:
+    """Backdate both clocks, so a test cannot pass on the wrong one."""
     with client.app.state.database.connect() as connection:
         connection.execute(
-            "UPDATE projects SET created_at = ? WHERE id = ?",
-            (created_at, project_id),
+            "UPDATE projects SET created_at = ?, started_at = ? WHERE id = ?",
+            (moment, moment, project_id),
         )
+
+
+def started_at(client: TestClient, project_id: str) -> str | None:
+    return client.app.state.database.get_project(project_id, USER_A)["started_at"]
 
 
 def test_a_stuck_generation_eventually_fails(impatient: TestClient) -> None:
@@ -74,6 +79,65 @@ def test_a_timed_out_generation_can_be_retried(impatient: TestClient) -> None:
     retried = impatient.post(f"/api/v1/projects/{created['id']}/retry", headers=HEADERS)
 
     assert retried.status_code == 202
+
+
+def test_a_retry_gets_a_fresh_timeout_budget(impatient: TestClient) -> None:
+    """The bug B-1 exists to fix.
+
+    Measuring from created_at meant a project created long ago and retried a
+    moment ago was failed as timed out on its very next read, which makes
+    retry useless for exactly the transient failures it is meant to handle.
+    """
+    created = impatient.post(
+        "/api/v1/projects", headers=HEADERS, json={"prompt": "slow one"}
+    ).json()
+    impatient.get(f"/api/v1/projects/{created['id']}", headers=HEADERS)
+    age_project(impatient, created["id"], "2020-01-01T00:00:00Z")
+    impatient.get(f"/api/v1/projects/{created['id']}", headers=HEADERS)
+
+    impatient.post(f"/api/v1/projects/{created['id']}/retry", headers=HEADERS)
+    body = impatient.get(f"/api/v1/projects/{created['id']}", headers=HEADERS).json()
+
+    # Still in flight: the old creation date no longer condemns it.
+    assert body["status"] == "generating"
+
+
+def test_the_attempt_clock_is_set_on_submit_and_reset_on_retry(
+    impatient: TestClient,
+) -> None:
+    created = impatient.post(
+        "/api/v1/projects", headers=HEADERS, json={"prompt": "slow one"}
+    ).json()
+    first = started_at(impatient, created["id"])
+    assert first is not None
+
+    age_project(impatient, created["id"], "2020-01-01T00:00:00Z")
+    impatient.get(f"/api/v1/projects/{created['id']}", headers=HEADERS)
+    impatient.post(f"/api/v1/projects/{created['id']}/retry", headers=HEADERS)
+
+    assert started_at(impatient, created["id"]) > "2020-01-01T00:00:00Z"
+
+
+def test_a_row_without_an_attempt_clock_falls_back_to_created_at(
+    impatient: TestClient,
+) -> None:
+    """Rows written before migration 004 have no started_at."""
+    created = impatient.post(
+        "/api/v1/projects", headers=HEADERS, json={"prompt": "slow one"}
+    ).json()
+    impatient.get(f"/api/v1/projects/{created['id']}", headers=HEADERS)
+
+    with impatient.app.state.database.connect() as connection:
+        connection.execute(
+            "UPDATE projects SET started_at = NULL, created_at = ? WHERE id = ?",
+            ("2020-01-01T00:00:00Z", created["id"]),
+        )
+
+    body = impatient.get(f"/api/v1/projects/{created['id']}", headers=HEADERS).json()
+
+    # Falls back rather than being read as "started at the epoch".
+    assert body["status"] == "failed"
+    assert body["errorMessage"] == "Video generation took too long. Please retry later."
 
 
 def test_a_fresh_generation_is_not_timed_out(impatient: TestClient) -> None:

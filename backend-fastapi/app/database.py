@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS projects (
     poll_count INTEGER NOT NULL DEFAULT 0,
     attempt_count INTEGER NOT NULL DEFAULT 0,
     idempotency_key TEXT,
+    started_at TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     completed_at TEXT,
@@ -81,6 +82,9 @@ ADDED_COLUMNS = {
     "projects": {
         "attempt_count": "INTEGER NOT NULL DEFAULT 0",
         "deleted_at": "TEXT",
+        # Nullable: rows written before this column existed fall back to
+        # created_at rather than being read as "started at the epoch".
+        "started_at": "TEXT",
     },
     "users": {
         "username": "TEXT",

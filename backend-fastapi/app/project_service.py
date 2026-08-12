@@ -126,6 +126,9 @@ class ProjectService:
                     "provider_job_id": submitted.job_id,
                     # A submission is the unit a retry budget counts (FR-2.11).
                     "attempt_count": 1,
+                    # The attempt clock starts when the provider accepts it,
+                    # not when the row was created.
+                    "started_at": utc_now(),
                     "updated_at": utc_now(),
                 },
                 expected_status="pending",
@@ -236,6 +239,10 @@ class ProjectService:
                 "thumbnail_path": None,
                 "poll_count": 0,
                 "attempt_count": attempts + 1,
+                # A fresh attempt gets a fresh timeout budget. Without this a
+                # project created long ago would time out the instant it was
+                # retried, which defeats the point of retrying.
+                "started_at": now,
                 "updated_at": now,
                 "completed_at": None,
             },
@@ -352,14 +359,16 @@ class ProjectService:
         return stored
 
     def _timed_out(self, row: dict[str, Any]) -> bool:
-        """Has this generation been in flight too long?
+        """Has the current attempt been in flight too long?
 
-        Measured from `created_at`, so a retried project inherits the original
-        clock rather than getting a fresh budget. Doing that properly needs a
-        per-attempt `started_at` column; until then a timeout is a safety net
-        against stuck jobs, not precise instrumentation.
+        Measured from `started_at`, which is set on submit and reset on every
+        retry, so each attempt gets the full budget. Rows written before that
+        column existed have none, and fall back to `created_at` rather than
+        being read as having started at the epoch and failed on sight.
         """
-        started = _parse_timestamp(row.get("created_at"))
+        started = _parse_timestamp(row.get("started_at")) or _parse_timestamp(
+            row.get("created_at")
+        )
         if started is None:
             return False
         age = (datetime.now(UTC) - started).total_seconds()

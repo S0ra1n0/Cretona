@@ -94,7 +94,10 @@ def postgres_client(tmp_path: Path, postgres_url: str) -> Iterator[TestClient]:
     psycopg = pytest.importorskip("psycopg")
 
     schema = (Path(__file__).parent / "postgres_schema.sql").read_text(encoding="utf-8")
-    with psycopg.connect(postgres_url, autocommit=True) as connection:
+    # Fail fast. Without a timeout, a configured-but-unreachable database (a
+    # stopped container, a sleeping laptop) hangs the whole suite instead of
+    # reporting that it cannot connect.
+    with psycopg.connect(postgres_url, autocommit=True, connect_timeout=5) as connection:
         connection.execute(schema)
         for user_id, email in ((USER_A, "a@example.com"), (USER_B, "b@example.com")):
             connection.execute(

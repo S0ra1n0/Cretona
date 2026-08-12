@@ -31,8 +31,8 @@ DB_TO_SERVICE = {value: key for key, value in SERVICE_TO_DB.items()}
 SELECTED_COLUMNS = (
     "id, user_id, title, prompt, image_path, provider, status, provider_job_id, "
     "error_code, error_message, duration_seconds, aspect_ratio, video_path, "
-    "thumbnail_path, poll_count, attempt_count, idempotency_key, created_at, "
-    "updated_at, completed_at"
+    "thumbnail_path, poll_count, attempt_count, idempotency_key, started_at, "
+    "created_at, updated_at, completed_at"
 )
 
 
@@ -75,8 +75,9 @@ class PostgresDatabase:
         except psycopg.errors.UndefinedColumn as exc:
             raise SchemaMismatchError(
                 f"{TABLE} is missing a column this backend needs. Apply "
-                "supabase/002_add_error_code.sql and "
-                "supabase/003_add_fastapi_parity_columns.sql."
+                "supabase/002_add_error_code.sql, "
+                "supabase/003_add_fastapi_parity_columns.sql, and "
+                "supabase/004_add_started_at.sql."
             ) from exc
 
     def close(self) -> None:

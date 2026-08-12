@@ -8,7 +8,8 @@
 -- ############################################################################
 --
 -- Mirrors the parts of supabase/bootstrap.sql + 002_add_error_code.sql +
--- 003_add_fastapi_parity_columns.sql that app/postgres.py actually reads and
+-- 003_add_fastapi_parity_columns.sql + 004_add_started_at.sql that
+-- app/postgres.py actually reads and
 -- writes. Supabase-only concerns are deliberately absent because a plain
 -- Postgres container has no `auth` or `storage` schema:
 --
@@ -65,6 +66,7 @@ create table public.video_projects (
   poll_count       smallint       not null default 0,
   idempotency_key  text,
   attempt_count    smallint       not null default 0,
+  started_at       timestamptz,
   created_at       timestamptz    not null default now(),
   updated_at       timestamptz    not null default now(),
   completed_at     timestamptz,
