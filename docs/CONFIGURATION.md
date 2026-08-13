@@ -42,7 +42,7 @@ credentials it needs.
 | `MAX_GENERATION_ATTEMPTS` | `3` | Submissions per project before a retry is refused |
 | `GENERATION_QUOTA_LIMIT` | `10` | Per user per window. This is the spend control (ADR-007) |
 | `GENERATION_QUOTA_WINDOW_HOURS` | `24` | |
-| `RATE_LIMIT_ENABLED` | `true` | Burst protection only; in-memory, so per process |
+| `RATE_LIMIT_ENABLED` | `true` | Burst protection only; Postgres shares one atomic window across API instances, while SQLite uses the credential-free in-memory fallback |
 | `RATE_LIMIT_DEFAULT_PER_MIN` | `120` | |
 | `RATE_LIMIT_GENERATION_PER_MIN` | `10` | Tighter bucket for writes that cost money |
 | `POLLER_ENABLED` | `true` | Advances jobs without waiting for a client read |

@@ -108,6 +108,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     limiter = RateLimiter(
         default_per_minute=active_settings.rate_limit_default_per_min,
         generation_per_minute=active_settings.rate_limit_generation_per_min,
+        shared_store=database if database.backend == "postgres" else None,
     )
     api.state.rate_limiter = limiter
     api.state.project_service = ProjectService(

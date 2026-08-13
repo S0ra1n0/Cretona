@@ -80,9 +80,81 @@ class PostgresDatabase:
                 "supabase/004_add_started_at.sql, and "
                 "supabase/005_add_poll_lease.sql."
             ) from exc
+        try:
+            with self.pool.connection() as connection:
+                connection.execute(
+                    "SELECT caller_key, bucket, occurred_at "
+                    "FROM public.rate_limit_hits LIMIT 0"
+                )
+        except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn) as exc:
+            raise SchemaMismatchError(
+                "public.rate_limit_hits is missing or incompatible. Apply "
+                "supabase/007_add_shared_rate_limits.sql."
+            ) from exc
 
     def close(self) -> None:
         self.pool.close()
+
+    # --- rate limiting -------------------------------------------------------
+
+    def consume_rate_limit(
+        self,
+        key: str,
+        bucket: str,
+        limit: int,
+        window_seconds: float,
+    ) -> tuple[bool, int]:
+        """Atomically consume one slot in a shared sliding window.
+
+        The transaction-scoped advisory lock serializes only this caller and
+        bucket across API instances. The database clock is authoritative, so
+        host clock skew cannot create extra allowance. Old rows are deleted in
+        a bounded, SKIP LOCKED batch to keep abandoned callers from growing the
+        table forever.
+        """
+        with self.pool.connection() as connection:
+            connection.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                (f"{key}\x1f{bucket}",),
+            )
+            now_row = connection.execute("SELECT clock_timestamp() AS now").fetchone()
+            if now_row is None:  # pragma: no cover - SELECT always returns one row
+                raise RuntimeError("Database clock did not return a value.")
+            now = now_row["now"]
+
+            connection.execute(
+                "DELETE FROM public.rate_limit_hits "
+                "WHERE caller_key = %s AND bucket = %s "
+                "AND occurred_at <= %s::timestamptz - (%s * interval '1 second')",
+                (key, bucket, now, window_seconds),
+            )
+            count_row = connection.execute(
+                "SELECT COUNT(*) AS total FROM public.rate_limit_hits "
+                "WHERE caller_key = %s AND bucket = %s",
+                (key, bucket),
+            ).fetchone()
+            used = int(count_row["total"] if count_row else 0)
+            allowed = used < limit
+            if allowed:
+                connection.execute(
+                    "INSERT INTO public.rate_limit_hits (caller_key, bucket, occurred_at) "
+                    "VALUES (%s, %s, %s)",
+                    (key, bucket, now),
+                )
+                used += 1
+
+            connection.execute(
+                "WITH expired AS ("
+                "  SELECT id FROM public.rate_limit_hits "
+                "  WHERE occurred_at <= %s::timestamptz - (%s * interval '1 second') "
+                "  ORDER BY occurred_at ASC, id ASC LIMIT 1000 "
+                "  FOR UPDATE SKIP LOCKED"
+                ") DELETE FROM public.rate_limit_hits hits "
+                "USING expired WHERE hits.id = expired.id",
+                (now, window_seconds),
+            )
+
+        return allowed, max(0, limit - used)
 
     # --- users ---------------------------------------------------------------
 

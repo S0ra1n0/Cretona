@@ -13,6 +13,7 @@ Each ADR captures one decision, why it was made, and what it costs us. They are 
 | [007](ADR-007-quota-model.md) | Per-user rolling daily generation quota | Accepted (limit provisional) | P0-6 |
 | [008](ADR-008-fastapi-migration.md) | FastAPI is the active backend; Express remains a tested migration reference until parity | Accepted | P0-7 |
 | [009](ADR-009-zero-spend-provider-gate.md) | Keep fake integration evidence and select a real local video model only through EXP-005 | Accepted | P0-2 |
+| [010](ADR-010-shared-rate-limit-store.md) | Postgres-backed shared rate-limit windows; in-memory fallback for SQLite | Accepted | B-3 |
 
 ## Status values
 

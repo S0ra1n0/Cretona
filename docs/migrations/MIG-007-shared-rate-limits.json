@@ -1,0 +1,240 @@
+{
+  "schema_version": "1.0",
+  "migration": {
+    "id": "MIG-007",
+    "status": "complete",
+    "objective": "Add an internal Postgres store for atomic multi-instance sliding-window rate limiting.",
+    "project_id": "cretona",
+    "requirement_ids": ["B-3", "FR-5.3"],
+    "decision_ids": ["ADR-010"],
+    "target_environment": "Supabase Postgres deployment profile; rehearse on disposable local Postgres first",
+    "planned_at": "2026-08-13"
+  },
+  "routing": {
+    "orchestrator": "build-software-project",
+    "handoff_target": "Bruce and S0ra1n0",
+    "specialist_self_activation": false,
+    "reroute_recommendations": []
+  },
+  "authority": {
+    "data_authority": "Bruce and S0ra1n0",
+    "destructive_change_approved_by": "not applicable; expand-only migration",
+    "production_execution_authority": "Bruce",
+    "execution_authorized_by_specialist": false,
+    "point_of_no_return_approver": "not applicable; no point of no return"
+  },
+  "scope": {
+    "include": [
+      "Create public.rate_limit_hits with caller-window and cleanup indexes",
+      "Enable RLS and revoke Data API roles",
+      "Deploy the B-3 FastAPI reader/writer only after schema expansion"
+    ],
+    "exclude": [
+      "Applying any SQL to live Supabase in this task",
+      "Changing quota accounting",
+      "Adding Redis",
+      "Changing Android or the HTTP error/header contract"
+    ],
+    "non_goals": [
+      "High-volume distributed rate-limiting platform",
+      "Long-term request analytics",
+      "Client access to rate-limit rows"
+    ],
+    "maintenance_or_downtime_constraints": [
+      "Expand before application deployment",
+      "No planned downtime; the table is additive and initially empty"
+    ]
+  },
+  "states": {
+    "source": {
+      "schema_revision": "supabase/006_add_generation_log_retention_index.sql prepared but not applied live",
+      "application_revisions": ["a0efe341e2f71779371083cffdb26e2c498f7f3d"],
+      "database_engine_and_version": "Supabase Postgres live version unknown; disposable test version discovered at rehearsal",
+      "data_profile_evidence": [
+        "No rate-limit table or historical rows exist",
+        "Live Supabase has not been inspected or mutated",
+        "Migrations 004 through 006 remain prepared and unapplied"
+      ]
+    },
+    "target": {
+      "schema_revision": "supabase/007_add_shared_rate_limits.sql",
+      "application_revisions": ["B-3 commit to be pinned after integration"],
+      "approved_contract_ids": ["ADR-010", "B-3", "FR-5.3"],
+      "invariants": [
+        "At most the configured allowance is accepted per hashed caller and bucket in any 60-second sliding window",
+        "Health remains unthrottled",
+        "No bearer token, debug user id, or IP address is stored in plaintext",
+        "SQLite remains credential-free and process-local",
+        "No Data API client role can access rate_limit_hits"
+      ]
+    }
+  },
+  "ownership": {
+    "plan_owner": "Bruce",
+    "data_owner": "Bruce and S0ra1n0",
+    "application_owners": ["Bruce", "S0ra1n0"],
+    "operations_owner": "Bruce",
+    "reviewer": "S0ra1n0",
+    "integrator": "Bruce"
+  },
+  "impact": {
+    "change_classes": ["additive table", "additive indexes", "ephemeral retention cleanup"],
+    "readers": ["FastAPI Postgres rate limiter only"],
+    "writers": ["FastAPI Postgres rate limiter only"],
+    "jobs_and_integrations": ["Supabase Postgres direct connection pool"],
+    "reports_and_analytics": [],
+    "caches_events_and_replicas": ["No cache or event consumer; normal database replication applies"],
+    "mixed_version_compatibility": [
+      "Old FastAPI revisions ignore the additive table",
+      "B-3 FastAPI refuses startup until migration 007 exists",
+      "Apply schema first, then deploy code; rollback code before optional table removal"
+    ],
+    "privacy_retention_security": [
+      "caller_key is a truncated SHA-256 digest with a source-type prefix",
+      "Rows are ephemeral and expired rows are removed in bounded batches",
+      "RLS is enabled with no client policy and all Data API roles are revoked"
+    ]
+  },
+  "operations": [
+    {
+      "id": "MIG-007-OP-01",
+      "name": "Preflight live schema and recovery evidence",
+      "status": "planned",
+      "owner": "Bruce",
+      "phase": "preflight",
+      "action_or_pseudocode": "Confirm migrations 004, 005, and 006 are applied in order; confirm backup status and current Postgres version; review SQL and live schema drift.",
+      "preconditions": ["Bruce authorizes live read-only preflight", "Current backup state is available"],
+      "transaction_and_locking": "Read-only checks",
+      "compatibility": "No application effect",
+      "idempotency_and_restart": "All checks are read-only and may be restarted",
+      "verification": "Expected columns and indexes from migrations 004-006 exist",
+      "monitoring": ["Record exact schema revision, Postgres version, and backup state"],
+      "pause_or_abort": "Stop on schema drift, failed backup evidence, or missing authority",
+      "rollback_or_forward_recovery": "Not applicable"
+    },
+    {
+      "id": "MIG-007-OP-02",
+      "name": "Expand schema with rate-limit storage",
+      "status": "planned",
+      "owner": "Bruce",
+      "phase": "expand",
+      "action_or_pseudocode": "Apply supabase/007_add_shared_rate_limits.sql once through the approved SQL workflow.",
+      "preconditions": ["OP-01 passed", "Bruce approves live execution", "S0ra1n0 reviewed migration 007"],
+      "transaction_and_locking": "One short DDL transaction on a new empty table; no existing data rewrite",
+      "compatibility": "Old application revisions ignore the new table",
+      "idempotency_and_restart": "CREATE IF NOT EXISTS and guarded indexes make a clean matching target re-runnable; stop on divergent pre-existing objects",
+      "verification": "Run the column, RLS, grants, and index queries embedded in migration 007",
+      "monitoring": ["DDL result", "RLS state", "Data API grants", "Index inventory"],
+      "pause_or_abort": "Abort on any SQL error or unexpected existing object definition",
+      "rollback_or_forward_recovery": "Transaction rollback before commit; after commit the unused additive table may remain"
+    },
+    {
+      "id": "MIG-007-OP-03",
+      "name": "Switch FastAPI to the shared store",
+      "status": "planned",
+      "owner": "Bruce",
+      "phase": "switch",
+      "action_or_pseudocode": "Deploy the pinned B-3 FastAPI revision and perform health plus rate-limit smoke checks.",
+      "preconditions": ["OP-02 verified", "B-3 commit and configuration are pinned", "Rollback artifact is available"],
+      "transaction_and_locking": "Per request, transaction-level advisory lock scoped to hashed caller and bucket",
+      "compatibility": "Requires migration 007; startup fails with a named message when absent",
+      "idempotency_and_restart": "Application deployment is repeatable; limiter rows are ephemeral and need no backfill",
+      "verification": "Two instances jointly accept exactly the configured allowance and return canonical 429 headers thereafter",
+      "monitoring": ["Health", "5xx rate", "429 rate", "database latency", "pool saturation"],
+      "pause_or_abort": "Rollback application on startup failure, elevated 5xx, database pool exhaustion, or incorrect allowance",
+      "rollback_or_forward_recovery": "Redeploy the pre-B-3 application; leave the additive table in place"
+    },
+    {
+      "id": "MIG-007-OP-04",
+      "name": "Observe shared limiter behavior",
+      "status": "planned",
+      "owner": "Bruce",
+      "phase": "observe",
+      "action_or_pseudocode": "Observe database latency, lock waits, pool saturation, 429 rate, and expired-row count through the agreed window.",
+      "preconditions": ["OP-03 smoke checks passed"],
+      "transaction_and_locking": "No schema operation",
+      "compatibility": "B-3 application active",
+      "idempotency_and_restart": "Observation queries may be repeated without mutation",
+      "verification": "No sustained lock waits or unbounded expired rows",
+      "monitoring": ["Database latency", "advisory lock waits", "pool saturation", "429 rate", "expired-row count and age"],
+      "pause_or_abort": "Rollback application if rate-limit database work materially degrades API availability",
+      "rollback_or_forward_recovery": "Application rollback; evaluate Redis only with measured evidence"
+    }
+  ],
+  "safety": {
+    "estimates_and_measurements": [
+      "Derived: table is empty at creation, so DDL duration should be short; live duration remains unmeasured",
+      "One small database transaction is added per limited request",
+      "Cleanup deletes at most 1000 expired rows per request"
+    ],
+    "rehearsal": [
+      "Apply the disposable postgres_schema.sql on a local-only database",
+      "Run concurrent calls through two PostgresDatabase instances",
+      "Run the full credential-free suite even when local Postgres is unavailable"
+    ],
+    "correctness_and_reconciliation": [
+      "Exactly limit requests are allowed under concurrent two-instance load",
+      "Allowed remaining values count down to zero",
+      "Expired rows age out and different caller/bucket keys remain independent",
+      "Data API roles have zero privileges"
+    ],
+    "backup": [
+      "Confirm Supabase backup state before live execution even though the migration is additive"
+    ],
+    "restore_or_forward_recovery": [
+      "Rollback app first; retaining the unused table is safe",
+      "Drop the table only in a separately approved cleanup after all B-3 readers/writers are retired"
+    ],
+    "monitoring_and_alerts": [
+      "API database latency and 5xx rate",
+      "Postgres lock waits and connection-pool saturation",
+      "429 response rate by bucket without logging caller keys",
+      "Count and age of expired rate_limit_hits"
+    ],
+    "pause_abort_thresholds": [
+      "Any unexpected schema drift or privilege exposure",
+      "Any concurrent test accepting more than the configured limit",
+      "Any plaintext credential or caller identifier in persisted rows",
+      "Any sustained API availability regression attributable to the limiter"
+    ],
+    "hold_points": [
+      "Bruce approves live migration execution",
+      "S0ra1n0 reviews migration 007 and ADR-010",
+      "Local/Postgres rehearsal evidence is attached before deployment"
+    ],
+    "observation_window": "At least one normal demo/use session after deployment; exact production duration is not yet approved"
+  },
+  "handoff": {
+    "decisions_needed": [
+      "Approve when to apply migrations 004 through 007 to live Supabase"
+    ],
+    "blockers": [
+      "No live Supabase schema or runtime verification is authorized in this task"
+    ],
+    "assumptions": [
+      "Deployment uses the direct Postgres connection configured by CRETONA_DATABASE_URL",
+      "Expected course-project traffic is low enough for one rate-limit transaction per request"
+    ],
+    "unknowns": [
+      "Live Supabase Postgres version, row counts, backup state, and schema drift",
+      "Observed database latency under representative multi-instance traffic"
+    ],
+    "limitations": [
+      "Local SQLite proof is not live Supabase proof",
+      "Hashing identifiers is pseudonymization, not anonymization",
+      "Cleanup runs on incoming limited traffic rather than a separate scheduler"
+    ],
+    "residual_risks": [
+      "A database outage makes protected endpoints unavailable instead of failing open",
+      "Advisory-lock hash collisions may serialize unrelated callers",
+      "Bearer-token rotation creates a new caller key under the preserved pre-auth middleware contract"
+    ],
+    "evidence_ledger_targets": [
+      "Focused rate-limit unit tests",
+      "Concurrent disposable-Postgres test",
+      "Full FastAPI test suite",
+      "Ruff and git diff --check",
+      "Live migration verification remains separate and pending"
+    ]
+  }
+}

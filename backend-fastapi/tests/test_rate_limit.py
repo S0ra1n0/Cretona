@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -84,6 +85,58 @@ def test_the_token_is_hashed_not_stored() -> None:
 
     assert "secret-token-value" not in key
     assert key.startswith("t:")
+
+
+def test_debug_identity_and_host_are_hashed_not_stored() -> None:
+    user_key = caller_key(None, USER_A, "1.2.3.4")
+    host_key = caller_key(None, None, "1.2.3.4")
+
+    assert USER_A not in user_key
+    assert "1.2.3.4" not in host_key
+    assert user_key.startswith("u:")
+    assert host_key.startswith("h:")
+
+
+class RecordingSharedStore:
+    def __init__(self, result: tuple[bool, int]) -> None:
+        self.result = result
+        self.calls: list[dict[str, Any]] = []
+
+    def consume_rate_limit(
+        self,
+        key: str,
+        bucket: str,
+        limit: int,
+        window_seconds: float,
+    ) -> tuple[bool, int]:
+        self.calls.append(
+            {
+                "key": key,
+                "bucket": bucket,
+                "limit": limit,
+                "window_seconds": window_seconds,
+            }
+        )
+        return self.result
+
+
+def test_shared_store_is_the_authority_when_configured() -> None:
+    store = RecordingSharedStore((False, 0))
+    limiter = RateLimiter(
+        default_per_minute=3,
+        generation_per_minute=1,
+        shared_store=store,
+    )
+
+    assert limiter.check("k", "generation") == (False, 1, 0)
+    assert store.calls == [
+        {
+            "key": "k",
+            "bucket": "generation",
+            "limit": 1,
+            "window_seconds": 60.0,
+        }
+    ]
 
 
 def test_callers_are_distinguished_by_the_best_signal_available() -> None:

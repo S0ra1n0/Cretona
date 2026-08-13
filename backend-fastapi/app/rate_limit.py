@@ -4,6 +4,7 @@ import hashlib
 from collections import defaultdict, deque
 from threading import Lock
 from time import monotonic
+from typing import Protocol
 
 WINDOW_SECONDS = 60.0
 
@@ -13,25 +14,54 @@ WINDOW_SECONDS = 60.0
 GENERATION_PATHS = ("/projects",)
 
 
-class RateLimiter:
-    """Fixed-cost sliding window, held in memory.
+class SharedRateLimitStore(Protocol):
+    """Persistence boundary for a limiter shared by several API instances."""
 
-    In-memory means per-process: two instances behind a load balancer each
-    permit the configured rate, so this bounds bursts rather than enforcing a
-    global ceiling. That is the correct trade only because the quota, which is
-    database-backed, is what protects the budget.
+    def consume_rate_limit(
+        self,
+        key: str,
+        bucket: str,
+        limit: int,
+        window_seconds: float,
+    ) -> tuple[bool, int]: ...
+
+
+class RateLimiter:
+    """Sliding-window limiter with a credential-free in-memory fallback.
+
+    Postgres deployments inject a shared store so every API instance observes
+    one window. SQLite keeps this process-local implementation because it is
+    the zero-credential development profile, not a multi-instance deployment.
     """
 
-    def __init__(self, *, default_per_minute: int, generation_per_minute: int) -> None:
+    def __init__(
+        self,
+        *,
+        default_per_minute: int,
+        generation_per_minute: int,
+        shared_store: SharedRateLimitStore | None = None,
+    ) -> None:
         self.default_per_minute = default_per_minute
         self.generation_per_minute = generation_per_minute
+        self._shared_store = shared_store
         self._hits: dict[tuple[str, str], deque[float]] = defaultdict(deque)
         self._lock = Lock()
 
     def check(self, key: str, bucket: str, now: float | None = None) -> tuple[bool, int, int]:
         """Return (allowed, limit, remaining) and record the hit if allowed."""
-        moment = monotonic() if now is None else now
         limit = self.generation_per_minute if bucket == "generation" else self.default_per_minute
+        if self._shared_store is not None:
+            if now is not None:
+                raise ValueError("A shared rate limiter owns its database clock.")
+            allowed, remaining = self._shared_store.consume_rate_limit(
+                key,
+                bucket,
+                limit,
+                WINDOW_SECONDS,
+            )
+            return allowed, limit, remaining
+
+        moment = monotonic() if now is None else now
 
         with self._lock:
             hits = self._hits[(key, bucket)]
@@ -59,12 +89,14 @@ def bucket_for(method: str, path: str) -> str:
 def caller_key(authorization: str | None, debug_user_id: str | None, client_host: str) -> str:
     """Identify the caller without storing a credential.
 
-    The token is hashed rather than kept: this map outlives any single request,
-    and a bearer token sitting in process memory keyed by itself is an
-    unnecessary place for one to leak from.
+    Every source is hashed because the shared store outlives a request. That
+    keeps bearer tokens, debug identities, and client IP addresses out of both
+    process keys and persisted rows.
     """
     if authorization:
-        return "t:" + hashlib.sha256(authorization.encode()).hexdigest()[:32]
-    if debug_user_id:
-        return f"u:{debug_user_id}"
-    return f"h:{client_host}"
+        prefix, source = "t:", authorization
+    elif debug_user_id:
+        prefix, source = "u:", debug_user_id
+    else:
+        prefix, source = "h:", client_host
+    return prefix + hashlib.sha256(source.encode()).hexdigest()[:32]

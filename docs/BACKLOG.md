@@ -1,7 +1,7 @@
 # Cretona — post-parity backlog
 
 Status: written 2026-08-12, after FastAPI reached behavioural parity with the
-Express reference. Last updated 2026-08-12 after B-4.
+Express reference. Last updated 2026-08-13 after B-3.
 
 ## Progress
 
@@ -9,23 +9,26 @@ Express reference. Last updated 2026-08-12 after B-4.
 |---|---|---|
 | B-1 | Per-attempt `started_at` | **Done** — `1f1b39c`, verified 239 passed |
 | B-2 | Poller lease fencing | **Done** — `32b6b0d`, verified 245 passed |
-| B-3 | Shared-store rate limiting | Next in Tier 1. Blocked on an infrastructure choice: Redis, or a Postgres table. Postgres adds no new service and is probably right at this scale |
+| B-3 | Shared-store rate limiting | **Done** — Postgres sliding window with atomic advisory-lock transactions, bounded cleanup, hashed caller keys, and SQLite in-memory fallback; 241 passed / 20 Postgres-only skipped; live migration remains unapplied |
 | B-4 | `generation_logs` retention | **Done** — 180-day, oldest-first bounded cleanup with metadata-only aggregation; verified 239 passed / 19 Postgres-only skipped; live migration remains unapplied |
 | B-8 | Android consumes `/me` | **Done** — quota/identity loading, retry, exhausted-state prevention, post-submit refresh, and AVD evidence; 12 Android tests plus clean lint/assembly |
 | B-9 | Android shows thumbnails | **Done** — Coil history preview with loading/error fallback, project aspect ratio, and AVD evidence; 12 Android tests plus clean lint/assembly |
 
-**Three migrations are prepared and unapplied**, all additive and re-runnable.
+**Four migrations are prepared and unapplied**, all additive and re-runnable.
 Apply them in numeric order:
 
 - `supabase/004_add_started_at.sql` (B-1)
 - `supabase/005_add_poll_lease.sql` (B-2)
 - `supabase/006_add_generation_log_retention_index.sql` (B-4)
+- `supabase/007_add_shared_rate_limits.sql` (B-3)
 
-Until 004 and 005 are applied, `CRETONA_DATABASE_BACKEND=postgres` against
+Until 004, 005, and 007 are applied, `CRETONA_DATABASE_BACKEND=postgres` against
 Supabase refuses to start and names the files to run. That is the intended
 behaviour, not a fault. Missing 006 does not change correctness, but leaves the
 retention sweep without its table-wide cutoff index. Local Postgres already
-has all three changes via `tests/postgres_schema.sql`.
+models all four changes via `tests/postgres_schema.sql`; the Postgres suite was
+not run on 2026-08-13 because no disposable database or Docker daemon was
+available.
 
 ## How to read this
 
@@ -70,10 +73,10 @@ than merely incomplete.
 |---|---|---|---|---|
 | ~~B-1~~ | ~~Per-attempt `started_at`~~ | **Done.** Timeout now measures per attempt; retry gets a fresh budget | M | D |
 | ~~B-2~~ | ~~Lease fencing on poller claims~~ | **Done.** The claim is now data that survives the transaction, not a lock that evaporated before the work started | M | D |
-| B-3 | Shared-store rate limiting | In-memory means per process. Two instances each permit the full rate; a restart forgets every window. Must land **before** running more than one instance | M | D |
+| ~~B-3~~ | ~~Shared-store rate limiting~~ | **Done.** Postgres instances share an atomic sliding window; SQLite retains the explicit single-process fallback | M | D |
 
-B-3 needs an infrastructure decision first (Redis vs a Postgres table). The
-Postgres option adds no new service and is probably right at this scale.
+B-3 selected Postgres in ADR-010 because it adds no new service at this scale.
+Migration 007 and its live verification remain deployment hold points.
 
 ## Tier 2 — Operability
 
@@ -117,8 +120,7 @@ These need a human decision, not just implementation time.
 1. ~~**B-1, B-2**~~ — done.
 2. ~~**B-4**~~ — done.
 3. ~~**B-8, B-9**~~ — done.
-4. **B-3** — required before any multi-instance deployment, pointless before
-   one. Needs the Redis-vs-Postgres call first.
+4. ~~**B-3**~~ — done; migration 007 must precede a multi-instance deploy.
 5. Everything else, as the situation demands.
 
 Do not start B-15 until live Supabase verification has happened. Renaming the

@@ -7,7 +7,11 @@ Database and storage setup for Cretona. Specified in [docs/DATA_MODEL.md](../doc
 1. **Create the project** (P1-1) at [supabase.com](https://supabase.com). Pick the region closest to your users.
 2. **Run [`bootstrap.sql`](bootstrap.sql)** — open the SQL Editor, paste the whole file, execute. It is one transaction and safe to re-run.
 
-   Then run **[`002_add_error_code.sql`](002_add_error_code.sql)**, which adds the machine-readable failure code the quota query depends on. Migrations are numbered and applied in order.
+   Then apply the numbered migrations in order. The current sequence is
+   `002_add_error_code.sql` through `007_add_shared_rate_limits.sql`; never
+   skip a number. Migrations 004–007 are currently prepared but not applied to
+   the live project, so their status comments and verification blocks are the
+   execution checklist.
 3. **Run the verification queries** at the bottom of that file. All must pass before moving on.
 
    > The RLS check filters on `relnamespace = 'public'::regnamespace` deliberately. `auth.users` is *also* called `users` and has RLS off, so an unfiltered query returns two `users` rows and looks like a failure when nothing is wrong.
@@ -20,7 +24,9 @@ Database and storage setup for Cretona. Specified in [docs/DATA_MODEL.md](../doc
    ```sql
    update public.users set role_id = 2 where email = 'you@example.com';
    ```
-6. **Copy the keys** (Settings → API and Settings → Database) into `local.properties` and `backend/.env`, as described in [docs/SETUP.md](../docs/SETUP.md).
+6. **Copy the keys** (Settings → API and Settings → Database) into
+   `local.properties` and the active `backend-fastapi/.env`, as described in
+   [docs/SETUP.md](../docs/SETUP.md).
 
 > Only the **anon** key goes in `local.properties`. The `service_role` key bypasses RLS entirely and belongs in the backend environment alone.
 
@@ -72,3 +78,7 @@ Add a numbered file (`002_add_x.sql`) rather than editing `bootstrap.sql`, so an
 - [backend/prisma/schema.prisma](../backend/prisma/schema.prisma) — the client model
 
 `prisma db pull` reports drift between the schema file and the live database. Do **not** use `prisma migrate` — it does not know about the RLS policies, the `auth.users` trigger, or the partial indexes, and will try to remove them.
+
+The B-3 rate-limit table is an exception to the Prisma-model update rule: it is
+an internal concern of the active FastAPI adapter, while `backend/` is retained
+only as Express migration evidence under ADR-008.

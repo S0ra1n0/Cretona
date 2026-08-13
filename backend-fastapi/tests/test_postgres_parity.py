@@ -9,6 +9,7 @@ or pagination would be invisible to the SQLite suite.
 from __future__ import annotations
 
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from typing import Any
 
@@ -16,7 +17,7 @@ import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
-from app.postgres import SELECTED_COLUMNS
+from app.postgres import SELECTED_COLUMNS, PostgresDatabase
 from tests.conftest import USER_A, USER_B
 
 BearerFactory = Callable[..., dict[str, str]]
@@ -56,6 +57,37 @@ def test_every_selected_column_exists(postgres_client: TestClient, postgres_url:
         ).fetchall()
 
     assert expected <= {row[0] for row in rows}
+
+
+def test_rate_limit_is_atomic_across_postgres_instances(
+    postgres_client: TestClient,
+    postgres_url: str,
+) -> None:
+    first = PostgresDatabase(postgres_url, min_size=1, max_size=4)
+    second = PostgresDatabase(postgres_url, min_size=1, max_size=4)
+    first.initialize()
+    second.initialize()
+
+    try:
+        stores = [first, second] * 10
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            results = list(
+                executor.map(
+                    lambda store: store.consume_rate_limit(
+                        "shared-caller",
+                        "default",
+                        5,
+                        60.0,
+                    ),
+                    stores,
+                )
+            )
+    finally:
+        first.close()
+        second.close()
+
+    assert sum(allowed for allowed, _remaining in results) == 5
+    assert sorted(remaining for allowed, remaining in results if allowed) == [0, 1, 2, 3, 4]
 
 
 def test_lifecycle_reaches_a_playable_video(

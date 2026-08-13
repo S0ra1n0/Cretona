@@ -7,8 +7,8 @@
 -- # local host, so never point CRETONA_TEST_DATABASE_URL at Supabase.        #
 -- ############################################################################
 --
--- Mirrors the parts of supabase/bootstrap.sql + 002_add_error_code.sql +
--- 003_add_fastapi_parity_columns.sql + 004_add_started_at.sql that
+-- Mirrors the parts of supabase/bootstrap.sql + migrations 002 through 007
+-- that
 -- app/postgres.py actually reads and
 -- writes. Supabase-only concerns are deliberately absent because a plain
 -- Postgres container has no `auth` or `storage` schema:
@@ -24,6 +24,7 @@
 -- than only failing in production.
 
 drop table if exists public.generation_logs cascade;
+drop table if exists public.rate_limit_hits cascade;
 drop table if exists public.video_projects cascade;
 drop table if exists public.users cascade;
 drop table if exists public.roles cascade;
@@ -106,6 +107,19 @@ create table public.generation_logs (
   constraint chk_log_event
     check (event in ('submit', 'poll', 'webhook', 'download', 'error'))
 );
+
+create table public.rate_limit_hits (
+  id          bigserial   primary key,
+  caller_key  text        not null,
+  bucket      text        not null check (bucket in ('default', 'generation')),
+  occurred_at timestamptz not null default clock_timestamp()
+);
+
+create index idx_rate_limit_caller_window
+  on public.rate_limit_hits (caller_key, bucket, occurred_at, id);
+
+create index idx_rate_limit_cleanup
+  on public.rate_limit_hits (occurred_at, id);
 
 create index idx_logs_project_created
   on public.generation_logs (project_id, created_at desc);

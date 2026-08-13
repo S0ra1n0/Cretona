@@ -177,6 +177,25 @@ in section 7; clients never write or prune this table.
 
 Logs survive project soft-deletion for auditing and cost reconciliation.
 
+### 2.5 `rate_limit_hits`
+
+Ephemeral, backend-only rows for the shared 60-second sliding window (B-3,
+ADR-010). SQLite does not create this table because its credential-free profile
+is deliberately single-process.
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `id` | `bigserial` | PK | stable ordering for bounded cleanup |
+| `caller_key` | `text` | NOT NULL, length 3–64 | source-type prefix plus truncated SHA-256; never a plaintext token, user id, or IP |
+| `bucket` | `text` | NOT NULL | `default` · `generation` |
+| `occurred_at` | `timestamptz` | NOT NULL DEFAULT `clock_timestamp()` | database clock is authoritative across hosts |
+
+The Postgres adapter takes a transaction-level advisory lock scoped to
+`(caller_key, bucket)`, prunes that caller's expired rows, counts, and inserts
+as one transaction. A separate oldest-first `FOR UPDATE SKIP LOCKED` delete is
+bounded to 1,000 expired rows per request so abandoned callers cannot grow the
+table indefinitely.
+
 ---
 
 ## 3. Indexes
@@ -192,6 +211,9 @@ CREATE INDEX idx_logs_retention          ON generation_logs (created_at ASC, id 
 CREATE INDEX idx_users_email             ON users (lower(email));   -- admin search
 CREATE INDEX idx_projects_quota          ON video_projects (user_id, created_at DESC, error_code)
   WHERE deleted_at IS NULL;                        -- quota accounting (ADR-007)
+CREATE INDEX idx_rate_limit_caller_window ON rate_limit_hits
+  (caller_key, bucket, occurred_at, id);            -- atomic window lookup (B-3)
+CREATE INDEX idx_rate_limit_cleanup       ON rate_limit_hits (occurred_at, id);
 ```
 
 The poller index is partial on purpose: it stays small no matter how many completed projects accumulate.
@@ -200,12 +222,22 @@ The poller index is partial on purpose: it stays small no matter how many comple
 
 ## 4. Row Level Security
 
-RLS is enabled on `users`, `video_projects`, and `generation_logs`. The backend uses the `service_role` key, which bypasses RLS — RLS is the second line of defence for the anon key held by the app, not a replacement for authorization checks in the service layer (NFR-2.3, NFR-2.4).
+Migration 007 also enables RLS on `rate_limit_hits`, creates no client policy,
+and revokes its table and sequence from `anon`, `authenticated`, and
+`service_role`. The active FastAPI direct Postgres connection is its only
+reader/writer; it cannot become a caller-tracking Data API.
+
+RLS is enabled on all four public application tables. FastAPI reaches business
+tables through its direct Postgres connection, while Storage operations use a
+server-only `service_role` key. RLS remains the second line of defence for the
+anon key held by the app, not a replacement for service-layer authorization
+checks (NFR-2.3, NFR-2.4).
 
 ```sql
 ALTER TABLE users           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE video_projects  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE generation_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rate_limit_hits  ENABLE ROW LEVEL SECURITY;
 
 CREATE OR REPLACE FUNCTION is_admin() RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER AS $$
@@ -261,6 +293,8 @@ Embedding `{user_id}` as the first path segment lets Storage policies authorize 
 - Prisma models the `public` schema only; `auth.users` stays outside Prisma's control. The FK from `users.id` is declared in raw SQL migration, not in `schema.prisma`.
 - `project_status` maps to a Prisma `enum ProjectStatus`.
 - `generation_logs.request` / `response` map to `Json?`.
+- `rate_limit_hits` is owned only by the active FastAPI adapter and is
+  deliberately absent from the retained Express/Prisma reference.
 - Migrations are Prisma-managed; the trigger, RLS policies, `is_admin()`, and partial indexes live in `prisma/migrations/*/migration.sql` as raw SQL so they are versioned with everything else.
 - The backend connects with the pooled Supabase connection string; `DIRECT_URL` is set for migrations.
 
@@ -272,6 +306,7 @@ Embedding `{user_id}` as the first path segment lets Storage policies authorize 
 |---|---|
 | Soft-deleted projects | purged after 30 days |
 | `generation_logs` | raw rows retained 180 days; a bounded oldest-first worker emits counts grouped by provider, event, and HTTP status to structured logs, then atomically deletes the batch |
+| `rate_limit_hits` | rows older than the 60-second window are deleted in batches of at most 1,000 during limited traffic; no long-term analytics use |
 | Source images | deleted with the project |
 | Generated videos | deleted with the project |
 | Account deletion | cascades to projects and media; logs anonymized (`user_id` nulled on the project) |
