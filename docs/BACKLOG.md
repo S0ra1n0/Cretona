@@ -50,11 +50,12 @@ Effort is rough: **S** ≈ under an hour, **M** ≈ a few hours, **L** ≈ a day
 
 Neither is doable right now, and neither should be forgotten because of that.
 
-**Live Supabase verification.** Nothing has ever run against the real project.
-Every green test is local Postgres, a local file mount, and locally minted
-tokens. This can invalidate work already committed, so it outranks everything
-below. Blocked on `backend-fastapi/.env` and permission to write to a live
-project.
+**Live FastAPI-to-Supabase runtime proof.** The live database schema is now
+verified through migration 007, but no FastAPI revision has been started or
+smoke-tested against live Auth/Postgres/Storage. The ignored
+`backend-fastapi/.env` is not configured on this machine, and any QA writes or
+account/object creation require a separately authorized, cleanup-bounded smoke
+task. Schema evidence must not be reported as application/runtime parity.
 
 **A real video provider.** The fake proves the workflow and nothing about
 video. LTX 2B was rejected at pre-screen; FramePack is installed but blocked
