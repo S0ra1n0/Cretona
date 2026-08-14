@@ -1,7 +1,8 @@
 # Cretona — post-parity backlog
 
 Status: written 2026-08-12, after FastAPI reached behavioural parity with the
-Express reference. Last updated 2026-08-14 after B-3 PostgreSQL verification.
+Express reference. Last updated 2026-08-14 after live Supabase migrations 006
+and 007 were applied and verified.
 
 ## Progress
 
@@ -9,26 +10,24 @@ Express reference. Last updated 2026-08-14 after B-3 PostgreSQL verification.
 |---|---|---|
 | B-1 | Per-attempt `started_at` | **Done** — `1f1b39c`, verified 239 passed |
 | B-2 | Poller lease fencing | **Done** — `32b6b0d`, verified 245 passed |
-| B-3 | Shared-store rate limiting | **Done** — Postgres sliding window with atomic advisory-lock transactions, bounded cleanup, hashed caller keys, and SQLite in-memory fallback; verified 261 passed / 0 skipped on disposable PostgreSQL 16.14; migration 007 rehearsed twice; live migration remains unapplied |
-| B-4 | `generation_logs` retention | **Done** — 180-day, oldest-first bounded cleanup with metadata-only aggregation; verified 239 passed / 19 Postgres-only skipped; live migration remains unapplied |
+| B-3 | Shared-store rate limiting | **Done** — Postgres sliding window with atomic advisory-lock transactions, bounded cleanup, hashed caller keys, and SQLite in-memory fallback; verified 261 passed / 0 skipped on disposable PostgreSQL 16.14; migration 007 rehearsed twice and applied/verified on live Supabase; live FastAPI deployment remains separate |
+| B-4 | `generation_logs` retention | **Done** — 180-day, oldest-first bounded cleanup with metadata-only aggregation; verified 239 passed / 19 Postgres-only skipped; migration 006 retention index applied/verified on live Supabase |
 | B-8 | Android consumes `/me` | **Done** — quota/identity loading, retry, exhausted-state prevention, post-submit refresh, and AVD evidence; 12 Android tests plus clean lint/assembly |
 | B-9 | Android shows thumbnails | **Done** — Coil history preview with loading/error fallback, project aspect ratio, and AVD evidence; 12 Android tests plus clean lint/assembly |
 
-**Four migrations are prepared and unapplied**, all additive and re-runnable.
-Apply them in numeric order:
+The numbered migration sequence is now observed applied on live Supabase:
 
-- `supabase/004_add_started_at.sql` (B-1)
-- `supabase/005_add_poll_lease.sql` (B-2)
-- `supabase/006_add_generation_log_retention_index.sql` (B-4)
-- `supabase/007_add_shared_rate_limits.sql` (B-3)
+- `supabase/004_add_started_at.sql` (B-1) — present before the 2026-08-14 live preflight
+- `supabase/005_add_poll_lease.sql` (B-2) — present before the 2026-08-14 live preflight
+- `supabase/006_add_generation_log_retention_index.sql` (B-4) — applied and verified 2026-08-14
+- `supabase/007_add_shared_rate_limits.sql` (B-3) — applied and verified 2026-08-14
 
-Until 004, 005, and 007 are applied, `CRETONA_DATABASE_BACKEND=postgres` against
-Supabase refuses to start and names the files to run. That is the intended
-behaviour, not a fault. Missing 006 does not change correctness, but leaves the
-retention sweep without its table-wide cutoff index. Local Postgres models all
-four changes via `tests/postgres_schema.sql`. The 2026-08-14 disposable run
-passed all 261 tests and applied migration 007 twice; see
-`docs/evidence/B3_POSTGRES_VERIFICATION.md`.
+The live schema gate required by `CRETONA_DATABASE_BACKEND=postgres` now passes
+at the database layer. This does not prove that a live FastAPI revision is
+deployed or configured against the project. Local Postgres models all four
+changes via `tests/postgres_schema.sql`; the disposable run passed all 261 tests
+and applied migration 007 twice. See `docs/evidence/B3_POSTGRES_VERIFICATION.md`
+and `docs/evidence/LIVE_SUPABASE_MIGRATIONS_006_007_2026-08-14.md`.
 
 ## How to read this
 
@@ -76,7 +75,8 @@ than merely incomplete.
 | ~~B-3~~ | ~~Shared-store rate limiting~~ | **Done.** Postgres instances share an atomic sliding window; SQLite retains the explicit single-process fallback | M | D |
 
 B-3 selected Postgres in ADR-010 because it adds no new service at this scale.
-Migration 007 and its live verification remain deployment hold points.
+Migration 007 and its live verification are complete. Deploying and smoke
+testing the pinned B-3 FastAPI revision remain separate hold points.
 
 ## Tier 2 — Operability
 
@@ -110,7 +110,7 @@ These need a human decision, not just implementation time.
 
 | ID | Item | Why | Effort | Mark |
 |---|---|---|---|---|
-| B-15 | ADR-008 folder rename | Its "Revisit when" triggers once FastAPI has parity and Android E2E is recorded. Android evidence exists; parity is behavioural but **unverified against live Supabase**, so the trigger is arguably not yet met. Renaming `backend-fastapi/` to `backend/` and archiving Express is a large, reviewable commit | L | R |
+| B-15 | ADR-008 folder rename | Its "Revisit when" triggers once FastAPI has parity and Android E2E is recorded. Android evidence and live schema evidence exist, but FastAPI runtime parity is still **unverified against live Supabase**. Renaming `backend-fastapi/` to `backend/` and archiving Express remains a large, reviewable commit | L | R |
 | B-16 | Second provider | P3-10, to prove the abstraction. Blocked behind a first real provider | L | R |
 
 ---
@@ -120,12 +120,13 @@ These need a human decision, not just implementation time.
 1. ~~**B-1, B-2**~~ — done.
 2. ~~**B-4**~~ — done.
 3. ~~**B-8, B-9**~~ — done.
-4. ~~**B-3**~~ — done; migration 007 must precede a multi-instance deploy.
+4. ~~**B-3**~~ — done; migration 007 is live, while application deployment and smoke verification remain pending.
 5. Everything else, as the situation demands.
 
-Do not start B-15 until live Supabase verification has happened. Renaming the
-active backend on the strength of unverified parity would make the first real
-integration failure much harder to attribute.
+Do not start B-15 until the FastAPI runtime has passed live Supabase smoke
+verification. Schema verification alone does not prove application/runtime
+parity, and renaming first would make the first real integration failure much
+harder to attribute.
 
 ## What this list deliberately omits
 

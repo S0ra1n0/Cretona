@@ -7,7 +7,7 @@
     "project_id": "cretona",
     "requirement_ids": ["B-3", "FR-5.3"],
     "decision_ids": ["ADR-010"],
-    "target_environment": "Supabase Postgres deployment profile; rehearse on disposable local Postgres first",
+    "target_environment": "Live Supabase PostgreSQL 17.6 after disposable PostgreSQL 16.14 rehearsal",
     "planned_at": "2026-08-13"
   },
   "routing": {
@@ -21,6 +21,7 @@
     "destructive_change_approved_by": "not applicable; expand-only migration",
     "production_execution_authority": "Bruce",
     "execution_authorized_by_specialist": false,
+    "execution_authority_override": "Bruce authorized live execution on 2026-08-14 and accepted the residual risk of missing S0ra1n0 review; no reviewer approval is claimed",
     "point_of_no_return_approver": "not applicable; no point of no return"
   },
   "scope": {
@@ -30,7 +31,8 @@
       "Deploy the B-3 FastAPI reader/writer only after schema expansion"
     ],
     "exclude": [
-      "Applying any SQL to live Supabase in this task",
+      "Deploying or reconfiguring the FastAPI service",
+      "Running live application or Android smoke tests",
       "Changing quota accounting",
       "Adding Redis",
       "Changing Android or the HTTP error/header contract"
@@ -47,13 +49,14 @@
   },
   "states": {
     "source": {
-      "schema_revision": "supabase/006_add_generation_log_retention_index.sql prepared but not applied live",
-      "application_revisions": ["a0efe341e2f71779371083cffdb26e2c498f7f3d"],
-      "database_engine_and_version": "Disposable PostgreSQL 16.14 verified on 2026-08-14; Supabase live version remains unknown",
+      "schema_revision": "Live Supabase has migrations 004 through 007 observed applied; migrations 006 and 007 applied and verified on 2026-08-14",
+      "application_revisions": ["a0efe341e2f71779371083cffdb26e2c498f7f3d", "101e16d6ac499925b0bfee3a9513a8dbbcee97a2"],
+      "database_engine_and_version": "Live Supabase PostgreSQL 17.6; disposable PostgreSQL 16.14 rehearsal",
       "data_profile_evidence": [
-        "No rate-limit table or historical rows exist",
-        "Live Supabase has not been inspected or mutated",
-        "Migrations 004 through 006 remain prepared and unapplied"
+        "Migrations 004 and 005 were observed present before this execution",
+        "Migrations 006 and 007 were applied from pinned hashes and verified in fresh read-only transactions",
+        "A protected off-site logical export was hash-verified before DDL",
+        "FastAPI deployment and live runtime behavior remain unverified"
       ]
     },
     "target": {
@@ -99,34 +102,34 @@
     {
       "id": "MIG-007-OP-01",
       "name": "Preflight live schema and recovery evidence",
-      "status": "planned",
+      "status": "complete",
       "owner": "Bruce",
       "phase": "preflight",
-      "action_or_pseudocode": "Confirm migrations 004, 005, and 006 are applied in order; confirm backup status and current Postgres version; review SQL and live schema drift.",
-      "preconditions": ["Bruce authorizes live read-only preflight", "Current backup state is available"],
+      "action_or_pseudocode": "Observed migrations 004 and 005 present, confirmed 006 and 007 absent, verified PostgreSQL 17.6 and the protected off-site logical export, then pinned the remaining SQL hashes.",
+      "preconditions": ["Bruce authorized live read-only preflight", "Protected logical export hash-verified outside Git"],
       "transaction_and_locking": "Read-only checks",
       "compatibility": "No application effect",
       "idempotency_and_restart": "All checks are read-only and may be restarted",
-      "verification": "Expected columns and indexes from migrations 004-006 exist",
-      "monitoring": ["Record exact schema revision, Postgres version, and backup state"],
+      "verification": "Passed: 004/005 contracts matched; 006/007 absent; transaction_read_only on; no invalid public index",
+      "monitoring": ["Recorded exact schema revision, PostgreSQL 17.6, candidate hashes, and backup hashes"],
       "pause_or_abort": "Stop on schema drift, failed backup evidence, or missing authority",
       "rollback_or_forward_recovery": "Not applicable"
     },
     {
       "id": "MIG-007-OP-02",
-      "name": "Expand schema with rate-limit storage",
-      "status": "planned",
+      "name": "Expand schema with retention index and rate-limit storage",
+      "status": "complete",
       "owner": "Bruce",
       "phase": "expand",
-      "action_or_pseudocode": "Apply supabase/007_add_shared_rate_limits.sql once through the approved SQL workflow.",
-      "preconditions": ["OP-01 passed", "Bruce approves live execution", "S0ra1n0 reviewed migration 007"],
-      "transaction_and_locking": "One short DDL transaction on a new empty table; no existing data rewrite",
+      "action_or_pseudocode": "Applied pinned migration 006 outside a transaction, verified its concurrent index, then applied pinned migration 007 in its short DDL transaction and independently verified it.",
+      "preconditions": ["OP-01 passed", "Bruce approved live execution", "Bruce explicitly overrode the missing S0ra1n0 review hold point without claiming that review occurred"],
+      "transaction_and_locking": "MIG-006 used CREATE INDEX CONCURRENTLY outside a transaction; MIG-007 used one short DDL transaction on a new empty table",
       "compatibility": "Old application revisions ignore the new table",
       "idempotency_and_restart": "CREATE IF NOT EXISTS and guarded indexes make a clean matching target re-runnable; stop on divergent pre-existing objects",
-      "verification": "Run the column, RLS, grants, and index queries embedded in migration 007",
-      "monitoring": ["DDL result", "RLS state", "Data API grants", "Index inventory"],
+      "verification": "Passed: all MIG-006/007 indexes valid/ready/live, exact MIG-007 columns and constraints, RLS on, zero policies, and all 30 effective Data API privilege checks false",
+      "monitoring": ["DDL result", "RLS state", "Data API effective privileges", "Index inventory", "Supabase Security and Performance Advisors"],
       "pause_or_abort": "Abort on any SQL error or unexpected existing object definition",
-      "rollback_or_forward_recovery": "Transaction rollback before commit; after commit the unused additive table may remain"
+      "rollback_or_forward_recovery": "MIG-006 would require a separately approved concurrent index drop; MIG-007 rolled back on transaction failure, and after commit the unused additive table may safely remain"
     },
     {
       "id": "MIG-007-OP-03",
@@ -181,7 +184,8 @@
       "Data API roles have zero privileges"
     ],
     "backup": [
-      "Confirm Supabase backup state before live execution even though the migration is additive"
+      "Completed before DDL: protected off-site roles/schema/data logical export with independently rechecked SHA-256 hashes",
+      "Limitation: export includes Storage metadata but not Storage object bytes; restore was not rehearsed"
     ],
     "restore_or_forward_recovery": [
       "Rollback app first; retaining the unused table is safe",
@@ -200,26 +204,29 @@
       "Any sustained API availability regression attributable to the limiter"
     ],
     "hold_points": [
-      "Bruce approves live migration execution",
-      "S0ra1n0 reviews migration 007 and ADR-010",
-      "Local/Postgres rehearsal evidence is attached before deployment"
+      "Complete: Bruce approved live migration execution",
+      "Overridden by Bruce: no evidence of S0ra1n0 review; residual risk explicitly accepted and no review claimed",
+      "Complete: local/Postgres rehearsal and live schema verification evidence attached",
+      "Pending: deploy and smoke-test the pinned B-3 FastAPI revision"
     ],
     "observation_window": "At least one normal demo/use session after deployment; exact production duration is not yet approved"
   },
   "handoff": {
     "decisions_needed": [
-      "Approve when to apply migrations 004 through 007 to live Supabase"
+      "Approve when and where to deploy the pinned B-3 FastAPI revision",
+      "Choose an observation window and owners for the advisor-warning backlog"
     ],
     "blockers": [
-      "No live Supabase schema or runtime verification is authorized in this task"
+      "Live FastAPI deployment and application smoke verification were outside this execution"
     ],
     "assumptions": [
       "Deployment uses the direct Postgres connection configured by CRETONA_DATABASE_URL",
       "Expected course-project traffic is low enough for one rate-limit transaction per request"
     ],
     "unknowns": [
-      "Live Supabase Postgres version, row counts, backup state, and schema drift",
-      "Observed database latency under representative multi-instance traffic"
+      "Observed database latency under representative multi-instance traffic",
+      "Restore viability and Storage object recovery",
+      "Runtime revision/configuration currently deployed, if any"
     ],
     "limitations": [
       "Local SQLite proof is not live Supabase proof",
@@ -236,7 +243,8 @@
       "Concurrent disposable-Postgres test",
       "Full FastAPI test suite",
       "Ruff and git diff --check",
-      "Live migration verification remains separate and pending"
+      "Complete: docs/evidence/LIVE_SUPABASE_MIGRATIONS_006_007_2026-08-14.md",
+      "Pending: live FastAPI deployment and smoke evidence"
     ]
   }
 }

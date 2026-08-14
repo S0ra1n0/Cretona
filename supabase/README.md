@@ -9,9 +9,11 @@ Database and storage setup for Cretona. Specified in [docs/DATA_MODEL.md](../doc
 
    Then apply the numbered migrations in order. The current sequence is
    `002_add_error_code.sql` through `007_add_shared_rate_limits.sql`; never
-   skip a number. Migrations 004–007 are currently prepared but not applied to
-   the live project, so their status comments and verification blocks are the
-   execution checklist.
+   skip a number. Live Supabase was observed with migrations 004 and 005
+   already present, then migrations 006 and 007 were applied and verified on
+   2026-08-14. The `PREPARED, NOT APPLIED` headers remain unchanged because
+   editing an executed migration would invalidate its pinned execution hash;
+   live status belongs in this README and the evidence ledger.
 3. **Run the verification queries** at the bottom of that file. All must pass before moving on.
 
    > The RLS check filters on `relnamespace = 'public'::regnamespace` deliberately. `auth.users` is *also* called `users` and has RLS off, so an unfiltered query returns two `users` rows and looks like a failure when nothing is wrong.
@@ -50,7 +52,34 @@ Behaviour confirmed, not just syntax:
 | Storage: upload allowed under own prefix, denied under another user's | pass |
 | Storage: `videos` bucket write denied to clients, read allowed for own objects | pass |
 
-What this does **not** prove: that it works on your live project. Supabase's real `auth` and `storage` schemas carry extra columns, triggers, and grants that the stub doesn't reproduce. Run the verification queries after applying.
+The 2026-08-14 live database verification additionally proved the 004–007
+column/index contracts, MIG-007 constraints and RLS state, and zero table or
+sequence privileges for `anon`, `authenticated`, and `service_role`. It did not
+deploy or smoke-test FastAPI, read business rows, test Storage object bytes, or
+prove restore viability. See
+[`LIVE_SUPABASE_MIGRATIONS_006_007_2026-08-14.md`](../docs/evidence/LIVE_SUPABASE_MIGRATIONS_006_007_2026-08-14.md).
+
+## Live operator commands
+
+These commands read the ignored root `env` file, validate that its project URL
+and direct database URL identify the same project, and suppress credential
+values from output:
+
+```powershell
+# Protected logical export outside the repository; requires Docker Desktop.
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/backup-live-supabase.ps1
+
+# Current post-migration catalog/security verification.
+backend-fastapi/.venv/Scripts/python.exe scripts/live-supabase-migration-gate.py verify-007
+
+# Official Supabase Security and Performance Advisors.
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-live-supabase-advisors.ps1
+```
+
+The migration gate also contains narrowly allowlisted apply actions, but they
+refuse a changed file hash, a mismatched explicit project reference, or an
+already-present target. Do not use them to invent a new migration workflow;
+prepare and review a new numbered migration instead.
 
 ## What `bootstrap.sql` creates
 
