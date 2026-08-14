@@ -87,6 +87,10 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    fun onProviderSelected(provider: String) {
+        _state.update { it.copy(selectedProvider = provider, errorMessage = null) }
+    }
+
     fun generateVideo() {
         val prompt = state.value.prompt.trim()
         if (prompt.isEmpty()) {
@@ -109,6 +113,7 @@ class HomeViewModel @Inject constructor(
                 val result = repository.createProject(
                     prompt = prompt,
                     idempotencyKey = UUID.randomUUID().toString(),
+                    provider = state.value.selectedProvider,
                 )
             ) {
                 is AppResult.Success -> {

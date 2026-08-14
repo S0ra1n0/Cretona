@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -172,4 +172,25 @@ class UploadSignResponse(ApiModel):
 class HealthResponse(ApiModel):
     status: Literal["ok"] = "ok"
     version: str
+
+
+class AdminLogItem(ApiModel):
+    id: str | int | None = None
+    project_id: str = Field(alias="projectId")
+    provider: str
+    request_id: str | None = Field(default=None, alias="requestId")
+    event: str
+    request: Any = None
+    response: Any = None
+    http_status: int | None = Field(default=None, alias="httpStatus")
+    created_at: str = Field(alias="createdAt")
+
+
+class AdminLogList(ApiModel):
+    items: list[AdminLogItem]
+
+
+class BackfillResponse(ApiModel):
+    backfilled: int
+    processed: int
 

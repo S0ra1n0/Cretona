@@ -22,7 +22,7 @@ from app.poller import JobPoller
 from app.postgres import PostgresDatabase
 from app.project_service import ProjectService
 from app.prompt_service import PromptEnhancer
-from app.providers import FakeVideoProvider, ProviderRegistry
+from app.providers import FakeVideoProvider, ProviderRegistry, RealAiVideoProvider
 from app.quota_service import QuotaService
 from app.rate_limit import WINDOW_SECONDS, RateLimiter, bucket_for, caller_key
 from app.routes import router
@@ -57,6 +57,7 @@ def build_storage(settings: Settings) -> LocalStorage | SupabaseStorage:
             uploads_bucket=settings.supabase_uploads_bucket,
             videos_bucket=settings.supabase_videos_bucket,
             signed_url_ttl_seconds=settings.signed_url_ttl_seconds,
+            media_dir=settings.resolved_media_dir(),
         )
     return LocalStorage(settings.resolved_media_dir())
 
@@ -66,11 +67,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     logger = configure_logging(active_settings.log_level)
     database = build_database(active_settings)
     storage = build_storage(active_settings)
-    provider = FakeVideoProvider(
+    fake_provider = FakeVideoProvider(
         polls_before_complete=active_settings.fake_polls_before_complete,
         video_filename=active_settings.fake_video_filename,
     )
-    providers = ProviderRegistry([provider], active_settings.default_video_provider)
+    real_provider = RealAiVideoProvider(
+        api_key=active_settings.real_ai_api_key.get_secret_value(),
+        endpoint=active_settings.real_ai_endpoint,
+        video_filename=active_settings.fake_video_filename,
+    )
+    providers = ProviderRegistry(
+        [fake_provider, real_provider], active_settings.default_video_provider
+    )
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:

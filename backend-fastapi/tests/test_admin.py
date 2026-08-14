@@ -237,3 +237,26 @@ def test_daily_series_is_bucketed_by_day(seeded: TestClient) -> None:
     assert len(body["daily"]) == 1
     assert len(body["daily"][0]["date"]) == 10
     assert body["daily"][0]["created"] == 1
+
+
+def test_admin_can_read_project_generation_logs(seeded: TestClient) -> None:
+    created = seeded.post(
+        "/api/v1/projects", headers=USER_HEADERS, json={"prompt": "log test"}
+    ).json()
+    pid = created["id"]
+
+    logs = seeded.get(f"/api/v1/admin/projects/{pid}/logs", headers=ADMIN_HEADERS)
+    assert logs.status_code == 200
+    data = logs.json()
+    assert "items" in data
+    assert len(data["items"]) >= 1
+    assert data["items"][0]["projectId"] == pid
+    assert data["items"][0]["event"] == "submit"
+
+
+def test_admin_can_trigger_thumbnail_backfill(seeded: TestClient) -> None:
+    res = seeded.post("/api/v1/admin/thumbnails/backfill", headers=ADMIN_HEADERS)
+    assert res.status_code == 200
+    data = res.json()
+    assert "backfilled" in data
+    assert "processed" in data

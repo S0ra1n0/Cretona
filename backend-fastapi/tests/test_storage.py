@@ -278,6 +278,22 @@ def test_rehosting_downloads_then_uploads_to_an_owned_key() -> None:
     assert calls[1][1] == f"{PROJECT_URL}/storage/v1/object/videos/{USER_A}/p1/video.mp4"
 
 
+def test_store_thumbnail_uploads_to_uploads_bucket() -> None:
+    calls: list[tuple[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append((request.method, str(request.url)))
+        assert request.content == b"image-bytes"
+        return httpx.Response(200, json={"Key": "uploads/x"})
+
+    storage = build_storage(handler)
+    stored = storage.store_thumbnail(USER_A, "p1", b"image-bytes")
+
+    assert stored == f"{USER_A}/p1/thumbnail.jpg"
+    assert calls[0][0] == "POST"
+    assert calls[0][1] == f"{PROJECT_URL}/storage/v1/object/uploads/{USER_A}/p1/thumbnail.jpg"
+
+
 def test_rehosting_a_failed_download_is_a_provider_error() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(404)
@@ -328,12 +344,14 @@ def test_removal_targets_both_buckets() -> None:
 # --- configuration ----------------------------------------------------------
 
 
-def test_supabase_storage_requires_credentials() -> None:
+def test_supabase_storage_requires_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CRETONA_SUPABASE_URL", raising=False)
+    monkeypatch.delenv("CRETONA_SUPABASE_SERVICE_ROLE_KEY", raising=False)
     with pytest.raises(ValidationError, match="CRETONA_SUPABASE_URL is required"):
-        Settings(storage_backend="supabase")
+        Settings(_env_file=None, storage_backend="supabase")
 
     with pytest.raises(ValidationError, match="SERVICE_ROLE_KEY is required"):
-        Settings(storage_backend="supabase", supabase_url=PROJECT_URL)
+        Settings(_env_file=None, storage_backend="supabase", supabase_url=PROJECT_URL)
 
 
 def test_service_role_key_is_not_exposed_by_repr() -> None:

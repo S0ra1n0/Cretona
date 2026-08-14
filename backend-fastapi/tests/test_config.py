@@ -21,9 +21,10 @@ def test_production_accepts_verified_supabase_mode() -> None:
     assert settings.auth_mode == "supabase"
 
 
-def test_supabase_mode_requires_a_jwt_secret() -> None:
+def test_supabase_mode_requires_a_jwt_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CRETONA_SUPABASE_JWT_SECRET", raising=False)
     with pytest.raises(ValidationError, match="CRETONA_SUPABASE_JWT_SECRET is required"):
-        Settings(environment="production", auth_mode="supabase")
+        Settings(_env_file=None, environment="production", auth_mode="supabase")
 
 
 def test_jwt_secret_is_not_exposed_by_repr() -> None:

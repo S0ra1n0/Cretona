@@ -38,10 +38,11 @@ class CretonaRepositoryImpl @Inject constructor(
     override suspend fun createProject(
         prompt: String,
         idempotencyKey: String,
+        provider: String,
     ): AppResult<VideoProject> = apiCall {
         api.createProject(
             idempotencyKey = idempotencyKey,
-            request = ProjectCreateRequest(prompt = prompt),
+            request = ProjectCreateRequest(prompt = prompt, provider = provider),
         ).toDomain()
     }
 

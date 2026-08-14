@@ -389,8 +389,21 @@ class ProjectService:
             return None
 
         target_path = self.storage.store_thumbnail_path(owner_id, row["id"])
-        target = source.parent / "thumbnail.jpg"
-        return target_path if self.thumbnails.extract(source, target) else None
+        if getattr(self.storage, "name", "") == "supabase":
+            temp_target = source.parent / f"thumb_{row['id']}.jpg"
+            try:
+                if not self.thumbnails.extract(source, temp_target):
+                    return None
+                store_fn = getattr(self.storage, "store_thumbnail", None)
+                if store_fn is not None:
+                    res = store_fn(owner_id, row["id"], temp_target.read_bytes())
+                    return res if res else None
+                return None
+            finally:
+                temp_target.unlink(missing_ok=True)
+        else:
+            target = source.parent / "thumbnail.jpg"
+            return target_path if self.thumbnails.extract(source, target) else None
 
     def _mark_failed(
         self,

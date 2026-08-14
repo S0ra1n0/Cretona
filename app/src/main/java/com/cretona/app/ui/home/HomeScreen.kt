@@ -18,6 +18,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -70,6 +71,7 @@ fun HomeScreen(
     HomeContent(
         state = state,
         onPromptChanged = viewModel::onPromptChanged,
+        onProviderSelected = viewModel::onProviderSelected,
         onEnhance = {
             hideKeyboard(focusManager, keyboardController)
             viewModel.enhancePrompt()
@@ -89,6 +91,7 @@ fun HomeScreen(
 private fun HomeContent(
     state: HomeUiState,
     onPromptChanged: (String) -> Unit,
+    onProviderSelected: (String) -> Unit,
     onEnhance: () -> Unit,
     onGenerate: () -> Unit,
     onRefreshAccount: () -> Unit,
@@ -134,9 +137,33 @@ private fun HomeContent(
                     maxLines = 8,
                     label = { Text("Describe the video") },
                     supportingText = {
-                        Text(state.enhancementNote ?: "Fake video provider - zero-spend demo")
+                        Text(
+                            state.enhancementNote
+                                ?: if (state.selectedProvider == "real") "Real AI video provider - model AI"
+                                else "Fake video provider - zero-spend demo",
+                        )
                     },
                 )
+            }
+
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Model:", style = MaterialTheme.typography.bodyMedium)
+                    FilterChip(
+                        selected = state.selectedProvider == "fake",
+                        onClick = { onProviderSelected("fake") },
+                        label = { Text("🎭 Fake Demo") },
+                    )
+                    FilterChip(
+                        selected = state.selectedProvider == "real",
+                        onClick = { onProviderSelected("real") },
+                        label = { Text("🤖 Real AI") },
+                    )
+                }
             }
 
             item {
@@ -349,7 +376,11 @@ private fun HistoryCard(project: VideoProject) {
             ) {
                 Text(project.title, style = MaterialTheme.typography.titleMedium)
                 StatusText(project)
-                Text(project.provider, style = MaterialTheme.typography.labelMedium)
+                Text(
+                    if (project.provider == "real") "🤖 Model AI (Real)" else "🎭 Fake Demo",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (project.provider == "real") MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outline,
+                )
             }
         }
     }
@@ -475,6 +506,7 @@ private fun HomeScreenPreview() {
                 isAccountLoading = false,
             ),
             onPromptChanged = {},
+            onProviderSelected = {},
             onEnhance = {},
             onGenerate = {},
             onRefreshAccount = {},

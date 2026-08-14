@@ -11,9 +11,11 @@ from app.errors import AppError
 from app.project_service import ProjectService
 from app.prompt_service import PromptEnhancer
 from app.schemas import (
+    AdminLogList,
     AdminUser,
     AdminUserPage,
     AdminUserUpdate,
+    BackfillResponse,
     HealthResponse,
     MeResponse,
     MeUpdate,
@@ -127,6 +129,27 @@ def admin_stats(
     days: Annotated[int, Query(ge=1, le=90)] = 30,
 ) -> StatsResponse:
     return service.stats(days)
+
+
+@router.get("/admin/projects/{project_id}/logs", response_model=AdminLogList)
+def admin_project_logs(
+    project_id: str,
+    _admin_id: AdminId,
+    service: Annotated[AdminService, Depends(admin_service)],
+) -> AdminLogList:
+    items = service.get_generation_logs(project_id)
+    return AdminLogList(items=items)
+
+
+@router.post("/admin/thumbnails/backfill", response_model=BackfillResponse)
+def admin_backfill_thumbnails(
+    request: Request,
+    _admin_id: AdminId,
+    service: Annotated[AdminService, Depends(admin_service)],
+    storage: Annotated[StorageBackend, Depends(media_storage)],
+) -> BackfillResponse:
+    thumbnails = request.app.state.project_service.thumbnails
+    return service.backfill_thumbnails(storage, thumbnails)
 
 
 @router.post("/uploads/sign", response_model=UploadSignResponse)

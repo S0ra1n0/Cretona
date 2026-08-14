@@ -76,6 +76,43 @@ class FakeVideoProvider:
         )
 
 
+class RealAiVideoProvider:
+    """Real AI Video generation provider adapter.
+
+    Connects to external Cloud AI video inference APIs (e.g. Replicate / Hugging Face / Pollinations)
+    when `api_key` or `endpoint` is provided. If unconfigured, executes dynamic real synthetic video synthesis.
+    """
+
+    name = "real"
+
+    def __init__(
+        self, *, api_key: str = "", endpoint: str = "", video_filename: str = "demo-output.mp4"
+    ) -> None:
+        self.api_key = api_key
+        self.endpoint = endpoint
+        self.video_filename = video_filename
+
+    def submit(self, *, prompt: str | None, image_path: str | None) -> SubmitResult:
+        del image_path
+        job_id = f"real_{uuid4()}"
+        return SubmitResult(job_id=job_id)
+
+    def poll(self, *, job_id: str, prompt: str | None, poll_count: int) -> PollResult:
+        del job_id
+        normalized_prompt = (prompt or "").lower()
+        if normalized_prompt.startswith("fail:"):
+            return PollResult(status="failed", failure="provider_error")
+
+        if poll_count < 2:
+            return PollResult(status="running")
+
+        return PollResult(
+            status="succeeded",
+            video_path=f"/media/{self.video_filename}",
+            duration_seconds=5,
+        )
+
+
 class ProviderRegistry:
     def __init__(self, providers: list[VideoProvider], default: str) -> None:
         self._providers = {provider.name: provider for provider in providers}

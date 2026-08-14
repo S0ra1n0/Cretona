@@ -112,6 +112,15 @@ class HomeViewModelTest {
 
             assertEquals(1, repository.createCalls)
         }
+
+    @Test
+    fun `provider selection updates state`() {
+        val viewModel = HomeViewModel(FakeRepository())
+        assertEquals("fake", viewModel.state.value.selectedProvider)
+
+        viewModel.onProviderSelected("real")
+        assertEquals("real", viewModel.state.value.selectedProvider)
+    }
 }
 
 private class FakeRepository(
@@ -159,9 +168,10 @@ private class FakeRepository(
     override suspend fun createProject(
         prompt: String,
         idempotencyKey: String,
+        provider: String,
     ): AppResult<VideoProject> {
         createCalls += 1
-        return AppResult.Success(pending.copy(prompt = prompt))
+        return AppResult.Success(pending.copy(prompt = prompt, provider = provider))
     }
 
     override suspend fun getProject(id: String): AppResult<VideoProject> =

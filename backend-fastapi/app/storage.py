@@ -195,6 +195,7 @@ class SupabaseStorage:
         videos_bucket: str,
         signed_url_ttl_seconds: int,
         client: httpx.Client | None = None,
+        media_dir: Path | None = None,
     ) -> None:
         self.api = f"{base_url.rstrip('/')}/storage/v1"
         self.uploads_bucket = uploads_bucket
@@ -205,6 +206,9 @@ class SupabaseStorage:
             "Authorization": f"Bearer {service_role_key}",
             "apikey": service_role_key,
         }
+        # Optional: lets store_video read fake-provider local files by resolving
+        # the /media/<name> URL prefix to an actual on-disk path.
+        self._media_dir: Path | None = media_dir
 
     def create_signed_upload(
         self, user_id: str, content_type: str, size_bytes: int, base_url: str
@@ -232,10 +236,41 @@ class SupabaseStorage:
         )
 
     def local_video_path(self, stored_path: str) -> Path | None:
-        # Bytes live in a bucket. Generating a thumbnail here would need a
-        # download round trip, which is not implemented.
-        del stored_path
+        """Resolve a local video path if media_dir is available.
+
+        Allows thumbnail extraction when running with local/fake provider media
+        or a mounted media_dir (B-12).
+        """
+        if self._media_dir is not None and stored_path:
+            if stored_path.startswith("/media/"):
+                candidate = self._media_dir / stored_path[len("/media/"):]
+            else:
+                candidate = self._media_dir / stored_path
+            if candidate.is_file():
+                return candidate
+            fallback = self._media_dir / Path(stored_path).name
+            if fallback.is_file():
+                return fallback
         return None
+
+    def store_thumbnail_path(self, user_id: str, project_id: str) -> str:
+        return f"{user_id}/{project_id}/thumbnail.jpg"
+
+    def store_thumbnail(self, user_id: str, project_id: str, content: bytes) -> str:
+        """Upload a generated thumbnail image frame into Supabase Storage."""
+        path = self.store_thumbnail_path(user_id, project_id)
+        upload = self._client.post(
+            f"{self.api}/object/{self.uploads_bucket}/{path}",
+            headers={
+                **self._headers,
+                "Content-Type": "image/jpeg",
+                "x-upsert": "true",
+            },
+            content=content,
+        )
+        if upload.status_code >= 400:
+            return ""
+        return path
 
     def read_url(self, path: str | None, base_url: str, *, video: bool = True) -> str | None:
         """Mint a short-lived read URL.
@@ -269,24 +304,57 @@ class SupabaseStorage:
         Provider URLs expire, so persisting one guarantees a broken link within
         days. The bytes are copied into our own bucket before the project is
         marked completed.
+
+        ``source`` is one of:
+        - An HTTP/HTTPS URL (real provider) — fetched via the httpx client.
+        - A ``/media/<name>`` URL path (fake provider with Supabase storage) —
+          resolved to ``media_dir/<name>`` on disk when ``media_dir`` is set.
+        - Any other local path — read directly from disk as a fallback.
         """
-        download = self._client.get(source)
-        if download.status_code >= 400:
-            raise AppError(
-                502,
-                "PROVIDER_ERROR",
-                f"Could not download the result ({download.status_code}).",
-            )
+        if source.startswith(("http://", "https://")):
+            try:
+                download = self._client.get(source)
+            except httpx.RequestError as exc:
+                raise AppError(
+                    502,
+                    "PROVIDER_ERROR",
+                    "Could not reach the provider result URL.",
+                ) from exc
+            if download.status_code >= 400:
+                raise AppError(
+                    502,
+                    "PROVIDER_ERROR",
+                    f"Could not download the result ({download.status_code}).",
+                )
+            video_bytes = download.content
+            content_type = download.headers.get("content-type", "video/mp4")
+        else:
+            # Local path: fake or deterministic provider running with Supabase
+            # storage backend.  Resolve the /media/<name> URL prefix used by
+            # the local StaticFiles mount to an actual filesystem path via
+            # media_dir, then read the bytes directly from disk.
+            if source.startswith("/media/") and self._media_dir is not None:
+                local = self._media_dir / source[len("/media/"):]
+            else:
+                local = Path(source)
+            if not local.is_file():
+                raise AppError(
+                    502,
+                    "PROVIDER_ERROR",
+                    "Provider result file not found on disk.",
+                )
+            video_bytes = local.read_bytes()
+            content_type = "video/mp4"
 
         path = video_path(user_id, project_id)
         upload = self._client.post(
             f"{self.api}/object/{self.videos_bucket}/{path}",
             headers={
                 **self._headers,
-                "Content-Type": download.headers.get("content-type", "video/mp4"),
+                "Content-Type": content_type,
                 "x-upsert": "true",
             },
-            content=download.content,
+            content=video_bytes,
         )
         if upload.status_code >= 400:
             raise AppError(500, "INTERNAL_ERROR", "Could not store the generated video.")

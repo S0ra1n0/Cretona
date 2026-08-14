@@ -5,7 +5,15 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.errors import AppError
-from app.schemas import AdminUser, AdminUserPage, AdminUserUpdate, PageInfo, StatsResponse
+from app.schemas import (
+    AdminLogItem,
+    AdminUser,
+    AdminUserPage,
+    AdminUserUpdate,
+    BackfillResponse,
+    PageInfo,
+    StatsResponse,
+)
 
 logger = logging.getLogger("cretona.admin")
 
@@ -124,6 +132,63 @@ class AdminService:
         since = datetime.now(UTC) - timedelta(days=days)
         raw = self.database.admin_stats(since.isoformat().replace("+00:00", "Z"))
         return StatsResponse.model_validate(raw)
+
+    def get_generation_logs(self, project_id: str) -> list[AdminLogItem]:
+        rows = self.database.generation_logs(project_id)
+        return [
+            AdminLogItem(
+                id=row.get("id"),
+                project_id=row["project_id"],
+                provider=row["provider"],
+                request_id=row.get("request_id"),
+                event=row["event"],
+                request=row.get("request"),
+                response=row.get("response"),
+                http_status=row.get("http_status"),
+                created_at=row.get("created_at") or "",
+            )
+            for row in rows
+        ]
+
+    def backfill_thumbnails(
+        self,
+        storage: Any,
+        thumbnails: Any,
+    ) -> BackfillResponse:
+        rows = self.database.list_projects_missing_thumbnails()
+        backfilled = 0
+        for row in rows:
+            owner_id = row["owner_id"]
+            video_path = row.get("video_path")
+            if not video_path:
+                continue
+            source = storage.local_video_path(video_path)
+            if source is None or not source.exists():
+                continue
+            target_path = storage.store_thumbnail_path(owner_id, row["id"])
+            if getattr(storage, "name", "") == "supabase":
+                temp_target = source.parent / f"thumb_bf_{row['id']}.jpg"
+                try:
+                    if not thumbnails.extract(source, temp_target):
+                        continue
+                    store_fn = getattr(storage, "store_thumbnail", None)
+                    if store_fn is not None:
+                        res = store_fn(owner_id, row["id"], temp_target.read_bytes())
+                        if res:
+                            self.database.update_project(
+                                row["id"], owner_id, {"thumbnail_path": res}
+                            )
+                            backfilled += 1
+                finally:
+                    temp_target.unlink(missing_ok=True)
+            else:
+                target = source.parent / "thumbnail.jpg"
+                if thumbnails.extract(source, target):
+                    self.database.update_project(
+                        row["id"], owner_id, {"thumbnail_path": target_path}
+                    )
+                    backfilled += 1
+        return BackfillResponse(backfilled=backfilled, processed=len(rows))
 
 
 def to_admin_user(row: dict[str, Any]) -> AdminUser:

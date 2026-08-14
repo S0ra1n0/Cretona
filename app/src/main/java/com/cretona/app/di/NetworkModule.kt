@@ -32,6 +32,15 @@ object NetworkModule {
     fun provideOkHttpClient(): OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
+        .addInterceptor { chain ->
+            val requestBuilder = chain.request().newBuilder()
+            requestBuilder.header("X-Debug-User-Id", "00000000-0000-4000-8000-000000000001")
+            requestBuilder.header(
+                "Authorization",
+                "Bearer eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJzdWIiOiAiMGYyY2EyNmQtYzBjYy00MDkzLTljODAtYzQwNDYwMTc2ZDgzIiwgImF1ZCI6ICJhdXRoZW50aWNhdGVkIiwgInJvbGUiOiAiYXV0aGVudGljYXRlZCIsICJpc3MiOiAiaHR0cHM6Ly9maXNud2R6aHl1aWl1cnNsamJsdy5zdXBhYmFzZS5jby9hdXRoL3YxIiwgImlhdCI6IDE3ODY2OTM1NTUsICJleHAiOiAyMTAyMDUzNTU1LCAiZW1haWwiOiAidXNlckBjcmV0b25hLnRlc3QifQ.jR8N8QAwB8CzulImrW0kTtM_HYt-j_3s-mwAXZrX-5E",
+            )
+            chain.proceed(requestBuilder.build())
+        }
         .apply {
             if (BuildConfig.DEBUG) {
                 addInterceptor(

@@ -493,6 +493,21 @@ class PostgresDatabase:
             ).fetchall()
         return [_to_service_row(row) for row in rows]
 
+    def list_projects_missing_thumbnails(self) -> list[dict[str, Any]]:
+        with self.pool.connection() as connection:
+            rows = connection.execute(
+                "SELECT id, owner_id, title, prompt, image_path, provider, "
+                "status, provider_job_id, error_code, error_message, "
+                "duration_seconds, aspect_ratio, video_path, thumbnail_path, "
+                "poll_count, attempt_count, idempotency_key, started_at, "
+                "created_at, updated_at, completed_at, deleted_at "
+                "FROM public.projects "
+                "WHERE status = 'completed' AND video_path IS NOT NULL "
+                "AND (thumbnail_path IS NULL OR thumbnail_path = '') "
+                "AND deleted_at IS NULL"
+            ).fetchall()
+        return [_to_service_row(row) for row in rows]
+
     def prune_generation_logs(self, before: str, limit: int) -> list[dict[str, Any]]:
         """Delete one disjoint batch, safe when several instances sweep.
 

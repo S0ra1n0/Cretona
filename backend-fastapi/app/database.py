@@ -530,6 +530,16 @@ class Database:
             entries.append(entry)
         return entries
 
+    def list_projects_missing_thumbnails(self) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM projects "
+                "WHERE status = 'completed' AND video_path IS NOT NULL "
+                "AND (thumbnail_path IS NULL OR thumbnail_path = '') "
+                "AND deleted_at IS NULL"
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def prune_generation_logs(self, before: str, limit: int) -> list[dict[str, Any]]:
         """Atomically delete one oldest-first batch and return metadata only.
 
