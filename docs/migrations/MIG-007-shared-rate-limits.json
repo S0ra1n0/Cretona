@@ -49,7 +49,7 @@
     "source": {
       "schema_revision": "supabase/006_add_generation_log_retention_index.sql prepared but not applied live",
       "application_revisions": ["a0efe341e2f71779371083cffdb26e2c498f7f3d"],
-      "database_engine_and_version": "Supabase Postgres live version unknown; disposable test version discovered at rehearsal",
+      "database_engine_and_version": "Disposable PostgreSQL 16.14 verified on 2026-08-14; Supabase live version remains unknown",
       "data_profile_evidence": [
         "No rate-limit table or historical rows exist",
         "Live Supabase has not been inspected or mutated",
@@ -58,7 +58,7 @@
     },
     "target": {
       "schema_revision": "supabase/007_add_shared_rate_limits.sql",
-      "application_revisions": ["B-3 commit to be pinned after integration"],
+      "application_revisions": ["101e16d6ac499925b0bfee3a9513a8dbbcee97a2"],
       "approved_contract_ids": ["ADR-010", "B-3", "FR-5.3"],
       "invariants": [
         "At most the configured allowance is accepted per hashed caller and bucket in any 60-second sliding window",
@@ -168,9 +168,11 @@
       "Cleanup deletes at most 1000 expired rows per request"
     ],
     "rehearsal": [
-      "Apply the disposable postgres_schema.sql on a local-only database",
-      "Run concurrent calls through two PostgresDatabase instances",
-      "Run the full credential-free suite even when local Postgres is unavailable"
+      "Executed 2026-08-14: tests/postgres_schema.sql applied repeatedly by the disposable Postgres fixtures",
+      "Executed 2026-08-14: two PostgresDatabase instances jointly accepted exactly five of twenty concurrent attempts at limit five",
+      "Executed 2026-08-14: full suite passed 261 tests with zero skips on PostgreSQL 16.14",
+      "Executed 2026-08-14: migration 007 applied twice; RLS, three indexes, and zero Data API table/sequence grants verified",
+      "Evidence: docs/evidence/B3_POSTGRES_VERIFICATION.md"
     ],
     "correctness_and_reconciliation": [
       "Exactly limit requests are allowed under concurrent two-instance load",

@@ -1,7 +1,7 @@
 # Cretona — post-parity backlog
 
 Status: written 2026-08-12, after FastAPI reached behavioural parity with the
-Express reference. Last updated 2026-08-13 after B-3.
+Express reference. Last updated 2026-08-14 after B-3 PostgreSQL verification.
 
 ## Progress
 
@@ -9,7 +9,7 @@ Express reference. Last updated 2026-08-13 after B-3.
 |---|---|---|
 | B-1 | Per-attempt `started_at` | **Done** — `1f1b39c`, verified 239 passed |
 | B-2 | Poller lease fencing | **Done** — `32b6b0d`, verified 245 passed |
-| B-3 | Shared-store rate limiting | **Done** — Postgres sliding window with atomic advisory-lock transactions, bounded cleanup, hashed caller keys, and SQLite in-memory fallback; 241 passed / 20 Postgres-only skipped; live migration remains unapplied |
+| B-3 | Shared-store rate limiting | **Done** — Postgres sliding window with atomic advisory-lock transactions, bounded cleanup, hashed caller keys, and SQLite in-memory fallback; verified 261 passed / 0 skipped on disposable PostgreSQL 16.14; migration 007 rehearsed twice; live migration remains unapplied |
 | B-4 | `generation_logs` retention | **Done** — 180-day, oldest-first bounded cleanup with metadata-only aggregation; verified 239 passed / 19 Postgres-only skipped; live migration remains unapplied |
 | B-8 | Android consumes `/me` | **Done** — quota/identity loading, retry, exhausted-state prevention, post-submit refresh, and AVD evidence; 12 Android tests plus clean lint/assembly |
 | B-9 | Android shows thumbnails | **Done** — Coil history preview with loading/error fallback, project aspect ratio, and AVD evidence; 12 Android tests plus clean lint/assembly |
@@ -25,10 +25,10 @@ Apply them in numeric order:
 Until 004, 005, and 007 are applied, `CRETONA_DATABASE_BACKEND=postgres` against
 Supabase refuses to start and names the files to run. That is the intended
 behaviour, not a fault. Missing 006 does not change correctness, but leaves the
-retention sweep without its table-wide cutoff index. Local Postgres already
-models all four changes via `tests/postgres_schema.sql`; the Postgres suite was
-not run on 2026-08-13 because no disposable database or Docker daemon was
-available.
+retention sweep without its table-wide cutoff index. Local Postgres models all
+four changes via `tests/postgres_schema.sql`. The 2026-08-14 disposable run
+passed all 261 tests and applied migration 007 twice; see
+`docs/evidence/B3_POSTGRES_VERIFICATION.md`.
 
 ## How to read this
 
