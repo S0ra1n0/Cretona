@@ -24,6 +24,7 @@ import javax.inject.Inject
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val repository: CretonaRepository,
+    @param:dagger.hilt.android.qualifiers.ApplicationContext private val applicationContext: android.content.Context? = null,
 ) : ViewModel() {
     var ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 
@@ -300,6 +301,15 @@ class HomeViewModel @Inject constructor(
                         // would otherwise fall through to the "still running"
                         // message despite having succeeded.
                         if (project.isTerminal) {
+                            if (project.status == com.cretona.app.domain.model.ProjectStatus.COMPLETED) {
+                                applicationContext?.let { ctx ->
+                                    com.cretona.app.core.notification.CretonaNotificationManager.notifyVideoCompleted(
+                                        ctx,
+                                        project.id,
+                                        project.title,
+                                    )
+                                }
+                            }
                             refreshHistoryInternal()
                             return@launch
                         }
