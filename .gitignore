@@ -57,3 +57,24 @@ docs/experiments/EXP-005/runs/
 Thumbs.db
 desktop.ini
 *.log
+hs_err_pid*
+replay_pid*
+
+# Agent / Tool temporary artifacts
+.gemini/
+.antigravity/
+.agent/
+scratch/
+tmp/
+.tmp/
+temp/
+
+# Keys, certificates, and databases
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.db
+*.sqlite
+*.sqlite3
