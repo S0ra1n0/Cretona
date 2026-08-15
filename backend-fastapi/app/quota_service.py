@@ -10,7 +10,7 @@ from app.schemas import Quota
 # Failures that were our problem, not the user's, and so do not consume an
 # allowance. `content_policy` is deliberately absent: the provider call was
 # made and billed, so it counts (ADR-007).
-NOT_CHARGED = ("provider_error", "timeout")
+NOT_CHARGED = ("provider_error", "timeout", "cancelled")
 
 
 def iso(moment: datetime) -> str:

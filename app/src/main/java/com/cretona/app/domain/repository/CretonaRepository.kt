@@ -31,6 +31,10 @@ interface CretonaRepository {
 
     suspend fun getProject(id: String): AppResult<VideoProject>
 
+    suspend fun cancelProject(id: String): AppResult<Unit>
+
+    suspend fun deleteProject(id: String): AppResult<Unit>
+
     suspend fun listProjects(): AppResult<List<VideoProject>>
 
     suspend fun getAdminStats(days: Int = 30): AppResult<AdminStats>

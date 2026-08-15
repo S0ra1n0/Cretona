@@ -20,6 +20,7 @@ from app.schemas import (
     HealthResponse,
     MeResponse,
     MeUpdate,
+    ProjectCancelResponse,
     ProjectCreate,
     ProjectPage,
     ProjectResponse,
@@ -288,6 +289,19 @@ def retry_project(
     service: Annotated[ProjectService, Depends(project_service)],
 ) -> ProjectResponse:
     return service.retry(user_id, project_id, request_base_url(request))
+
+
+@router.post(
+    "/projects/{project_id}/cancel",
+    response_model=ProjectCancelResponse,
+    status_code=status.HTTP_200_OK,
+)
+def cancel_project(
+    project_id: str,
+    user_id: UserId,
+    service: Annotated[ProjectService, Depends(project_service)],
+) -> ProjectCancelResponse:
+    return service.cancel(user_id, project_id)
 
 
 @router.post("/webhooks/{provider}", response_model=WebhookResponse)

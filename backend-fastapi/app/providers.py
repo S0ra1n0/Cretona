@@ -10,6 +10,7 @@ ProviderFailure = Literal[
     "quota",
     "timeout",
     "provider_error",
+    "cancelled",
     "unknown",
 ]
 
@@ -25,6 +26,8 @@ class PollResult:
     video_path: str | None = None
     duration_seconds: int | None = None
     failure: ProviderFailure | None = None
+    progress_percent: int = 0
+    step_message: str | None = None
 
 
 class VideoProvider(Protocol):
@@ -68,21 +71,29 @@ class FakeVideoProvider:
                 "quota",
                 "timeout",
                 "provider_error",
+                "cancelled",
                 "unknown",
             }
             failure: ProviderFailure = (
                 requested if requested in allowed else "unknown"  # type: ignore[assignment]
             )
-            return PollResult(status="failed", failure=failure)
+            return PollResult(status="failed", failure=failure, progress_percent=0)
 
         required = 3 if normalized_prompt.startswith("slow") else self.polls_before_complete
         if poll_count < required:
-            return PollResult(status="running")
+            pct = min(85, max(25, int((poll_count / max(required, 1)) * 75)))
+            return PollResult(
+                status="running",
+                progress_percent=pct,
+                step_message="Synthesizing synthetic video frames...",
+            )
 
         return PollResult(
             status="succeeded",
             video_path=f"/media/{self.video_filename}",
             duration_seconds=5,
+            progress_percent=100,
+            step_message="Video rendering complete",
         )
 
     def verify_webhook(
@@ -125,15 +136,22 @@ class RealAiVideoProvider:
         del job_id
         normalized_prompt = (prompt or "").lower()
         if normalized_prompt.startswith("fail:"):
-            return PollResult(status="failed", failure="provider_error")
+            return PollResult(status="failed", failure="provider_error", progress_percent=0)
 
         if poll_count < 2:
-            return PollResult(status="running")
+            pct = 40 if poll_count == 0 else 75
+            return PollResult(
+                status="running",
+                progress_percent=pct,
+                step_message="AI model generating latent video dynamics...",
+            )
 
         return PollResult(
             status="succeeded",
             video_path=f"/media/{self.video_filename}",
             duration_seconds=5,
+            progress_percent=100,
+            step_message="AI video synthesis complete",
         )
 
     def verify_webhook(
@@ -170,15 +188,21 @@ class Wan21VideoProvider:
         del job_id
         normalized_prompt = (prompt or "").lower()
         if normalized_prompt.startswith("fail:"):
-            return PollResult(status="failed", failure="provider_error")
+            return PollResult(status="failed", failure="provider_error", progress_percent=0)
 
         if poll_count < 1:
-            return PollResult(status="running")
+            return PollResult(
+                status="running",
+                progress_percent=60,
+                step_message="Wan2.1 diffusion model denoising frames...",
+            )
 
         return PollResult(
             status="succeeded",
             video_path=f"/media/{self.video_filename}",
             duration_seconds=5,
+            progress_percent=100,
+            step_message="Wan2.1 video generation complete",
         )
 
     def verify_webhook(

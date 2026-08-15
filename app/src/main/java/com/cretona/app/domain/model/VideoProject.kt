@@ -17,6 +17,8 @@ data class VideoProject(
     val status: ProjectStatus,
     val provider: String,
     val errorMessage: String?,
+    val progressPercent: Int = 0,
+    val stepMessage: String? = null,
     val durationSeconds: Int?,
     val aspectRatio: String,
     val createdAt: String,

@@ -40,6 +40,12 @@ interface CretonaApi {
     ): ProjectDto
 
 
+    @POST("projects/{id}/cancel")
+    suspend fun cancelProject(@Path("id") id: String): ProjectCancelResponseDto
+
+    @retrofit2.http.DELETE("projects/{id}")
+    suspend fun deleteProject(@Path("id") id: String): retrofit2.Response<Unit>
+
     @GET("projects/{id}")
     suspend fun getProject(@Path("id") id: String): ProjectDto
 
@@ -162,11 +168,20 @@ data class ProjectDto(
     val status: String,
     val provider: String,
     val errorMessage: String? = null,
+    val progressPercent: Int? = 0,
+    val stepMessage: String? = null,
     val durationSeconds: Int? = null,
     val aspectRatio: String = "16:9",
     val createdAt: String,
     val updatedAt: String,
     val completedAt: String? = null,
+)
+
+@Serializable
+data class ProjectCancelResponseDto(
+    val cancelled: Boolean,
+    val projectId: String,
+    val quotaRefunded: Boolean,
 )
 
 @Serializable

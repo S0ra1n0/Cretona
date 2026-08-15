@@ -47,6 +47,8 @@ CREATE TABLE IF NOT EXISTS projects (
     lease_owner TEXT,
     lease_expires_at TEXT,
     started_at TEXT,
+    progress_percent INTEGER NOT NULL DEFAULT 0,
+    step_message TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     completed_at TEXT,
@@ -106,6 +108,8 @@ ADDED_COLUMNS = {
         "started_at": "TEXT",
         "lease_owner": "TEXT",
         "lease_expires_at": "TEXT",
+        "progress_percent": "INTEGER NOT NULL DEFAULT 0",
+        "step_message": "TEXT",
     },
     "users": {
         "username": "TEXT",

@@ -52,11 +52,19 @@ class ProjectResponse(ApiModel):
     status: ProjectStatus
     provider: str
     error_message: str | None = Field(alias="errorMessage")
+    progress_percent: int = Field(default=0, alias="progressPercent")
+    step_message: str | None = Field(default=None, alias="stepMessage")
     duration_seconds: int | None = Field(alias="durationSeconds")
     aspect_ratio: AspectRatio = Field(alias="aspectRatio")
     created_at: datetime = Field(alias="createdAt")
     updated_at: datetime = Field(alias="updatedAt")
     completed_at: datetime | None = Field(alias="completedAt")
+
+
+class ProjectCancelResponse(ApiModel):
+    cancelled: bool
+    project_id: str = Field(alias="projectId")
+    quota_refunded: bool = Field(alias="quotaRefunded")
 
 
 class PageInfo(ApiModel):

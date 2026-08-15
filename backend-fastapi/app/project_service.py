@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -10,7 +10,14 @@ from app.generation_log_service import GenerationLogService
 from app.providers import PollResult, ProviderRegistry
 from app.quota_service import QuotaService
 from app.repository import ProjectRepository
-from app.schemas import PageInfo, ProjectCreate, ProjectPage, ProjectResponse, WebhookResponse
+from app.schemas import (
+    PageInfo,
+    ProjectCancelResponse,
+    ProjectCreate,
+    ProjectPage,
+    ProjectResponse,
+    WebhookResponse,
+)
 from app.storage import StorageBackend, assert_owns_path
 from app.thumbnails import ThumbnailGenerator
 from app.transitions import IN_FLIGHT, assert_transition, is_retryable
@@ -21,6 +28,7 @@ FAILURE_MESSAGES = {
     "quota": "The video service quota is currently unavailable.",
     "timeout": "Video generation took too long. Please retry later.",
     "provider_error": "The video service had a problem. Please try again.",
+    "cancelled": "Generation was cancelled by the user.",
     "unknown": "Video generation failed. Please try again.",
 }
 
@@ -109,6 +117,8 @@ class ProjectService:
             "thumbnail_path": None,
             "poll_count": 0,
             "attempt_count": 0,
+            "progress_percent": 0,
+            "step_message": "Queued in generation pipeline",
             "idempotency_key": idempotency_key,
             "created_at": now,
             "updated_at": now,
@@ -281,7 +291,12 @@ class ProjectService:
             updated = self.database.update_project(
                 row["id"],
                 owner_id,
-                {"status": "generating", "updated_at": utc_now()},
+                {
+                    "status": "generating",
+                    "progress_percent": 15,
+                    "step_message": "Initializing video generation pipeline...",
+                    "updated_at": utc_now(),
+                },
                 expected_status="pending",
             )
             return updated or self._owned(owner_id, row["id"])
@@ -317,7 +332,12 @@ class ProjectService:
             updated = self.database.update_project(
                 row["id"],
                 owner_id,
-                {"poll_count": poll_count, "updated_at": now},
+                {
+                    "poll_count": poll_count,
+                    "progress_percent": result.progress_percent,
+                    "step_message": result.step_message,
+                    "updated_at": now,
+                },
                 expected_status="generating",
             )
         elif result.status == "succeeded":
@@ -339,6 +359,8 @@ class ProjectService:
                     "thumbnail_path": thumbnail_path,
                     "duration_seconds": result.duration_seconds,
                     "poll_count": poll_count,
+                    "progress_percent": 100,
+                    "step_message": result.step_message or "Video rendering complete",
                     "updated_at": now,
                     "completed_at": now,
                 },
@@ -347,6 +369,42 @@ class ProjectService:
         else:
             return self._mark_failed(row, owner_id, result.failure or "unknown", poll_count)
         return updated or self._owned(owner_id, row["id"])
+
+    def cancel(self, owner_id: str, project_id: str) -> ProjectCancelResponse:
+        row = self._owned(owner_id, project_id)
+        if row["status"] not in IN_FLIGHT:
+            raise AppError(409, "CONFLICT", f"Cannot cancel project with status '{row['status']}'.")
+
+        now = utc_now()
+        updated = self.database.update_project(
+            project_id,
+            owner_id,
+            {
+                "status": "failed",
+                "error_code": "cancelled",
+                "error_message": FAILURE_MESSAGES["cancelled"],
+                "progress_percent": 0,
+                "step_message": "Cancelled by user",
+                "updated_at": now,
+                "completed_at": now,
+            },
+            expected_status=row["status"],
+        )
+        if updated is None:
+            raise AppError(409, "CONFLICT", "Project state changed before cancellation.")
+
+        self.generation_log.record(
+            project_id=project_id,
+            provider=row["provider"],
+            event="error",
+            request={"action": "cancel", "userId": owner_id},
+            response={"message": "Generation cancelled by user"},
+        )
+        return ProjectCancelResponse(
+            cancelled=True,
+            projectId=project_id,
+            quotaRefunded=True,
+        )
 
     def _rehost(self, row: dict[str, Any], owner_id: str, source: str | None) -> str | None:
         """Copy a finished result into our own storage before completing.
@@ -365,20 +423,6 @@ class ProjectService:
             response={"storedPath": stored},
         )
         return stored
-
-    def _timed_out(self, row: dict[str, Any]) -> bool:
-        """Has the current attempt been in flight too long?
-
-        Measured from `started_at`, which is set on submit and reset on every
-        retry, so each attempt gets the full budget. Rows written before that
-        column existed have none, and fall back to `created_at` rather than
-        being read as having started at the epoch and failed on sight.
-        """
-        started = _parse_timestamp(row.get("started_at")) or _parse_timestamp(row.get("created_at"))
-        if started is None:
-            return False
-        age = (datetime.now(UTC) - started).total_seconds()
-        return age > self.settings.generation_timeout_seconds
 
     def _thumbnail(
         self,
@@ -410,6 +454,20 @@ class ProjectService:
         else:
             target = source.parent / "thumbnail.jpg"
             return target_path if self.thumbnails.extract(source, target) else None
+
+    def _timed_out(self, row: dict[str, Any]) -> bool:
+        """Has the current attempt been in flight too long?
+
+        Measured from `started_at`, which is set on submit and reset on every
+        retry, so each attempt gets the full budget. Rows written before that
+        column existed have none, and fall back to `created_at` rather than
+        being read as having started at the epoch and failed on sight.
+        """
+        started = _parse_timestamp(row.get("started_at")) or _parse_timestamp(row.get("created_at"))
+        if started is None:
+            return False
+        age = (datetime.now(UTC) - started).total_seconds()
+        return age > self.settings.generation_timeout_seconds
 
     def _mark_failed(
         self,
@@ -455,21 +513,24 @@ class ProjectService:
             # URL is a guaranteed-stale link once it expires.
             return self.storage.read_url(path, base_url, video=video)
 
+        progress = int(row.get("progress_percent") or (100 if row["status"] == "completed" else 0))
         return ProjectResponse(
             id=row["id"],
             title=row["title"],
             prompt=row["prompt"],
-            imageUrl=media_url(row["image_path"], video=False),
-            videoUrl=media_url(row["video_path"]),
-            thumbnailUrl=media_url(row["thumbnail_path"]),
+            imageUrl=media_url(row.get("image_path"), video=False),
+            videoUrl=media_url(row.get("video_path")),
+            thumbnailUrl=media_url(row.get("thumbnail_path")),
             status=row["status"],
             provider=row["provider"],
-            errorMessage=row["error_message"],
-            durationSeconds=row["duration_seconds"],
-            aspectRatio=row["aspect_ratio"],
+            errorMessage=row.get("error_message"),
+            progressPercent=progress,
+            stepMessage=row.get("step_message"),
+            durationSeconds=row.get("duration_seconds"),
+            aspectRatio=row.get("aspect_ratio") or "16:9",
             createdAt=row["created_at"],
             updatedAt=row["updated_at"],
-            completedAt=row["completed_at"],
+            completedAt=row.get("completed_at"),
         )
 
     def process_webhook(

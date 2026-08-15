@@ -9,7 +9,9 @@ import com.cretona.app.domain.model.UserProfile
 import com.cretona.app.domain.model.VideoProject
 import com.cretona.app.domain.repository.CretonaRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -167,6 +169,34 @@ class HomeViewModelTest {
         org.junit.Assert.assertNull(state.selectedImageUri)
         org.junit.Assert.assertFalse(state.isSubmitting)
     }
+
+    @Test
+    fun cancelCurrentProject_cancels_and_refreshes() = runTest {
+        val repository = FakeRepository()
+        val viewModel = HomeViewModel(repository)
+
+        viewModel.onPromptChanged("Slow motion fireworks")
+        viewModel.generateVideo()
+        // Advance just enough for createProject to finish, but NOT the 5 000 ms poll delay
+        advanceTimeBy(100)
+
+        // currentProject is now the pending project from createProject, not yet terminal
+        viewModel.cancelCurrentProject()
+        advanceUntilIdle()
+
+        assertEquals(1, repository.cancelCalls)
+    }
+
+    @Test
+    fun deleteProject_calls_repository_and_refreshes() = runTest {
+        val repository = FakeRepository()
+        val viewModel = HomeViewModel(repository)
+
+        viewModel.deleteProject("test-proj-id")
+        advanceUntilIdle()
+
+        assertEquals(1, repository.deleteCalls)
+    }
 }
 
 private class FakeRepository(
@@ -181,6 +211,8 @@ private class FakeRepository(
     var createCalls = 0
     var accountCalls = 0
     var uploadCalls = 0
+    var cancelCalls = 0
+    var deleteCalls = 0
     var lastCreatedImagePath: String? = null
 
     override suspend fun getCurrentUser(): AppResult<UserProfile> {
@@ -242,6 +274,16 @@ private class FakeRepository(
 
     override suspend fun getProject(id: String): AppResult<VideoProject> =
         AppResult.Success(completed)
+
+    override suspend fun cancelProject(id: String): AppResult<Unit> {
+        cancelCalls += 1
+        return AppResult.Success(Unit)
+    }
+
+    override suspend fun deleteProject(id: String): AppResult<Unit> {
+        deleteCalls += 1
+        return AppResult.Success(Unit)
+    }
 
     override suspend fun listProjects(): AppResult<List<VideoProject>> =
         AppResult.Success(if (createCalls == 0) emptyList() else listOf(completed))

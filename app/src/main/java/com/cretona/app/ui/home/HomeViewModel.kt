@@ -236,6 +236,44 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    fun cancelCurrentProject() {
+        val current = state.value.currentProject ?: return
+        if (current.isTerminal) return
+
+        pollingJob?.cancel()
+        viewModelScope.launch {
+            when (val res = repository.cancelProject(current.id)) {
+                is AppResult.Success -> {
+                    when (val updatedRes = repository.getProject(current.id)) {
+                        is AppResult.Success -> _state.update { it.copy(currentProject = updatedRes.data) }
+                        is AppResult.Failure -> Unit
+                    }
+                    refreshAccountInternal()
+                    refreshHistoryInternal()
+                }
+                is AppResult.Failure -> {
+                    _state.update { it.copy(errorMessage = "Could not cancel: ${res.error.message}") }
+                }
+            }
+        }
+    }
+
+    fun deleteProject(projectId: String) {
+        viewModelScope.launch {
+            when (val res = repository.deleteProject(projectId)) {
+                is AppResult.Success -> {
+                    if (state.value.currentProject?.id == projectId) {
+                        _state.update { it.copy(currentProject = null) }
+                    }
+                    refreshHistoryInternal()
+                }
+                is AppResult.Failure -> {
+                    _state.update { it.copy(errorMessage = "Could not delete: ${res.error.message}") }
+                }
+            }
+        }
+    }
+
     override fun onCleared() {
         pollingJob?.cancel()
         super.onCleared()

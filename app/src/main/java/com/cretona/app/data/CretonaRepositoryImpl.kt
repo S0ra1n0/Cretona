@@ -82,6 +82,16 @@ class CretonaRepositoryImpl @Inject constructor(
         api.getProject(id).toDomain()
     }
 
+    override suspend fun cancelProject(id: String): AppResult<Unit> = apiCall {
+        api.cancelProject(id)
+        Unit
+    }
+
+    override suspend fun deleteProject(id: String): AppResult<Unit> = apiCall {
+        api.deleteProject(id)
+        Unit
+    }
+
     override suspend fun listProjects(): AppResult<List<VideoProject>> = apiCall {
         api.listProjects().items.map(ProjectDto::toDomain)
     }
@@ -167,6 +177,8 @@ internal fun ProjectDto.toDomain(): VideoProject = VideoProject(
     },
     provider = provider,
     errorMessage = errorMessage ?: if (status in knownStatuses) null else "Unknown job status.",
+    progressPercent = progressPercent ?: 0,
+    stepMessage = stepMessage,
     durationSeconds = durationSeconds,
     aspectRatio = aspectRatio,
     createdAt = createdAt,

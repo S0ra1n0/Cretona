@@ -9,17 +9,24 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -32,6 +39,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -114,6 +122,8 @@ fun HomeScreen(
             hideKeyboard(focusManager, keyboardController)
             viewModel.generateVideo()
         },
+        onCancelCurrent = viewModel::cancelCurrentProject,
+        onDeleteProject = viewModel::deleteProject,
         onRefreshAccount = viewModel::refreshAccount,
         onRefresh = viewModel::refreshHistory,
         onNavigateToAdmin = onNavigateToAdmin,
@@ -131,6 +141,8 @@ private fun HomeContent(
     onClearImage: () -> Unit,
     onEnhance: () -> Unit,
     onGenerate: () -> Unit,
+    onCancelCurrent: () -> Unit,
+    onDeleteProject: (String) -> Unit,
     onRefreshAccount: () -> Unit,
     onRefresh: () -> Unit,
     onNavigateToAdmin: () -> Unit,
@@ -293,7 +305,12 @@ private fun HomeContent(
             }
 
             state.currentProject?.let { project ->
-                item { CurrentProjectCard(project) }
+                item {
+                    CurrentProjectCard(
+                        project = project,
+                        onCancel = onCancelCurrent,
+                    )
+                }
             }
 
             item {
@@ -311,7 +328,10 @@ private fun HomeContent(
                 item { Text("No projects yet. Your first generation will appear here.") }
             } else {
                 items(state.projects, key = VideoProject::id) { project ->
-                    HistoryCard(project)
+                    HistoryCard(
+                        project = project,
+                        onDelete = { onDeleteProject(project.id) },
+                    )
                 }
             }
         }
@@ -408,7 +428,10 @@ private fun hideKeyboard(
 }
 
 @Composable
-private fun CurrentProjectCard(project: VideoProject) {
+private fun CurrentProjectCard(
+    project: VideoProject,
+    onCancel: () -> Unit,
+) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -416,6 +439,47 @@ private fun CurrentProjectCard(project: VideoProject) {
         ) {
             Text(project.title, style = MaterialTheme.typography.titleLarge)
             StatusText(project)
+
+            if (project.status == ProjectStatus.PENDING || project.status == ProjectStatus.GENERATING) {
+                val progressFraction = (project.progressPercent.coerceIn(0, 100)) / 100f
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = project.stepMessage ?: "Generating video...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = "${project.progressPercent}%",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                LinearProgressIndicator(
+                    progress = { progressFraction },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedButton(
+                    onClick = onCancel,
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error,
+                    ),
+                    modifier = Modifier.align(Alignment.End),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Cancel",
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text("Cancel Generation")
+                }
+            }
+
             project.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             if (project.status == ProjectStatus.COMPLETED && project.videoUrl != null) {
                 VideoPlayer(project.videoUrl)
@@ -425,7 +489,10 @@ private fun CurrentProjectCard(project: VideoProject) {
 }
 
 @Composable
-private fun HistoryCard(project: VideoProject) {
+private fun HistoryCard(
+    project: VideoProject,
+    onDelete: () -> Unit,
+) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column {
             if (project.status == ProjectStatus.COMPLETED) {
@@ -435,33 +502,49 @@ private fun HistoryCard(project: VideoProject) {
                     aspectRatio = project.thumbnailAspectRatio,
                 )
             }
-            Column(
-                modifier = Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(14.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(project.title, style = MaterialTheme.typography.titleMedium)
-                StatusText(project)
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    val providerLabel = when (project.provider) {
-                        "real" -> "🤖 Model AI (Real)"
-                        "wan21" -> "⚡ Wan 2.1"
-                        else -> "🎭 Fake Demo"
-                    }
-                    Text(
-                        providerLabel,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (project.provider in listOf("real", "wan21")) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outline,
-                    )
-                    if (project.imageUrl != null) {
+                    Text(project.title, style = MaterialTheme.typography.titleMedium)
+                    StatusText(project)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        val providerLabel = when (project.provider) {
+                            "real" -> "🤖 Model AI (Real)"
+                            "wan21" -> "⚡ Wan 2.1"
+                            else -> "🎭 Fake Demo"
+                        }
                         Text(
-                            "📷 Image-to-Video",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
+                            providerLabel,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (project.provider in listOf("real", "wan21")) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outline,
                         )
+                        if (project.imageUrl != null) {
+                            Text(
+                                "📷 Image-to-Video",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
                     }
+                }
+
+                IconButton(onClick = onDelete) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Delete project",
+                        tint = MaterialTheme.colorScheme.outline,
+                    )
                 }
             }
         }
@@ -608,27 +691,109 @@ private fun StatusText(project: VideoProject) {
 private fun VideoPlayer(videoUrl: String) {
     val context = LocalContext.current
     val player = remember { ExoPlayer.Builder(context).build() }
+    var isPlaying by remember { mutableStateOf(true) }
+    var currentPositionMs by remember { mutableStateOf(0L) }
+    var durationMs by remember { mutableStateOf(0L) }
+    var isMuted by remember { mutableStateOf(false) }
 
     LaunchedEffect(videoUrl) {
         player.setMediaItem(MediaItem.fromUri(videoUrl))
         player.prepare()
         player.playWhenReady = true
     }
+
+    LaunchedEffect(player) {
+        while (true) {
+            currentPositionMs = player.currentPosition.coerceAtLeast(0L)
+            durationMs = player.duration.coerceAtLeast(0L)
+            isPlaying = player.isPlaying
+            kotlinx.coroutines.delay(200)
+        }
+    }
+
     DisposableEffect(player) {
         onDispose(player::release)
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(8.dp),
+            )
+            .padding(8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
-                .background(Color.Black),
+                .background(Color.Black, shape = RoundedCornerShape(6.dp)),
         ) {
             PlayerSurface(player = player, modifier = Modifier.fillMaxSize())
         }
-        OutlinedButton(onClick = { if (player.isPlaying) player.pause() else player.play() }) {
-            Text("Play / pause")
+
+        // Scrubbing & Controls Bar
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            IconButton(
+                onClick = {
+                    if (player.isPlaying) {
+                        player.pause()
+                        isPlaying = false
+                    } else {
+                        if (player.playbackState == androidx.media3.common.Player.STATE_ENDED) {
+                            player.seekTo(0)
+                        }
+                        player.play()
+                        isPlaying = true
+                    }
+                },
+                modifier = Modifier.size(36.dp),
+            ) {
+                Icon(
+                    imageVector = if (isPlaying) Icons.Default.Close else Icons.Default.PlayArrow,
+                    contentDescription = if (isPlaying) "Pause" else "Play",
+                )
+            }
+
+            val curSec = currentPositionMs / 1000
+            val durSec = if (durationMs > 0) durationMs / 1000 else 5
+            Text(
+                text = String.format(
+                    java.util.Locale.US,
+                    "%02d:%02d / %02d:%02d",
+                    curSec / 60,
+                    curSec % 60,
+                    durSec / 60,
+                    durSec % 60,
+                ),
+                style = MaterialTheme.typography.labelSmall,
+            )
+
+            Slider(
+                value = if (durationMs > 0) (currentPositionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f,
+                onValueChange = { fraction ->
+                    if (durationMs > 0) {
+                        player.seekTo((fraction * durationMs).toLong())
+                    }
+                },
+                modifier = Modifier.weight(1f),
+            )
+
+            IconButton(
+                onClick = {
+                    isMuted = !isMuted
+                    player.volume = if (isMuted) 0f else 1f
+                },
+                modifier = Modifier.size(36.dp),
+            ) {
+                Text(if (isMuted) "🔇" else "🔊", style = MaterialTheme.typography.bodyMedium)
+            }
         }
     }
 }
@@ -662,6 +827,8 @@ private fun HomeScreenPreview() {
             onClearImage = {},
             onEnhance = {},
             onGenerate = {},
+            onCancelCurrent = {},
+            onDeleteProject = {},
             onRefreshAccount = {},
             onRefresh = {},
             onNavigateToAdmin = {},
