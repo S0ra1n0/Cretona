@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -53,6 +54,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -452,6 +454,7 @@ private fun HomeContent(
                 items(state.projects, key = VideoProject::id) { project ->
                     HistoryCard(
                         project = project,
+                        onRemix = { onRemixProject(project) },
                         onDelete = { onDeleteProject(project.id) },
                     )
                 }
@@ -605,6 +608,63 @@ private fun CurrentProjectCard(
             project.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             if (project.status == ProjectStatus.COMPLETED && project.videoUrl != null) {
                 VideoPlayer(project.videoUrl)
+
+                val context = LocalContext.current
+                val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
+                var isSaving by remember { mutableStateOf(false) }
+                var saveFeedback by remember { mutableStateOf<String?>(null) }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Button(
+                        onClick = {
+                            coroutineScope.launch {
+                                isSaving = true
+                                val result = com.cretona.app.core.util.MediaDownloader.saveVideoToGallery(
+                                    context,
+                                    project.videoUrl,
+                                    project.title,
+                                )
+                                isSaving = false
+                                saveFeedback = if (result.isSuccess) "Saved to Gallery (Movies/Cretona)!" else "Failed to save video"
+                            }
+                        },
+                        enabled = !isSaving,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        if (isSaving) {
+                            CircularProgressIndicator(modifier = Modifier.padding(2.dp), color = MaterialTheme.colorScheme.onPrimary)
+                        } else {
+                            Text("📥 Save to Gallery")
+                        }
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            coroutineScope.launch {
+                                com.cretona.app.core.util.MediaDownloader.shareVideo(
+                                    context,
+                                    project.videoUrl,
+                                    project.title,
+                                )
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("📤 Share")
+                    }
+                }
+
+                saveFeedback?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
             }
         }
     }
@@ -613,8 +673,11 @@ private fun CurrentProjectCard(
 @Composable
 private fun HistoryCard(
     project: VideoProject,
+    onRemix: () -> Unit,
     onDelete: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
     var showDeleteDialog by remember { mutableStateOf(false) }
 
     if (showDeleteDialog) {
@@ -691,12 +754,43 @@ private fun HistoryCard(
                     }
                 }
 
-                IconButton(onClick = { showDeleteDialog = true }) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "Delete project",
-                        tint = MaterialTheme.colorScheme.outline,
-                    )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    OutlinedButton(
+                        onClick = onRemix,
+                    ) {
+                        Text("✨ Remix", style = MaterialTheme.typography.labelSmall)
+                    }
+
+                    if (project.status == ProjectStatus.COMPLETED && project.videoUrl != null) {
+                        IconButton(
+                            onClick = {
+                                coroutineScope.launch {
+                                    com.cretona.app.core.util.MediaDownloader.shareVideo(
+                                        context,
+                                        project.videoUrl,
+                                        project.title,
+                                    )
+                                }
+                            },
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Share,
+                                contentDescription = "Share video",
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+
+                    IconButton(onClick = { showDeleteDialog = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Delete project",
+                            tint = MaterialTheme.colorScheme.outline,
+                        )
+                    }
                 }
             }
         }
