@@ -25,6 +25,9 @@ import com.cretona.app.domain.model.ProjectStatus
 import com.cretona.app.domain.model.UserProfile
 import com.cretona.app.domain.model.VideoProject
 import com.cretona.app.domain.repository.CretonaRepository
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.HttpException
 import java.io.IOException
 import javax.inject.Inject
@@ -47,14 +50,31 @@ class CretonaRepositoryImpl @Inject constructor(
         )
     }
 
+    override suspend fun uploadImage(
+        bytes: ByteArray,
+        mimeType: String,
+        fileName: String,
+    ): AppResult<String> = apiCall {
+        val mediaType = mimeType.toMediaTypeOrNull()
+        val requestBody = bytes.toRequestBody(mediaType, 0, bytes.size)
+        val part = MultipartBody.Part.createFormData("file", fileName, requestBody)
+        val response = api.uploadImage(part)
+        response.storagePath
+    }
+
     override suspend fun createProject(
-        prompt: String,
+        prompt: String?,
+        imagePath: String?,
         idempotencyKey: String,
         provider: String,
     ): AppResult<VideoProject> = apiCall {
         api.createProject(
             idempotencyKey = idempotencyKey,
-            request = ProjectCreateRequest(prompt = prompt, provider = provider),
+            request = ProjectCreateRequest(
+                prompt = prompt,
+                imagePath = imagePath,
+                provider = provider,
+            ),
         ).toDomain()
     }
 
@@ -135,6 +155,7 @@ internal fun ProjectDto.toDomain(): VideoProject = VideoProject(
     id = id,
     title = title,
     prompt = prompt,
+    imageUrl = imageUrl,
     videoUrl = videoUrl,
     thumbnailUrl = thumbnailUrl,
     status = when (status) {

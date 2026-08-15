@@ -1,7 +1,8 @@
 package com.cretona.app.ui.home
 
-import com.cretona.app.domain.model.VideoProject
+import android.net.Uri
 import com.cretona.app.domain.model.UserProfile
+import com.cretona.app.domain.model.VideoProject
 
 data class HomeUiState(
     val prompt: String = "",
@@ -15,7 +16,15 @@ data class HomeUiState(
     val selectedProvider: String = "real",
     val enhancementNote: String? = null,
     val errorMessage: String? = null,
+    val selectedImageUri: Uri? = null,
+    val selectedImageBytes: ByteArray? = null,
+    val selectedImageMimeType: String? = null,
+    val selectedImageFileName: String? = null,
+    val isUploadingImage: Boolean = false,
 ) {
     val isQuotaExhausted: Boolean
         get() = account?.quota?.remaining == 0
+
+    val isImageToVideo: Boolean
+        get() = selectedImageBytes != null
 }

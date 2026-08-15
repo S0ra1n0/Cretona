@@ -22,11 +22,23 @@ interface CretonaApi {
     @POST("prompts/enhance")
     suspend fun enhancePrompt(@Body request: PromptEnhanceRequest): PromptEnhanceResponse
 
+    @retrofit2.http.Multipart
+    @POST("uploads")
+    suspend fun uploadImage(
+        @retrofit2.http.Part file: okhttp3.MultipartBody.Part,
+    ): UploadResponseDto
+
+    @POST("uploads/sign")
+    suspend fun signUpload(
+        @Body request: UploadSignRequestDto,
+    ): UploadSignResponseDto
+
     @POST("projects")
     suspend fun createProject(
         @Header("Idempotency-Key") idempotencyKey: String,
         @Body request: ProjectCreateRequest,
     ): ProjectDto
+
 
     @GET("projects/{id}")
     suspend fun getProject(@Path("id") id: String): ProjectDto
@@ -107,9 +119,30 @@ data class QuotaDto(
 
 @Serializable
 data class ProjectCreateRequest(
-    val prompt: String,
+    val prompt: String? = null,
+    val imagePath: String? = null,
     val provider: String = "fake",
     val options: GenerationOptionsDto = GenerationOptionsDto(),
+)
+
+@Serializable
+data class UploadResponseDto(
+    val storagePath: String,
+    val imageUrl: String? = null,
+)
+
+@Serializable
+data class UploadSignRequestDto(
+    val contentType: String,
+    val sizeBytes: Long,
+)
+
+@Serializable
+data class UploadSignResponseDto(
+    val uploadUrl: String,
+    val storagePath: String,
+    val token: String,
+    val expiresAt: String,
 )
 
 @Serializable
@@ -123,6 +156,7 @@ data class ProjectDto(
     val id: String,
     val title: String,
     val prompt: String? = null,
+    val imageUrl: String? = null,
     val videoUrl: String? = null,
     val thumbnailUrl: String? = null,
     val status: String,

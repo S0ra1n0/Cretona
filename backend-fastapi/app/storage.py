@@ -78,6 +78,8 @@ class StorageBackend(Protocol):
         self, user_id: str, content_type: str, size_bytes: int, base_url: str
     ) -> SignedUpload: ...
 
+    def store_image(self, user_id: str, content_type: str, data: bytes) -> str: ...
+
     def read_url(self, path: str | None, base_url: str, *, video: bool = True) -> str | None: ...
 
     def store_video(self, user_id: str, project_id: str, source: str) -> str: ...
@@ -120,13 +122,26 @@ class LocalStorage:
             expires_at=expires_at.isoformat().replace("+00:00", "Z"),
         )
 
+    def store_image(self, user_id: str, content_type: str, data: bytes) -> str:
+        validate_upload_request(content_type, len(data))
+        path = upload_path(user_id, content_type)
+        destination = self.media_dir / "uploads" / path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(data)
+        return path
+
     def read_url(self, path: str | None, base_url: str, *, video: bool = True) -> str | None:
         del video
         if not path:
             return None
         if path.startswith(("http://", "https://")):
             return path
-        return f"{base_url.rstrip('/')}/{path.lstrip('/')}"
+        clean = path.lstrip("/")
+        if clean.startswith("media/"):
+            return f"{base_url.rstrip('/')}/{clean}"
+        if (self.media_dir / "uploads" / clean).exists():
+            return f"{base_url.rstrip('/')}/media/uploads/{clean}"
+        return f"{base_url.rstrip('/')}/media/{clean}"
 
     def local_video_path(self, stored_path: str) -> Path | None:
         return self._resolve(stored_path)
@@ -171,9 +186,17 @@ class LocalStorage:
         relative = path.lstrip("/").removeprefix("media/")
         candidate = (self.media_dir / relative).resolve()
         media_root = self.media_dir.resolve()
+        if candidate != media_root and (media_root in candidate.parents or candidate == media_root) and candidate.exists():
+            return candidate
+
+        uploads_candidate = (self.media_dir / "uploads" / relative).resolve()
+        if uploads_candidate != media_root and (media_root in uploads_candidate.parents) and uploads_candidate.exists():
+            return uploads_candidate
+
         if candidate == media_root or media_root not in candidate.parents:
             return None
         return candidate
+
 
 
 class SupabaseStorage:
@@ -271,6 +294,23 @@ class SupabaseStorage:
         if upload.status_code >= 400:
             return ""
         return path
+
+    def store_image(self, user_id: str, content_type: str, data: bytes) -> str:
+        validate_upload_request(content_type, len(data))
+        path = upload_path(user_id, content_type)
+        upload = self._client.post(
+            f"{self.api}/object/{self.uploads_bucket}/{path}",
+            headers={
+                **self._headers,
+                "Content-Type": content_type,
+                "x-upsert": "true",
+            },
+            content=data,
+        )
+        if upload.status_code >= 400:
+            raise AppError(500, "INTERNAL_ERROR", "Could not store the uploaded image.")
+        return path
+
 
     def read_url(self, path: str | None, base_url: str, *, video: bool = True) -> str | None:
         """Mint a short-lived read URL.

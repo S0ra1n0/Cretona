@@ -1,5 +1,6 @@
 package com.cretona.app.ui.home
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cretona.app.core.result.AppResult
@@ -55,18 +56,43 @@ class HomeViewModel @Inject constructor(
     }
 
     fun onPromptChanged(prompt: String) {
-        _state.update { it.copy(prompt = prompt, errorMessage = null, enhancementNote = null) }
+        _state.update { it.copy(prompt = prompt, errorMessage = null) }
+    }
+
+    fun onImageSelected(uri: Uri?, bytes: ByteArray, mimeType: String, fileName: String) {
+        _state.update {
+            it.copy(
+                selectedImageUri = uri,
+                selectedImageBytes = bytes,
+                selectedImageMimeType = mimeType,
+                selectedImageFileName = fileName,
+                errorMessage = null,
+            )
+        }
+    }
+
+    fun onImageCleared() {
+        _state.update {
+            it.copy(
+                selectedImageUri = null,
+                selectedImageBytes = null,
+                selectedImageMimeType = null,
+                selectedImageFileName = null,
+                errorMessage = null,
+            )
+        }
     }
 
     fun enhancePrompt() {
-        val prompt = state.value.prompt.trim()
-        if (prompt.isEmpty()) {
+        val current = state.value.prompt.trim()
+        if (current.isEmpty()) {
             _state.update { it.copy(errorMessage = "Enter an idea before enhancing it.") }
             return
         }
+
         viewModelScope.launch {
             _state.update { it.copy(isEnhancing = true, errorMessage = null) }
-            when (val result = repository.enhancePrompt(prompt)) {
+            when (val result = repository.enhancePrompt(current)) {
                 is AppResult.Success -> _state.update {
                     val source = if (result.data.usedFallback) {
                         "Deterministic fallback (no live LLM)"
@@ -93,7 +119,8 @@ class HomeViewModel @Inject constructor(
 
     fun generateVideo() {
         val prompt = state.value.prompt.trim()
-        if (prompt.isEmpty()) {
+        val hasImage = state.value.selectedImageBytes != null
+        if (prompt.isEmpty() && !hasImage) {
             _state.update { it.copy(errorMessage = "Enter a prompt before generating.") }
             return
         }
@@ -109,16 +136,49 @@ class HomeViewModel @Inject constructor(
         pollingJob?.cancel()
         viewModelScope.launch {
             _state.update { it.copy(isSubmitting = true, errorMessage = null) }
+
+            var imagePath: String? = null
+            val currentImageBytes = state.value.selectedImageBytes
+            if (currentImageBytes != null) {
+                _state.update { it.copy(isUploadingImage = true) }
+                val mime = state.value.selectedImageMimeType ?: "image/jpeg"
+                val name = state.value.selectedImageFileName ?: "reference.jpg"
+                when (val uploadResult = repository.uploadImage(currentImageBytes, mime, name)) {
+                    is AppResult.Success -> {
+                        imagePath = uploadResult.data
+                        _state.update { it.copy(isUploadingImage = false) }
+                    }
+                    is AppResult.Failure -> {
+                        _state.update {
+                            it.copy(
+                                isSubmitting = false,
+                                isUploadingImage = false,
+                                errorMessage = "Image upload failed: ${uploadResult.error.message}",
+                            )
+                        }
+                        return@launch
+                    }
+                }
+            }
+
             when (
                 val result = repository.createProject(
-                    prompt = prompt,
+                    prompt = prompt.ifBlank { null },
+                    imagePath = imagePath,
                     idempotencyKey = UUID.randomUUID().toString(),
                     provider = state.value.selectedProvider,
                 )
             ) {
                 is AppResult.Success -> {
                     _state.update {
-                        it.copy(isSubmitting = false, currentProject = result.data)
+                        it.copy(
+                            isSubmitting = false,
+                            currentProject = result.data,
+                            selectedImageUri = null,
+                            selectedImageBytes = null,
+                            selectedImageMimeType = null,
+                            selectedImageFileName = null,
+                        )
                     }
                     refreshHistoryInternal()
                     refreshAccountInternal()

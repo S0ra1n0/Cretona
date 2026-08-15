@@ -1,5 +1,8 @@
 package com.cretona.app.ui.home
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn as AndroidxOptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -13,12 +16,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -41,6 +49,7 @@ import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -69,10 +78,34 @@ fun HomeScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
+    val context = LocalContext.current
+
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia(),
+        onResult = { uri ->
+            if (uri != null) {
+                try {
+                    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    val mime = context.contentResolver.getType(uri) ?: "image/jpeg"
+                    val fileName = uri.lastPathSegment ?: "reference.jpg"
+                    if (bytes != null) {
+                        viewModel.onImageSelected(uri, bytes, mime, fileName)
+                    }
+                } catch (_: Exception) {}
+            }
+        },
+    )
+
     HomeContent(
         state = state,
         onPromptChanged = viewModel::onPromptChanged,
         onProviderSelected = viewModel::onProviderSelected,
+        onPickImage = {
+            photoPickerLauncher.launch(
+                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+            )
+        },
+        onClearImage = viewModel::onImageCleared,
         onEnhance = {
             hideKeyboard(focusManager, keyboardController)
             viewModel.enhancePrompt()
@@ -94,6 +127,8 @@ private fun HomeContent(
     state: HomeUiState,
     onPromptChanged: (String) -> Unit,
     onProviderSelected: (String) -> Unit,
+    onPickImage: () -> Unit,
+    onClearImage: () -> Unit,
     onEnhance: () -> Unit,
     onGenerate: () -> Unit,
     onRefreshAccount: () -> Unit,
@@ -186,6 +221,14 @@ private fun HomeContent(
                         label = { Text("⚡ Wan 2.1") },
                     )
                 }
+            }
+
+            item {
+                ImageReferencePicker(
+                    selectedImageUri = state.selectedImageUri,
+                    onPickImage = onPickImage,
+                    onClearImage = onClearImage,
+                )
             }
 
             item {
@@ -398,12 +441,98 @@ private fun HistoryCard(project: VideoProject) {
             ) {
                 Text(project.title, style = MaterialTheme.typography.titleMedium)
                 StatusText(project)
-                Text(
-                    if (project.provider == "real") "🤖 Model AI (Real)" else "🎭 Fake Demo",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (project.provider == "real") MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outline,
-                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    val providerLabel = when (project.provider) {
+                        "real" -> "🤖 Model AI (Real)"
+                        "wan21" -> "⚡ Wan 2.1"
+                        else -> "🎭 Fake Demo"
+                    }
+                    Text(
+                        providerLabel,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (project.provider in listOf("real", "wan21")) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outline,
+                    )
+                    if (project.imageUrl != null) {
+                        Text(
+                            "📷 Image-to-Video",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun ImageReferencePicker(
+    selectedImageUri: android.net.Uri?,
+    onPickImage: () -> Unit,
+    onClearImage: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (selectedImageUri != null) {
+        Card(
+            modifier = modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AsyncImage(
+                        model = selectedImageUri,
+                        contentDescription = "Reference Image",
+                        modifier = Modifier
+                            .size(56.dp)
+                            .aspectRatio(1f),
+                        contentScale = ContentScale.Crop,
+                    )
+                    Column {
+                        Text(
+                            text = "Reference Image Attached",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            text = "Mode: Image-to-Video",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+
+                IconButton(onClick = onClearImage) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Remove image",
+                    )
+                }
+            }
+        }
+    } else {
+        OutlinedButton(
+            onClick = onPickImage,
+            modifier = modifier.fillMaxWidth(),
+        ) {
+            Icon(
+                imageVector = Icons.Default.Image,
+                contentDescription = null,
+                modifier = Modifier.padding(end = 8.dp),
+            )
+            Text("Attach Reference Image (Image-to-Video)")
         }
     }
 }
@@ -529,6 +658,8 @@ private fun HomeScreenPreview() {
             ),
             onPromptChanged = {},
             onProviderSelected = {},
+            onPickImage = {},
+            onClearImage = {},
             onEnhance = {},
             onGenerate = {},
             onRefreshAccount = {},
@@ -537,3 +668,4 @@ private fun HomeScreenPreview() {
         )
     }
 }
+

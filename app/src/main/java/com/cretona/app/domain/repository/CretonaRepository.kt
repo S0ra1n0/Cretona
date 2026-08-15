@@ -15,11 +15,19 @@ interface CretonaRepository {
 
     suspend fun enhancePrompt(prompt: String): AppResult<EnhancedPrompt>
 
+    suspend fun uploadImage(
+        bytes: ByteArray,
+        mimeType: String,
+        fileName: String,
+    ): AppResult<String>
+
     suspend fun createProject(
-        prompt: String,
+        prompt: String?,
+        imagePath: String? = null,
         idempotencyKey: String,
         provider: String = "fake",
     ): AppResult<VideoProject>
+
 
     suspend fun getProject(id: String): AppResult<VideoProject>
 

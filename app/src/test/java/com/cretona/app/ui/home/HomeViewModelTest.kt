@@ -121,6 +121,52 @@ class HomeViewModelTest {
         viewModel.onProviderSelected("wan21")
         assertEquals("wan21", viewModel.state.value.selectedProvider)
     }
+
+    @Test
+    fun `selecting and clearing image updates state`() {
+        val viewModel = HomeViewModel(FakeRepository())
+
+        viewModel.onImageSelected(
+            uri = null,
+            bytes = byteArrayOf(1, 2, 3),
+            mimeType = "image/png",
+            fileName = "sample.png",
+        )
+
+        val stateWithImage = viewModel.state.value
+        assertEquals("image/png", stateWithImage.selectedImageMimeType)
+        assertEquals("sample.png", stateWithImage.selectedImageFileName)
+        org.junit.Assert.assertTrue(stateWithImage.isImageToVideo)
+
+        viewModel.onImageCleared()
+        val stateAfterClear = viewModel.state.value
+        org.junit.Assert.assertNull(stateAfterClear.selectedImageUri)
+        org.junit.Assert.assertNull(stateAfterClear.selectedImageBytes)
+        org.junit.Assert.assertFalse(stateAfterClear.isImageToVideo)
+    }
+
+    @Test
+    fun `generate with image uploads image and creates image-to-video project`() = runTest(mainDispatcherRule.dispatcher) {
+        val repository = FakeRepository()
+        val viewModel = HomeViewModel(repository)
+
+        viewModel.onImageSelected(
+            uri = null,
+            bytes = byteArrayOf(10, 20, 30),
+            mimeType = "image/jpeg",
+            fileName = "portrait.jpg",
+        )
+        viewModel.onPromptChanged("Make the portrait smile and wave")
+        viewModel.generateVideo()
+        advanceUntilIdle()
+
+        val state = viewModel.state.value
+        assertEquals(1, repository.uploadCalls)
+        assertEquals(1, repository.createCalls)
+        assertEquals("dev-user/sample.jpg", repository.lastCreatedImagePath)
+        org.junit.Assert.assertNull(state.selectedImageUri)
+        org.junit.Assert.assertFalse(state.isSubmitting)
+    }
 }
 
 private class FakeRepository(
@@ -134,6 +180,8 @@ private class FakeRepository(
     )
     var createCalls = 0
     var accountCalls = 0
+    var uploadCalls = 0
+    var lastCreatedImagePath: String? = null
 
     override suspend fun getCurrentUser(): AppResult<UserProfile> {
         accountCalls += 1
@@ -165,14 +213,32 @@ private class FakeRepository(
             ),
         )
 
+    override suspend fun uploadImage(
+        bytes: ByteArray,
+        mimeType: String,
+        fileName: String,
+    ): AppResult<String> {
+        uploadCalls += 1
+        return AppResult.Success("dev-user/sample.jpg")
+    }
+
     override suspend fun createProject(
-        prompt: String,
+        prompt: String?,
+        imagePath: String?,
         idempotencyKey: String,
         provider: String,
     ): AppResult<VideoProject> {
         createCalls += 1
-        return AppResult.Success(pending.copy(prompt = prompt, provider = provider))
+        lastCreatedImagePath = imagePath
+        return AppResult.Success(
+            pending.copy(
+                prompt = prompt,
+                provider = provider,
+                imageUrl = imagePath?.let { "http://example.test/media/$it" },
+            ),
+        )
     }
+
 
     override suspend fun getProject(id: String): AppResult<VideoProject> =
         AppResult.Success(completed)
@@ -235,10 +301,12 @@ private class FakeRepository(
         fun project(
             status: ProjectStatus,
             videoUrl: String? = null,
+            imageUrl: String? = null,
         ) = VideoProject(
             id = "project-1",
             title = "Paper dragon",
             prompt = "A paper dragon",
+            imageUrl = imageUrl,
             videoUrl = videoUrl,
             thumbnailUrl = null,
             status = status,

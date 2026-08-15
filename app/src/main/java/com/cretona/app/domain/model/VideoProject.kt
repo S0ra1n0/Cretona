@@ -11,6 +11,7 @@ data class VideoProject(
     val id: String,
     val title: String,
     val prompt: String?,
+    val imageUrl: String? = null,
     val videoUrl: String?,
     val thumbnailUrl: String?,
     val status: ProjectStatus,

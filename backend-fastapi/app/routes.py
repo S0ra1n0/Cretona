@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
+from fastapi import APIRouter, Depends, File, Header, Query, Request, Response, UploadFile, status
 
 from app.admin_service import AdminService
 from app.auth import current_user_id, require_admin
@@ -28,6 +28,7 @@ from app.schemas import (
     PromptEnhanceResponse,
     RoleName,
     StatsResponse,
+    UploadResponse,
     UploadSignRequest,
     UploadSignResponse,
     WebhookResponse,
@@ -198,7 +199,23 @@ def sign_upload(
     )
 
 
+@router.post("/uploads", response_model=UploadResponse, status_code=status.HTTP_201_CREATED)
+async def upload_image(
+    request: Request,
+    user_id: UserId,
+    storage: Annotated[StorageBackend, Depends(media_storage)],
+    file: Annotated[UploadFile, File(...)],
+) -> UploadResponse:
+    """Direct multipart image upload endpoint."""
+    content_type = file.content_type or "image/jpeg"
+    data = await file.read()
+    storage_path = storage.store_image(user_id, content_type, data)
+    image_url = storage.read_url(storage_path, request_base_url(request), video=False)
+    return UploadResponse(storagePath=storage_path, imageUrl=image_url)
+
+
 @router.post(
+
     "/projects",
     response_model=ProjectResponse,
     status_code=status.HTTP_201_CREATED,

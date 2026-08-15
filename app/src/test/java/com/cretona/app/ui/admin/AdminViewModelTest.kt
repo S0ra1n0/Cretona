@@ -142,7 +142,8 @@ private class FakeAdminRepository : CretonaRepository {
 
     override suspend fun getCurrentUser(): AppResult<UserProfile> = throw NotImplementedError()
     override suspend fun enhancePrompt(prompt: String): AppResult<EnhancedPrompt> = throw NotImplementedError()
-    override suspend fun createProject(prompt: String, idempotencyKey: String, provider: String): AppResult<VideoProject> = throw NotImplementedError()
+    override suspend fun uploadImage(bytes: ByteArray, mimeType: String, fileName: String): AppResult<String> = throw NotImplementedError()
+    override suspend fun createProject(prompt: String?, imagePath: String?, idempotencyKey: String, provider: String): AppResult<VideoProject> = throw NotImplementedError()
     override suspend fun getProject(id: String): AppResult<VideoProject> = throw NotImplementedError()
     override suspend fun listProjects(): AppResult<List<VideoProject>> = throw NotImplementedError()
 

@@ -110,6 +110,8 @@ The system works but is hard to run and hard to diagnose.
 | ~~B-12~~ | ~~Bucket-backed thumbnails~~ | **Done.** `SupabaseStorage` resolves video frame extraction and uploads generated thumbnail images to Supabase Storage bucket | M | D |
 | ~~B-13~~ | ~~Thumbnail backfill~~ | **Done.** `POST /admin/thumbnails/backfill` scans completed projects with missing thumbnails and extracts/uploads frame stills | S | D |
 | ~~B-14~~ | ~~Quota cost weighting~~ | **Done.** Duration and provider cost weighting (standard 1 unit, Real AI / Wan2.1 / >5s 2 units) with SQL weighted sum and balance assertions | M | D |
+| ~~B-17~~ | ~~Image-to-Video~~ | **Done.** Direct multipart image upload, storage image persistence, signed upload URL support, Android image picker + preview card + Image-to-Video badge, project image condition reference mapping | L | R |
+
 
 ## Tier 4 — Structural decisions
 
