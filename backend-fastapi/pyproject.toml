@@ -12,6 +12,8 @@ dependencies = [
     "httpx>=0.28,<1",
     "psycopg[binary,pool]>=3.2,<4",
     "pydantic-settings>=2.10,<3",
+    # ES256 needs elliptic-curve crypto, which the stdlib does not provide.
+    "pyjwt[crypto]>=2.9,<3",
     "python-multipart>=0.0.9",
     "uvicorn[standard]>=0.35,<1",
 ]

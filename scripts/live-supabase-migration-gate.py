@@ -1,4 +1,4 @@
-"""Guarded preflight, apply, and verification for Cretona migrations 006/007.
+"""Guarded preflight, apply, and verification for Cretona migrations 006-008.
 
 Run this script only with the repository's pinned FastAPI virtual environment.
 It reads the ignored root ``env`` file, validates that SUPABASE_URL and
@@ -29,6 +29,10 @@ MIGRATIONS = {
     "007": (
         ROOT / "supabase" / "007_add_shared_rate_limits.sql",
         "c698312bbc36474113b9ae529f57bff6fcfc32241cc87dbf44c45b7d33e14d63",
+    ),
+    "008": (
+        ROOT / "supabase" / "008_add_admin_audit_logs.sql",
+        "8568cbe123eb2403752be5d82ee626585fe83a38416b19a00f5d2af4fd369ee7",
     ),
 }
 DATA_API_ROLES = ("anon", "authenticated", "service_role")
@@ -111,7 +115,7 @@ def collect_state(cursor: psycopg.Cursor[Any]) -> dict[str, Any]:
           and (
             (table_name = 'video_projects' and column_name in
               ('started_at', 'lease_owner', 'lease_expires_at'))
-            or table_name = 'rate_limit_hits'
+            or table_name in ('rate_limit_hits', 'admin_audit_logs')
           )
         order by table_name, ordinal_position
         """
@@ -149,6 +153,7 @@ def collect_state(cursor: psycopg.Cursor[Any]) -> dict[str, Any]:
         """
         select
           to_regclass('public.rate_limit_hits') is not null as rate_limit_table,
+          to_regclass('public.admin_audit_logs') is not null as audit_table,
           to_regclass('supabase_migrations.schema_migrations') is not null as cli_history
         """,
     )
@@ -158,6 +163,7 @@ def collect_state(cursor: psycopg.Cursor[Any]) -> dict[str, Any]:
         "indexes": indexes,
         "invalid_indexes": invalid_indexes,
         "rate_limit_table": table_state["rate_limit_table"],
+        "audit_table": table_state["audit_table"],
         "cli_history": table_state["cli_history"],
     }
 
@@ -232,6 +238,32 @@ def assert_007_absent(state: dict[str, Any]) -> None:
     }.intersection(index_by_name(state))
     if unexpected:
         raise GateError("MIG-007 indexes exist without the expected table state.")
+
+
+def assert_008(state: dict[str, Any], *, present: bool) -> None:
+    if state["audit_table"] != present:
+        raise GateError(
+            "public.admin_audit_logs is "
+            f"{'absent' if present else 'already present'}; refusing to continue."
+        )
+    if not present:
+        return
+
+    # The columns the backend actually writes, in the shapes it writes them.
+    # The first draft of 008 had target_id NOT NULL and details as text, which
+    # would have failed every thumbnail backfill and returned JSON as a string.
+    audit_columns = {
+        row["column_name"]: row
+        for row in state["columns"]
+        if row["table_name"] == "admin_audit_logs"
+    }
+    for name in ("id", "actor_id", "action", "target_type", "target_id", "details", "created_at"):
+        if name not in audit_columns:
+            raise GateError(f"public.admin_audit_logs is missing {name}.")
+    if audit_columns["target_id"]["is_nullable"] != "YES":
+        raise GateError("admin_audit_logs.target_id must be nullable for system-wide actions.")
+    if audit_columns["details"]["udt_name"] != "jsonb":
+        raise GateError("admin_audit_logs.details must be jsonb, not text.")
 
 
 def collect_007_verification(cursor: psycopg.Cursor[Any]) -> dict[str, Any]:
@@ -387,9 +419,17 @@ def run_apply(connection: psycopg.Connection[Any], number: str) -> dict[str, Any
     if number == "006":
         assert_006(state, present=False)
         assert_007_absent(state)
-    else:
+        assert_008(state, present=False)
+    elif number == "007":
         assert_006(state, present=True)
         assert_007_absent(state)
+        assert_008(state, present=False)
+    else:
+        # 008 comes last, so everything before it must already be in place.
+        assert_006(state, present=True)
+        if not state["rate_limit_table"]:
+            raise GateError("public.rate_limit_hits is absent; apply 007 before 008.")
+        assert_008(state, present=False)
     if state["invalid_indexes"]:
         raise GateError("The public schema contains an invalid, unready, or non-live index.")
 
@@ -422,6 +462,16 @@ def run_verify(connection: psycopg.Connection[Any], number: str) -> dict[str, An
                     "The public schema contains an invalid, unready, or non-live index."
                 )
             result: dict[str, Any] = {"state": state}
+        elif number == "008":
+            state = collect_state(cursor)
+            assert_004_005(state)
+            assert_006(state, present=True)
+            assert_008(state, present=True)
+            if state["invalid_indexes"]:
+                raise GateError(
+                    "The public schema contains an invalid, unready, or non-live index."
+                )
+            result = {"state": state}
         else:
             result = collect_007_verification(cursor)
             assert_004_005(result["state"])
@@ -446,7 +496,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "action",
-        choices=("preflight", "apply-006", "verify-006", "apply-007", "verify-007"),
+        choices=(
+            "preflight",
+            "apply-006",
+            "verify-006",
+            "apply-007",
+            "verify-007",
+            "apply-008",
+            "verify-008",
+        ),
     )
     parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE)
     parser.add_argument(

@@ -25,7 +25,9 @@ credentials it needs.
 | `ENVIRONMENT` | `development` | `production` refuses `AUTH_MODE=dev` |
 | `LOG_LEVEL` | `info` | JSON logs; redaction is central, not per call site |
 | `AUTH_MODE` | `dev` | `dev` injects an identity and honours `X-Debug-User-Id`; `supabase` verifies tokens and ignores that header entirely |
-| **`SUPABASE_JWT_SECRET`** | — | **Secret.** Required when `AUTH_MODE=supabase` |
+| `SUPABASE_JWT_ALGORITHM` | `HS256` | `ES256` is Supabase's current default and what this project uses; `HS256` is the legacy shared secret. Chosen here, never inferred from the token |
+| `SUPABASE_JWKS_URL` | derived | ES256 only. Defaults to `<SUPABASE_URL>/auth/v1/.well-known/jwks.json` |
+| **`SUPABASE_JWT_SECRET`** | — | **Secret.** HS256 only. Not needed under ES256, where the backend holds no signing material at all |
 | `SUPABASE_JWT_AUDIENCE` | `authenticated` | |
 | `SUPABASE_JWT_ISSUER` | empty | Enforced only when set |
 | `SUPABASE_JWT_LEEWAY_SECONDS` | `0` | Clock-skew tolerance |
@@ -47,6 +49,7 @@ credentials it needs.
 | `RATE_LIMIT_GENERATION_PER_MIN` | `10` | Tighter bucket for writes that cost money |
 | `POLLER_ENABLED` | `true` | Advances jobs without waiting for a client read |
 | `POLL_INTERVAL_SECONDS` / `POLL_BATCH_SIZE` | `5` / `20` | |
+| **`WEBHOOK_SECRET`** | — | **Secret.** HMAC-SHA256 over the raw webhook body. Empty rejects every webhook; the route is public, so this is its only gate |
 | `POLL_LEASE_SECONDS` | `120` | Durable claim on a batch. Must exceed batch duration, or another instance re-claims rows still being worked |
 | `GENERATION_LOG_RETENTION_ENABLED` | `true` | Runs one cleanup batch at startup and then on the configured interval |
 | `GENERATION_LOG_RETENTION_DAYS` | `180` | Raw provider audit lifetime; rows exactly at the cutoff are retained |

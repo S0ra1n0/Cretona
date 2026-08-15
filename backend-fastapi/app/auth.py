@@ -7,7 +7,12 @@ from fastapi import Depends, Header, Request
 
 from app.config import Settings
 from app.errors import AppError
-from app.supabase_jwt import TokenError, VerifiedIdentity, verify_supabase_token
+from app.supabase_jwt import (
+    TokenError,
+    VerifiedIdentity,
+    verify_asymmetric_token,
+    verify_supabase_token,
+)
 
 # One message for every rejected token. Which check failed is a server-side
 # detail; API_CONTRACT.md §1.2 tells the app to refresh once, then sign out.
@@ -31,7 +36,7 @@ def current_user_id(
 
     # Deployed profiles never consult X-Debug-User-Id. It is not read past this
     # branch, so a caller cannot assert an identity by sending the header.
-    identity = _verified_identity(authorization, settings)
+    identity = _verified_identity(request, authorization, settings)
     request.state.auth_email = identity.email
     return _resolved_account(request, identity)
 
@@ -91,9 +96,21 @@ def _development_identity(x_debug_user_id: str | None, settings: Settings) -> st
         ) from exc
 
 
-def _verified_identity(authorization: str | None, settings: Settings) -> VerifiedIdentity:
+def _verified_identity(
+    request: Request,
+    authorization: str | None,
+    settings: Settings,
+) -> VerifiedIdentity:
     token = _bearer_token(authorization)
     try:
+        if settings.supabase_jwt_algorithm == "ES256":
+            return verify_asymmetric_token(
+                token,
+                jwks=request.app.state.jwks,
+                audience=settings.supabase_jwt_audience or None,
+                issuer=settings.supabase_jwt_issuer or None,
+                leeway_seconds=settings.supabase_jwt_leeway_seconds,
+            )
         return verify_supabase_token(
             token,
             secret=settings.supabase_jwt_secret.get_secret_value(),

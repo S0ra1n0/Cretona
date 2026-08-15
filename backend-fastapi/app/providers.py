@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 from uuid import uuid4
 
+from app.webhook_verification import verify_hmac_webhook
+
 ProviderFailure = Literal[
     "content_policy",
     "invalid_input",
@@ -99,15 +101,7 @@ class FakeVideoProvider:
     def verify_webhook(
         self, *, headers: dict[str, str], body: bytes, secret: str = ""
     ) -> dict[str, Any]:
-        import json
-
-        del headers, secret
-        if not body:
-            return {}
-        try:
-            return json.loads(body.decode("utf-8"))
-        except Exception:
-            return {}
+        return verify_hmac_webhook(headers=headers, body=body, secret=secret)
 
 
 class RealAiVideoProvider:
@@ -157,15 +151,7 @@ class RealAiVideoProvider:
     def verify_webhook(
         self, *, headers: dict[str, str], body: bytes, secret: str = ""
     ) -> dict[str, Any]:
-        import json
-
-        del headers, secret
-        if not body:
-            return {}
-        try:
-            return json.loads(body.decode("utf-8"))
-        except Exception:
-            return {}
+        return verify_hmac_webhook(headers=headers, body=body, secret=secret)
 
 
 class Wan21VideoProvider:
@@ -208,15 +194,7 @@ class Wan21VideoProvider:
     def verify_webhook(
         self, *, headers: dict[str, str], body: bytes, secret: str = ""
     ) -> dict[str, Any]:
-        import json
-
-        del headers, secret
-        if not body:
-            return {}
-        try:
-            return json.loads(body.decode("utf-8"))
-        except Exception:
-            return {}
+        return verify_hmac_webhook(headers=headers, body=body, secret=secret)
 
 
 class ProviderRegistry:

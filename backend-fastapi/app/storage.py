@@ -4,7 +4,7 @@ import shutil
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 from uuid import uuid4
 
 import httpx
@@ -50,6 +50,27 @@ def assert_owns_path(user_id: str, path: str) -> None:
     """
     if not path or path.split("/")[0] != user_id:
         raise AppError(403, "FORBIDDEN", "That file does not belong to you.")
+
+
+async def read_bounded(file: Any, max_bytes: int, chunk_size: int = 64 * 1024) -> bytes:
+    """Read an upload, refusing once it exceeds the limit.
+
+    Reading the whole body and then checking its length enforces the limit on
+    the response while still paying the memory and disk cost of whatever was
+    sent. Stopping at the first chunk past the limit is what makes the limit
+    protective rather than merely informative.
+    """
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await file.read(chunk_size)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_bytes:
+            raise AppError(413, "PAYLOAD_TOO_LARGE", "Images must be 10 MB or smaller.")
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def validate_upload_request(content_type: str, size_bytes: int) -> None:

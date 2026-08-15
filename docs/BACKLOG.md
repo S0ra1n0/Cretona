@@ -13,7 +13,7 @@ and 007 were applied and verified.
 | B-3 | Shared-store rate limiting | **Done** — Postgres sliding window with atomic advisory-lock transactions, bounded cleanup, hashed caller keys, and SQLite in-memory fallback; verified 261 passed / 0 skipped on disposable PostgreSQL 16.14; migration 007 rehearsed twice and applied/verified on live Supabase; live FastAPI deployment remains separate |
 | B-4 | `generation_logs` retention | **Done** — 180-day, oldest-first bounded cleanup with metadata-only aggregation; verified 239 passed / 19 Postgres-only skipped; migration 006 retention index applied/verified on live Supabase |
 | B-5 | Admin read endpoint for logs | **Done** — `GET /admin/projects/{id}/logs` exposes generation log trail to admins; 244 tests passed |
-| B-6 | Queryable admin audit | **Done** — `admin_audit_logs` schema, insert/list audit logs, `GET /api/v1/admin/audit-logs`, automated tests passing |
+| B-6 | Queryable admin audit | **Code done, not deployable until migration 008 is applied.** Confirmed unapplied on the live project 2026-08-15. The Postgres path had no test at all, and the original migration disagreed with the calling code on `target_id`, `details`, and their types; corrected before first application. Startup now refuses to boot without the table |
 | B-7 | Log shipping and sampling | **Done** — `request_log_sample_rate` configuration and middleware sampling for 2xx while preserving >=400 errors |
 | B-8 | Android consumes `/me` | **Done** — quota/identity loading, retry, exhausted-state prevention, post-submit refresh, and AVD evidence; 12 Android tests plus clean lint/assembly |
 | B-9 | Android shows thumbnails | **Done** — Coil history preview with loading/error fallback, project aspect ratio, and AVD evidence; 12 Android tests plus clean lint/assembly |
@@ -30,6 +30,8 @@ The numbered migration sequence is now observed applied on live Supabase:
 - `supabase/005_add_poll_lease.sql` (B-2) — present before the 2026-08-14 live preflight
 - `supabase/006_add_generation_log_retention_index.sql` (B-4) — applied and verified 2026-08-14
 - `supabase/007_add_shared_rate_limits.sql` (B-3) — applied and verified 2026-08-14
+- `supabase/008_add_admin_audit_logs.sql` (B-6) — **prepared, not applied.** Apply
+  before deploying the audit feature; the backend refuses to start without it
 
 The live schema gate required by `CRETONA_DATABASE_BACKEND=postgres` now passes
 at the database layer. This does not prove that a live FastAPI revision is

@@ -1,10 +1,40 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
+from typing import Any
+
 from fastapi.testclient import TestClient
 
-from tests.conftest import USER_A
+from tests.conftest import USER_A, WEBHOOK_SECRET
 
 USER_HEADERS = {"X-Debug-User-Id": USER_A}
+
+
+def sign(payload: dict[str, Any], secret: str = WEBHOOK_SECRET) -> tuple[bytes, dict[str, str]]:
+    """Sign the exact bytes that will be sent.
+
+    The server verifies the raw body, so the test must post `content=` rather
+    than `json=`; re-serializing would change the bytes the signature covers.
+    """
+    body = json.dumps(payload).encode("utf-8")
+    digest = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+    return body, {
+        "X-Cretona-Signature": f"sha256={digest}",
+        "Content-Type": "application/json",
+    }
+
+
+def post_webhook(
+    client: TestClient,
+    payload: dict[str, Any],
+    *,
+    provider: str = "fake",
+    secret: str = WEBHOOK_SECRET,
+) -> Any:
+    body, headers = sign(payload, secret)
+    return client.post(f"/api/v1/webhooks/{provider}", content=body, headers=headers)
 
 
 def test_wan21_provider_full_flow(client: TestClient) -> None:
@@ -42,9 +72,9 @@ def test_provider_webhook_success(client: TestClient) -> None:
     pid = created["id"]
 
     # 2. Receive success webhook
-    webhook_res = client.post(
-        "/api/v1/webhooks/fake",
-        json={
+    webhook_res = post_webhook(
+        client,
+        {
             "project_id": pid,
             "status": "succeeded",
             "video_path": "/media/demo-output.mp4",
@@ -73,9 +103,9 @@ def test_provider_webhook_failure(client: TestClient) -> None:
     pid = created["id"]
 
     # 2. Receive failure webhook
-    webhook_res = client.post(
-        "/api/v1/webhooks/fake",
-        json={
+    webhook_res = post_webhook(
+        client,
+        {
             "project_id": pid,
             "status": "failed",
             "error_code": "content_policy",

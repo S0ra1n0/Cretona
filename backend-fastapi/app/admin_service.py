@@ -90,9 +90,7 @@ class AdminService:
             raise AppError(404, "NOT_FOUND", "User not found.")
 
         # Privilege changes are the actions most worth reconstructing later.
-        now_str = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-        self.database.insert_audit_log(
-            id=str(uuid.uuid4()),
+        self._audit(
             actor_id=acting_admin_id,
             action="user_updated",
             target_type="user",
@@ -103,7 +101,6 @@ class AdminService:
                 "disabledFrom": bool(current.get("is_disabled")),
                 "disabledTo": payload.is_disabled,
             },
-            created_at=now_str,
         )
         logger.info(
             "admin_user_updated",
@@ -209,17 +206,56 @@ class AdminService:
                     backfilled += 1
 
         if acting_admin_id:
-            now_str = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-            self.database.insert_audit_log(
-                id=str(uuid.uuid4()),
+            self._audit(
                 actor_id=acting_admin_id,
                 action="thumbnails_backfilled",
                 target_type="system",
                 details={"backfilled": backfilled, "processed": len(rows)},
-                created_at=now_str,
             )
 
         return BackfillResponse(backfilled=backfilled, processed=len(rows))
+
+    def _audit(
+        self,
+        *,
+        actor_id: str,
+        action: str,
+        target_type: str,
+        details: dict[str, Any],
+        target_id: str | None = None,
+    ) -> None:
+        """Record an administrative action, without letting it undo one.
+
+        The mutation this describes has already committed in its own
+        transaction. Raising here would return 500 for a change that actually
+        succeeded, and an admin who retries on that basis is acting on a false
+        picture -- a worse outcome than a missing audit row.
+
+        The failure is logged at error level rather than swallowed quietly,
+        because a gap in an audit trail is itself worth investigating. Writing
+        the row in the same transaction as the mutation would remove the
+        trade-off entirely; that needs a repository that can share one.
+        """
+        try:
+            self.database.insert_audit_log(
+                id=str(uuid.uuid4()),
+                actor_id=actor_id,
+                action=action,
+                target_type=target_type,
+                target_id=target_id,
+                details=details,
+                created_at=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+            )
+        except Exception:
+            logger.error(
+                "admin_audit_write_failed",
+                extra={
+                    "actorId": actor_id,
+                    "action": action,
+                    "targetId": target_id,
+                    "targetType": target_type,
+                },
+            )
 
     def list_audit_logs(
         self,

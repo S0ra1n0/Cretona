@@ -107,5 +107,6 @@ class PromptEnhancer:
             if vn in lowered:
                 # Replace case-insensitively
                 import re
+
                 result = re.sub(re.escape(vn), en, result, flags=re.IGNORECASE)
         return result

@@ -258,6 +258,14 @@ class HomeViewModel @Inject constructor(
                     is AppResult.Success -> {
                         project = result.data
                         _state.update { it.copy(currentProject = project) }
+                        // Checked here rather than only at the top of the next
+                        // iteration: a project that finishes on the final poll
+                        // would otherwise fall through to the "still running"
+                        // message despite having succeeded.
+                        if (project.isTerminal) {
+                            refreshHistoryInternal()
+                            return@launch
+                        }
                     }
 
                     is AppResult.Failure -> {

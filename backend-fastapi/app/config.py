@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     max_generation_attempts: int = Field(default=3, ge=1, le=10)
     log_level: Literal["debug", "info", "warning", "error"] = "info"
     generation_timeout_seconds: int = Field(default=600, ge=30, le=86400)
+    # Shared secret for provider webhook signatures. Empty means the public
+    # webhook route rejects everything, which is the safe default.
+    webhook_secret: SecretStr = SecretStr("")
     thumbnails_enabled: bool = True
     # External binary, not a Python dependency. Absent means no thumbnail, not
     # a failed generation.
@@ -72,6 +75,12 @@ class Settings(BaseSettings):
 
     # Supabase identity. SecretStr keeps the value out of reprs and logs; it is
     # read only where a signature is verified.
+    # HS256 is the legacy shared-secret scheme; ES256 is Supabase's current
+    # default, where the project publishes public keys and this backend holds
+    # no signing secret. Chosen by configuration, never inferred from a token.
+    supabase_jwt_algorithm: Literal["HS256", "ES256"] = "HS256"
+    # Defaults to the project's well-known endpoint when left blank.
+    supabase_jwks_url: str = ""
     supabase_jwt_secret: SecretStr = SecretStr("")
     supabase_jwt_audience: str = "authenticated"
     # Optional; enforced only when set, e.g. https://<ref>.supabase.co/auth/v1.
@@ -122,11 +131,27 @@ class Settings(BaseSettings):
     def require_supabase_jwt_secret(self) -> Settings:
         # Fail at startup rather than on every request, matching how the Express
         # reference validates SUPABASE_JWT_SECRET when it loads its environment.
-        if self.auth_mode == "supabase" and not self.supabase_jwt_secret.get_secret_value():
+        if self.auth_mode != "supabase":
+            return self
+        if self.supabase_jwt_algorithm == "HS256":
+            if not self.supabase_jwt_secret.get_secret_value():
+                raise ValueError(
+                    "CRETONA_SUPABASE_JWT_SECRET is required when "
+                    "CRETONA_SUPABASE_JWT_ALGORITHM=HS256."
+                )
+        elif not self.resolved_jwks_url():
             raise ValueError(
-                "CRETONA_SUPABASE_JWT_SECRET is required when CRETONA_AUTH_MODE=supabase."
+                "CRETONA_SUPABASE_URL or CRETONA_SUPABASE_JWKS_URL is required when "
+                "CRETONA_SUPABASE_JWT_ALGORITHM=ES256."
             )
         return self
+
+    def resolved_jwks_url(self) -> str:
+        if self.supabase_jwks_url:
+            return self.supabase_jwks_url
+        if self.supabase_url:
+            return f"{self.supabase_url.rstrip('/')}/auth/v1/.well-known/jwks.json"
+        return ""
 
     def resolved_database_path(self) -> Path:
         return self._resolve_from_backend(self.database_path)

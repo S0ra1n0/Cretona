@@ -96,14 +96,17 @@ create table public.generation_logs (
     check (event in ('submit', 'poll', 'webhook', 'download', 'error'))
 );
 
+-- Mirrors supabase/008_add_admin_audit_logs.sql. actor_id is deliberately not
+-- a foreign key: an audit trail must outlive the account it describes, and the
+-- cascade this once had would have erased exactly that history.
 create table public.admin_audit_logs (
   id          uuid        primary key default gen_random_uuid(),
-  actor_id    uuid        not null references public.users (id) on delete cascade,
+  actor_id    uuid        not null,
   action      text        not null,
   target_type text        not null,
   target_id   text,
   details     jsonb,
-  created_at  timestamptz not null default now()
+  created_at  timestamptz not null default clock_timestamp()
 );
 
 create index idx_admin_audit_logs_created

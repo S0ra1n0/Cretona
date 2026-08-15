@@ -90,6 +90,21 @@ class PostgresDatabase:
                 "supabase/007_add_shared_rate_limits.sql."
             ) from exc
 
+        # Checked at startup for the same reason as the others: an admin
+        # discovering the table is missing by way of a 500 mid-change is a
+        # worse failure than the service refusing to boot.
+        try:
+            with self.pool.connection() as connection:
+                connection.execute(
+                    "SELECT id, actor_id, action, target_type, target_id, details, created_at "
+                    "FROM public.admin_audit_logs LIMIT 0"
+                )
+        except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn) as exc:
+            raise SchemaMismatchError(
+                "public.admin_audit_logs is missing or incompatible. Apply "
+                "supabase/008_add_admin_audit_logs.sql."
+            ) from exc
+
     def close(self) -> None:
         self.pool.close()
 
@@ -604,7 +619,9 @@ class PostgresDatabase:
                     action,
                     target_type,
                     target_id,
-                    json.dumps(details) if details is not None else None,
+                    # Json, not json.dumps: the column is jsonb, and sending a
+                    # string would either be rejected or stored as JSON text.
+                    Json(details) if details is not None else None,
                     created_at,
                 ),
             )
