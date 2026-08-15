@@ -27,7 +27,7 @@ packages = ["app"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = "-q"
+addopts = "-q --basetemp=.pytest_tmp -p no:cacheprovider"
 
 [tool.ruff]
 target-version = "py312"

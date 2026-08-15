@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.errors import AppError
 from app.schemas import (
+    AdminAuditLog,
+    AdminAuditLogPage,
     AdminLogItem,
     AdminUser,
     AdminUserPage,
@@ -87,6 +90,21 @@ class AdminService:
             raise AppError(404, "NOT_FOUND", "User not found.")
 
         # Privilege changes are the actions most worth reconstructing later.
+        now_str = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        self.database.insert_audit_log(
+            id=str(uuid.uuid4()),
+            actor_id=acting_admin_id,
+            action="user_updated",
+            target_type="user",
+            target_id=target_id,
+            details={
+                "roleFrom": current.get("role"),
+                "roleTo": payload.role,
+                "disabledFrom": bool(current.get("is_disabled")),
+                "disabledTo": payload.is_disabled,
+            },
+            created_at=now_str,
+        )
         logger.info(
             "admin_user_updated",
             extra={
@@ -154,6 +172,7 @@ class AdminService:
         self,
         storage: Any,
         thumbnails: Any,
+        acting_admin_id: str | None = None,
     ) -> BackfillResponse:
         rows = self.database.list_projects_missing_thumbnails()
         backfilled = 0
@@ -188,7 +207,59 @@ class AdminService:
                         row["id"], owner_id, {"thumbnail_path": target_path}
                     )
                     backfilled += 1
+
+        if acting_admin_id:
+            now_str = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+            self.database.insert_audit_log(
+                id=str(uuid.uuid4()),
+                actor_id=acting_admin_id,
+                action="thumbnails_backfilled",
+                target_type="system",
+                details={"backfilled": backfilled, "processed": len(rows)},
+                created_at=now_str,
+            )
+
         return BackfillResponse(backfilled=backfilled, processed=len(rows))
+
+    def list_audit_logs(
+        self,
+        *,
+        limit: int,
+        cursor: str | None,
+        action: str | None,
+        actor_id: str | None,
+    ) -> AdminAuditLogPage:
+        try:
+            rows, next_cursor = self.database.list_audit_logs(
+                limit=limit,
+                cursor=cursor,
+                action=action,
+                actor_id=actor_id,
+            )
+        except ValueError as exc:
+            raise AppError(
+                400,
+                "VALIDATION_ERROR",
+                "The pagination cursor is invalid.",
+                [{"field": "query.cursor", "issue": "invalid_cursor"}],
+            ) from exc
+
+        return AdminAuditLogPage(
+            items=[
+                AdminAuditLog(
+                    id=row["id"],
+                    actor_id=row["actor_id"],
+                    action=row["action"],
+                    target_type=row["target_type"],
+                    target_id=row.get("target_id"),
+                    details=row.get("details"),
+                    created_at=row["created_at"],
+                )
+                for row in rows
+            ],
+            page=PageInfo(next_cursor=next_cursor, has_more=next_cursor is not None),
+        )
+
 
 
 def to_admin_user(row: dict[str, Any]) -> AdminUser:

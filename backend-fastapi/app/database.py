@@ -78,6 +78,20 @@ ON generation_logs(project_id, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS logs_created_idx
 ON generation_logs(created_at ASC, id ASC);
+
+CREATE TABLE IF NOT EXISTS admin_audit_logs (
+    id TEXT PRIMARY KEY,
+    actor_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_id TEXT,
+    details TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS admin_audit_logs_created_idx
+ON admin_audit_logs(created_at DESC, id DESC);
+
 """
 
 # Columns added after the first release. SQLite has no `ADD COLUMN IF NOT
@@ -409,6 +423,23 @@ class Database:
             ).fetchone()
         return dict(row) if row else None
 
+    def get_project_by_id(self, project_id: str) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM projects WHERE id = ? AND deleted_at IS NULL",
+                (project_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def find_by_provider_job_id(self, job_id: str) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM projects WHERE provider_job_id = ? AND deleted_at IS NULL",
+                (job_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
+
     def list_projects(
         self,
         owner_id: str,
@@ -566,7 +597,8 @@ class Database:
         placeholders = ", ".join("?" for _ in not_charged) or "NULL"
         with self.connect() as connection:
             row = connection.execute(
-                "SELECT COUNT(*) AS used, MIN(created_at) AS oldest FROM projects "
+                "SELECT COALESCE(SUM(CASE WHEN provider IN ('real', 'wan21') OR duration_seconds > 5 THEN 2 ELSE 1 END), 0) AS used, "
+                "MIN(created_at) AS oldest FROM projects "
                 "WHERE owner_id = ? AND created_at >= ? AND deleted_at IS NULL "
                 f"AND (error_code IS NULL OR error_code NOT IN ({placeholders}))",
                 (owner_id, since, *not_charged),
@@ -587,3 +619,82 @@ class Database:
                 (deleted_at, deleted_at, project_id, owner_id),
             )
         return cursor.rowcount > 0
+
+    def insert_audit_log(
+        self,
+        *,
+        id: str,
+        actor_id: str,
+        action: str,
+        target_type: str,
+        target_id: str | None = None,
+        details: Any = None,
+        created_at: str,
+    ) -> dict[str, Any]:
+        with self.connect() as connection:
+            connection.execute(
+                "INSERT INTO admin_audit_logs ("
+                "id, actor_id, action, target_type, target_id, details, created_at"
+                ") VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    id,
+                    actor_id,
+                    action,
+                    target_type,
+                    target_id,
+                    _as_json(details) if details is not None else None,
+                    created_at,
+                ),
+            )
+        return {
+            "id": id,
+            "actor_id": actor_id,
+            "action": action,
+            "target_type": target_type,
+            "target_id": target_id,
+            "details": details,
+            "created_at": created_at,
+        }
+
+    def list_audit_logs(
+        self,
+        *,
+        limit: int = 50,
+        cursor: str | None = None,
+        action: str | None = None,
+        actor_id: str | None = None,
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        clauses: list[str] = []
+        params: list[Any] = []
+        if action:
+            clauses.append("action = ?")
+            params.append(action)
+        if actor_id:
+            clauses.append("actor_id = ?")
+            params.append(actor_id)
+        if cursor:
+            cursor_created_at, cursor_id = decode_cursor(cursor)
+            clauses.append("(created_at < ? OR (created_at = ? AND id < ?))")
+            params.extend([cursor_created_at, cursor_created_at, cursor_id])
+
+        where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        query = (
+            f"SELECT * FROM admin_audit_logs {where_sql} "
+            "ORDER BY created_at DESC, id DESC LIMIT ?"
+        )
+        params.append(limit + 1)
+        with self.connect() as connection:
+            rows = [dict(row) for row in connection.execute(query, tuple(params)).fetchall()]
+
+        next_cursor = None
+        if len(rows) > limit:
+            rows = rows[:limit]
+            last = rows[-1]
+            next_cursor = encode_cursor(last["created_at"], last["id"])
+
+        for row in rows:
+            if row.get("details"):
+                row["details"] = _from_json(row["details"])
+
+        return rows, next_cursor
+

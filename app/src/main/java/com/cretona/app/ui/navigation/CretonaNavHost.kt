@@ -5,6 +5,7 @@ import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import com.cretona.app.ui.admin.AdminScreen
 import com.cretona.app.ui.home.HomeScreen
 
 @Composable
@@ -18,7 +19,19 @@ fun CretonaNavHost(
         modifier = modifier,
     ) {
         composable<CretonaRoute.Home> {
-            HomeScreen()
+            HomeScreen(
+                onNavigateToAdmin = {
+                    navController.navigate(CretonaRoute.Admin)
+                },
+            )
+        }
+        composable<CretonaRoute.Admin> {
+            AdminScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+            )
         }
     }
 }
+

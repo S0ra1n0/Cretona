@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     rate_limit_enabled: bool = True
     rate_limit_default_per_min: int = Field(default=120, ge=1, le=10000)
     rate_limit_generation_per_min: int = Field(default=10, ge=1, le=1000)
+    request_log_sample_rate: float = Field(default=1.0, ge=0.0, le=1.0)
     generation_quota_limit: int = Field(default=10, ge=1, le=1000)
     generation_quota_window_hours: int = Field(default=24, ge=1, le=720)
     database_path: Path = BACKEND_ROOT / "data" / "cretona.db"

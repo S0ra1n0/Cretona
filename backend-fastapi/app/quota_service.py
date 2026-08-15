@@ -54,14 +54,14 @@ class QuotaService:
             resetsAt=iso(anchor + self.window),
         )
 
-    def assert_available(self, user_id: str) -> Quota:
+    def assert_available(self, user_id: str, cost: int = 1) -> Quota:
         """Call before any provider request.
 
         Checking afterwards is accounting, not control: it would not prevent
         the spend that already happened.
         """
         quota = self.get(user_id)
-        if quota.remaining <= 0:
+        if quota.remaining < cost:
             raise AppError(
                 429,
                 "QUOTA_EXCEEDED",

@@ -33,6 +33,37 @@ interface CretonaApi {
 
     @GET("projects")
     suspend fun listProjects(): ProjectPageDto
+
+    @GET("admin/stats")
+    suspend fun getAdminStats(
+        @retrofit2.http.Query("days") days: Int = 30,
+    ): AdminStatsDto
+
+    @GET("admin/users")
+    suspend fun getAdminUsers(
+        @retrofit2.http.Query("limit") limit: Int = 50,
+        @retrofit2.http.Query("cursor") cursor: String? = null,
+        @retrofit2.http.Query("q") query: String? = null,
+        @retrofit2.http.Query("role") role: String? = null,
+        @retrofit2.http.Query("isDisabled") isDisabled: Boolean? = null,
+    ): AdminUserPageDto
+
+    @retrofit2.http.PATCH("admin/users/{id}")
+    suspend fun updateAdminUser(
+        @Path("id") id: String,
+        @Body request: AdminUserUpdateRequestDto,
+    ): AdminUserDto
+
+    @GET("admin/audit-logs")
+    suspend fun getAdminAuditLogs(
+        @retrofit2.http.Query("limit") limit: Int = 50,
+        @retrofit2.http.Query("cursor") cursor: String? = null,
+        @retrofit2.http.Query("action") action: String? = null,
+        @retrofit2.http.Query("actorId") actorId: String? = null,
+    ): AdminAuditLogPageDto
+
+    @POST("admin/thumbnails/backfill")
+    suspend fun backfillThumbnails(): BackfillResponseDto
 }
 
 @Serializable
@@ -115,3 +146,73 @@ data class PageInfoDto(
     val nextCursor: String? = null,
     val hasMore: Boolean = false,
 )
+
+@Serializable
+data class AdminStatsDto(
+    val totals: AdminTotalsDto,
+    val failureRate: Double = 0.0,
+    val projectsByStatus: Map<String, Int> = emptyMap(),
+    val projectsByProvider: Map<String, Int> = emptyMap(),
+    val daily: List<DailyStatsDto> = emptyList(),
+)
+
+@Serializable
+data class AdminTotalsDto(
+    val users: Int = 0,
+    val activeUsers: Int = 0,
+    val projects: Int = 0,
+)
+
+@Serializable
+data class DailyStatsDto(
+    val date: String,
+    val created: Int = 0,
+    val completed: Int = 0,
+    val failed: Int = 0,
+)
+
+@Serializable
+data class AdminUserDto(
+    val id: String,
+    val email: String? = null,
+    val username: String? = null,
+    val role: String,
+    val isDisabled: Boolean,
+    val createdAt: String,
+    val projectCount: Int = 0,
+)
+
+@Serializable
+data class AdminUserPageDto(
+    val items: List<AdminUserDto>,
+    val page: PageInfoDto,
+)
+
+@Serializable
+data class AdminUserUpdateRequestDto(
+    val role: String? = null,
+    val isDisabled: Boolean? = null,
+)
+
+@Serializable
+data class AdminAuditLogDto(
+    val id: String,
+    val actorId: String,
+    val action: String,
+    val targetType: String,
+    val targetId: String? = null,
+    val createdAt: String,
+)
+
+@Serializable
+data class AdminAuditLogPageDto(
+    val items: List<AdminAuditLogDto>,
+    val page: PageInfoDto,
+)
+
+@Serializable
+data class BackfillResponseDto(
+    val backfilled: Int,
+    val processed: Int,
+)
+

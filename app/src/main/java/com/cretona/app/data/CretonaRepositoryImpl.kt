@@ -7,6 +7,18 @@ import com.cretona.app.data.remote.MeDto
 import com.cretona.app.data.remote.ProjectCreateRequest
 import com.cretona.app.data.remote.ProjectDto
 import com.cretona.app.data.remote.PromptEnhanceRequest
+import com.cretona.app.data.remote.AdminAuditLogDto
+import com.cretona.app.data.remote.AdminStatsDto
+import com.cretona.app.data.remote.AdminUserDto
+import com.cretona.app.data.remote.AdminUserUpdateRequestDto
+import com.cretona.app.data.remote.BackfillResponseDto
+import com.cretona.app.data.remote.DailyStatsDto
+import com.cretona.app.data.remote.HealthResponse
+import com.cretona.app.domain.model.AdminAuditLog
+import com.cretona.app.domain.model.AdminStats
+import com.cretona.app.domain.model.AdminUser
+import com.cretona.app.domain.model.BackfillResult
+import com.cretona.app.domain.model.DailyStats
 import com.cretona.app.domain.model.EnhancedPrompt
 import com.cretona.app.domain.model.GenerationQuota
 import com.cretona.app.domain.model.ProjectStatus
@@ -52,6 +64,60 @@ class CretonaRepositoryImpl @Inject constructor(
 
     override suspend fun listProjects(): AppResult<List<VideoProject>> = apiCall {
         api.listProjects().items.map(ProjectDto::toDomain)
+    }
+
+    override suspend fun getAdminStats(days: Int): AppResult<AdminStats> = apiCall {
+        api.getAdminStats(days).toDomain()
+    }
+
+    override suspend fun getAdminUsers(
+        limit: Int,
+        cursor: String?,
+        query: String?,
+        role: String?,
+        isDisabled: Boolean?,
+    ): AppResult<List<AdminUser>> = apiCall {
+        api.getAdminUsers(
+            limit = limit,
+            cursor = cursor,
+            query = query,
+            role = role,
+            isDisabled = isDisabled,
+        ).items.map(AdminUserDto::toDomain)
+    }
+
+    override suspend fun updateAdminUser(
+        id: String,
+        role: String?,
+        isDisabled: Boolean?,
+    ): AppResult<AdminUser> = apiCall {
+        api.updateAdminUser(
+            id = id,
+            request = AdminUserUpdateRequestDto(role = role, isDisabled = isDisabled),
+        ).toDomain()
+    }
+
+    override suspend fun getAdminAuditLogs(
+        limit: Int,
+        cursor: String?,
+        action: String?,
+        actorId: String?,
+    ): AppResult<List<AdminAuditLog>> = apiCall {
+        api.getAdminAuditLogs(
+            limit = limit,
+            cursor = cursor,
+            action = action,
+            actorId = actorId,
+        ).items.map(AdminAuditLogDto::toDomain)
+    }
+
+    override suspend fun backfillThumbnails(): AppResult<BackfillResult> = apiCall {
+        val res = api.backfillThumbnails()
+        BackfillResult(backfilled = res.backfilled, processed = res.processed)
+    }
+
+    override suspend fun checkHealth(): AppResult<HealthResponse> = apiCall {
+        api.health()
     }
 
     private suspend fun <T> apiCall(block: suspend () -> T): AppResult<T> = try {
@@ -100,6 +166,42 @@ internal fun MeDto.toDomain(): UserProfile = UserProfile(
     ),
 )
 
+internal fun AdminStatsDto.toDomain(): AdminStats = AdminStats(
+    totalUsers = totals.users,
+    activeUsers = totals.activeUsers,
+    totalProjects = totals.projects,
+    failureRate = failureRate,
+    projectsByStatus = projectsByStatus,
+    projectsByProvider = projectsByProvider,
+    daily = daily.map {
+        DailyStats(
+            date = it.date,
+            created = it.created,
+            completed = it.completed,
+            failed = it.failed,
+        )
+    },
+)
+
+internal fun AdminUserDto.toDomain(): AdminUser = AdminUser(
+    id = id,
+    email = email,
+    username = username,
+    role = role,
+    isDisabled = isDisabled,
+    createdAt = createdAt,
+    projectCount = projectCount,
+)
+
+internal fun AdminAuditLogDto.toDomain(): AdminAuditLog = AdminAuditLog(
+    id = id,
+    actorId = actorId,
+    action = action,
+    targetType = targetType,
+    targetId = targetId,
+    createdAt = createdAt,
+)
+
 private val knownStatuses = setOf("pending", "generating", "completed", "failed")
 
 private fun HttpException.toAppError(): AppError = when (code()) {
@@ -109,3 +211,4 @@ private fun HttpException.toAppError(): AppError = when (code()) {
     in 500..599 -> AppError.Server(code(), "The server could not complete the request.")
     else -> AppError.Server(code(), "Request failed with HTTP ${code()}.")
 }
+

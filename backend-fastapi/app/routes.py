@@ -11,6 +11,7 @@ from app.errors import AppError
 from app.project_service import ProjectService
 from app.prompt_service import PromptEnhancer
 from app.schemas import (
+    AdminAuditLogPage,
     AdminLogList,
     AdminUser,
     AdminUserPage,
@@ -29,6 +30,7 @@ from app.schemas import (
     StatsResponse,
     UploadSignRequest,
     UploadSignResponse,
+    WebhookResponse,
 )
 from app.storage import StorageBackend
 from app.users_service import UsersService
@@ -141,15 +143,33 @@ def admin_project_logs(
     return AdminLogList(items=items)
 
 
+@router.get("/admin/audit-logs", response_model=AdminAuditLogPage)
+def list_admin_audit_logs(
+    _admin_id: AdminId,
+    service: Annotated[AdminService, Depends(admin_service)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    cursor: str | None = None,
+    action: str | None = None,
+    actor_id: Annotated[str | None, Query(alias="actorId")] = None,
+) -> AdminAuditLogPage:
+    return service.list_audit_logs(
+        limit=limit,
+        cursor=cursor,
+        action=action,
+        actor_id=actor_id,
+    )
+
+
 @router.post("/admin/thumbnails/backfill", response_model=BackfillResponse)
 def admin_backfill_thumbnails(
     request: Request,
-    _admin_id: AdminId,
+    admin_id: AdminId,
     service: Annotated[AdminService, Depends(admin_service)],
     storage: Annotated[StorageBackend, Depends(media_storage)],
 ) -> BackfillResponse:
     thumbnails = request.app.state.project_service.thumbnails
-    return service.backfill_thumbnails(storage, thumbnails)
+    return service.backfill_thumbnails(storage, thumbnails, acting_admin_id=admin_id)
+
 
 
 @router.post("/uploads/sign", response_model=UploadSignResponse)
@@ -253,4 +273,21 @@ def retry_project(
     service: Annotated[ProjectService, Depends(project_service)],
 ) -> ProjectResponse:
     return service.retry(user_id, project_id, request_base_url(request))
+
+
+@router.post("/webhooks/{provider}", response_model=WebhookResponse)
+async def handle_provider_webhook(
+    provider: str,
+    request: Request,
+    service: Annotated[ProjectService, Depends(project_service)],
+) -> WebhookResponse:
+    body = await request.body()
+    headers = dict(request.headers)
+    return service.process_webhook(
+        provider,
+        headers,
+        body,
+        request_base_url(request),
+    )
+
 

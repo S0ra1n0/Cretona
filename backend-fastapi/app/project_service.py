@@ -10,7 +10,7 @@ from app.generation_log_service import GenerationLogService
 from app.providers import PollResult, ProviderRegistry
 from app.quota_service import QuotaService
 from app.repository import ProjectRepository
-from app.schemas import PageInfo, ProjectCreate, ProjectPage, ProjectResponse
+from app.schemas import PageInfo, ProjectCreate, ProjectPage, ProjectResponse, WebhookResponse
 from app.storage import StorageBackend, assert_owns_path
 from app.thumbnails import ThumbnailGenerator
 from app.transitions import IN_FLIGHT, assert_transition, is_retryable
@@ -77,9 +77,15 @@ class ProjectService:
 
         provider = self.providers.get(request.provider)
 
+        # Cost weighting: real providers or longer videos consume 2 quota units
+        cost = 2 if (
+            (request.options and request.options.duration_seconds and request.options.duration_seconds > 5)
+            or provider.name in ("real", "wan21")
+        ) else 1
+
         # Before the provider call, never after: checking afterwards is
         # accounting, not control (ADR-007).
-        self.quota.assert_available(owner_id)
+        self.quota.assert_available(owner_id, cost=cost)
 
         now = utc_now()
         prompt = request.prompt
@@ -465,4 +471,69 @@ class ProjectService:
             updatedAt=row["updated_at"],
             completedAt=row["completed_at"],
         )
+
+    def process_webhook(
+        self,
+        provider_name: str,
+        headers: dict[str, str],
+        body: bytes,
+        base_url: str,
+    ) -> WebhookResponse:
+        provider = self.providers.get(provider_name)
+        payload = provider.verify_webhook(headers=headers, body=body)
+
+        job_id = payload.get("job_id") or payload.get("provider_job_id")
+        project_id = payload.get("project_id") or payload.get("projectId")
+
+        row = None
+        if project_id:
+            row = self.database.get_project_by_id(project_id)
+        elif job_id:
+            row = self.database.find_by_provider_job_id(job_id)
+
+        if not row:
+            raise AppError(404, "NOT_FOUND", "Project for webhook was not found.")
+
+        owner_id = row["owner_id"]
+        status_event = payload.get("status")
+        now = utc_now()
+
+        self.generation_log.record(
+            project_id=row["id"],
+            provider=provider_name,
+            event="webhook",
+            request_id=job_id,
+            request={"headers": {k: v for k, v in headers.items() if not k.lower().startswith("authorization")}},
+            response=payload,
+        )
+
+        if status_event in ("succeeded", "completed"):
+            video_url = payload.get("video_path") or payload.get("video_url")
+            try:
+                stored_path = self._rehost(row, owner_id, video_url)
+                thumbnail_path = self._thumbnail(row, owner_id, stored_path)
+            except AppError:
+                self._mark_failed(row, owner_id, "provider_error")
+                return WebhookResponse(received=True, projectId=row["id"], status="failed")
+
+            self.database.update_project(
+                row["id"],
+                owner_id,
+                {
+                    "status": "completed",
+                    "video_path": stored_path,
+                    "thumbnail_path": thumbnail_path,
+                    "duration_seconds": payload.get("duration_seconds") or row.get("duration_seconds") or 5,
+                    "updated_at": now,
+                    "completed_at": now,
+                },
+            )
+            return WebhookResponse(received=True, projectId=row["id"], status="completed")
+        elif status_event == "failed":
+            failure = payload.get("failure") or payload.get("error_code") or "provider_error"
+            self._mark_failed(row, owner_id, failure)
+            return WebhookResponse(received=True, projectId=row["id"], status="failed")
+
+        return WebhookResponse(received=True, projectId=row["id"], status=row["status"])
+
 

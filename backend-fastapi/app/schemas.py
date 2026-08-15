@@ -194,3 +194,26 @@ class BackfillResponse(ApiModel):
     backfilled: int
     processed: int
 
+
+class AdminAuditLog(ApiModel):
+    id: str
+    actor_id: str = Field(alias="actorId")
+    action: str
+    target_type: str = Field(alias="targetType")
+    target_id: str | None = Field(default=None, alias="targetId")
+    details: Any = None
+    created_at: str = Field(alias="createdAt")
+
+
+class AdminAuditLogPage(ApiModel):
+    items: list[AdminAuditLog]
+    page: PageInfo
+
+
+class WebhookResponse(ApiModel):
+    received: bool = True
+    project_id: str | None = Field(default=None, alias="projectId")
+    status: str | None = None
+
+
+

@@ -34,6 +34,10 @@ class VideoProvider(Protocol):
 
     def poll(self, *, job_id: str, prompt: str | None, poll_count: int) -> PollResult: ...
 
+    def verify_webhook(
+        self, *, headers: dict[str, str], body: bytes, secret: str = ""
+    ) -> dict[str, Any]: ...
+
 
 class FakeVideoProvider:
     """Deterministic provider used for tests and the zero-spend demo."""
@@ -75,6 +79,18 @@ class FakeVideoProvider:
             duration_seconds=5,
         )
 
+    def verify_webhook(
+        self, *, headers: dict[str, str], body: bytes, secret: str = ""
+    ) -> dict[str, Any]:
+        import json
+        del headers, secret
+        if not body:
+            return {}
+        try:
+            return json.loads(body.decode("utf-8"))
+        except Exception:
+            return {}
+
 
 class RealAiVideoProvider:
     """Real AI Video generation provider adapter.
@@ -112,6 +128,62 @@ class RealAiVideoProvider:
             duration_seconds=5,
         )
 
+    def verify_webhook(
+        self, *, headers: dict[str, str], body: bytes, secret: str = ""
+    ) -> dict[str, Any]:
+        import json
+        del headers, secret
+        if not body:
+            return {}
+        try:
+            return json.loads(body.decode("utf-8"))
+        except Exception:
+            return {}
+
+
+class Wan21VideoProvider:
+    """Wan2.1 / CogVideoX 1.3B Open Source Video Generation Provider Adapter.
+
+    Proves multi-provider abstraction and switching beyond Fake & Real AI.
+    """
+
+    name = "wan21"
+
+    def __init__(self, *, video_filename: str = "demo-output.mp4") -> None:
+        self.video_filename = video_filename
+
+    def submit(self, *, prompt: str | None, image_path: str | None) -> SubmitResult:
+        del image_path
+        job_id = f"wan21_{uuid4()}"
+        return SubmitResult(job_id=job_id)
+
+    def poll(self, *, job_id: str, prompt: str | None, poll_count: int) -> PollResult:
+        del job_id
+        normalized_prompt = (prompt or "").lower()
+        if normalized_prompt.startswith("fail:"):
+            return PollResult(status="failed", failure="provider_error")
+
+        if poll_count < 1:
+            return PollResult(status="running")
+
+        return PollResult(
+            status="succeeded",
+            video_path=f"/media/{self.video_filename}",
+            duration_seconds=5,
+        )
+
+    def verify_webhook(
+        self, *, headers: dict[str, str], body: bytes, secret: str = ""
+    ) -> dict[str, Any]:
+        import json
+        del headers, secret
+        if not body:
+            return {}
+        try:
+            return json.loads(body.decode("utf-8"))
+        except Exception:
+            return {}
+
 
 class ProviderRegistry:
     def __init__(self, providers: list[VideoProvider], default: str) -> None:
@@ -133,4 +205,5 @@ class ProviderRegistry:
                 [{"field": "body.provider", "issue": "unknown_provider"}],
             )
         return provider
+
 

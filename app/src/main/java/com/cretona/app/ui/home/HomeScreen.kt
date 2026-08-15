@@ -63,6 +63,7 @@ import java.time.format.FormatStyle
 @Composable
 fun HomeScreen(
     modifier: Modifier = Modifier,
+    onNavigateToAdmin: () -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -82,6 +83,7 @@ fun HomeScreen(
         },
         onRefreshAccount = viewModel::refreshAccount,
         onRefresh = viewModel::refreshHistory,
+        onNavigateToAdmin = onNavigateToAdmin,
         modifier = modifier,
     )
 }
@@ -96,11 +98,26 @@ private fun HomeContent(
     onGenerate: () -> Unit,
     onRefreshAccount: () -> Unit,
     onRefresh: () -> Unit,
+    onNavigateToAdmin: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        topBar = { TopAppBar(title = { Text("Cretona") }) },
+        topBar = {
+            TopAppBar(
+                title = { Text("Cretona") },
+                actions = {
+                    if (state.account?.role == "admin") {
+                        Button(
+                            onClick = onNavigateToAdmin,
+                            modifier = Modifier.padding(end = 8.dp),
+                        ) {
+                            Text("Admin Panel")
+                        }
+                    }
+                },
+            )
+        },
     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier
@@ -156,12 +173,17 @@ private fun HomeContent(
                     FilterChip(
                         selected = state.selectedProvider == "fake",
                         onClick = { onProviderSelected("fake") },
-                        label = { Text("🎭 Fake Demo") },
+                        label = { Text("🎭 Fake") },
                     )
                     FilterChip(
                         selected = state.selectedProvider == "real",
                         onClick = { onProviderSelected("real") },
                         label = { Text("🤖 Real AI") },
+                    )
+                    FilterChip(
+                        selected = state.selectedProvider == "wan21",
+                        onClick = { onProviderSelected("wan21") },
+                        label = { Text("⚡ Wan 2.1") },
                     )
                 }
             }
@@ -511,6 +533,7 @@ private fun HomeScreenPreview() {
             onGenerate = {},
             onRefreshAccount = {},
             onRefresh = {},
+            onNavigateToAdmin = {},
         )
     }
 }

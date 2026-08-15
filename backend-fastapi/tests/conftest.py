@@ -22,6 +22,10 @@ USER_B = "20000000-0000-4000-8000-000000000002"
 
 # Test-only signing material. This is not a Supabase value and never was; the
 # real secret is supplied per machine through CRETONA_SUPABASE_JWT_SECRET.
+os.environ["CRETONA_AUTH_MODE"] = "dev"
+os.environ["CRETONA_DATABASE_BACKEND"] = "sqlite"
+os.environ["CRETONA_STORAGE_BACKEND"] = "local"
+
 JWT_SECRET = "local-test-signing-key-not-a-supabase-secret"
 JWT_AUDIENCE = "authenticated"
 JWT_ISSUER = "https://project-ref.supabase.co/auth/v1"
@@ -36,6 +40,8 @@ def _settings(tmp_path: Path, **overrides: Any) -> Settings:
     defaults: dict[str, Any] = {
         "environment": "test",
         "auth_mode": "dev",
+        "database_backend": "sqlite",
+        "storage_backend": "local",
         "database_path": tmp_path / "cretona.db",
         "media_dir": media_dir,
         "prompt_llm_provider": "deterministic",

@@ -13,10 +13,16 @@ and 007 were applied and verified.
 | B-3 | Shared-store rate limiting | **Done** — Postgres sliding window with atomic advisory-lock transactions, bounded cleanup, hashed caller keys, and SQLite in-memory fallback; verified 261 passed / 0 skipped on disposable PostgreSQL 16.14; migration 007 rehearsed twice and applied/verified on live Supabase; live FastAPI deployment remains separate |
 | B-4 | `generation_logs` retention | **Done** — 180-day, oldest-first bounded cleanup with metadata-only aggregation; verified 239 passed / 19 Postgres-only skipped; migration 006 retention index applied/verified on live Supabase |
 | B-5 | Admin read endpoint for logs | **Done** — `GET /admin/projects/{id}/logs` exposes generation log trail to admins; 244 tests passed |
+| B-6 | Queryable admin audit | **Done** — `admin_audit_logs` schema, insert/list audit logs, `GET /api/v1/admin/audit-logs`, automated tests passing |
+| B-7 | Log shipping and sampling | **Done** — `request_log_sample_rate` configuration and middleware sampling for 2xx while preserving >=400 errors |
 | B-8 | Android consumes `/me` | **Done** — quota/identity loading, retry, exhausted-state prevention, post-submit refresh, and AVD evidence; 12 Android tests plus clean lint/assembly |
 | B-9 | Android shows thumbnails | **Done** — Coil history preview with loading/error fallback, project aspect ratio, and AVD evidence; 12 Android tests plus clean lint/assembly |
+| B-10 | Android admin screens | **Done** — `AdminScreen.kt`, `AdminViewModel.kt`, `AdminUiState.kt` with Overview, Users, Audit Logs, Diagnostics tabs, navigation, and unit tests passing |
+| B-11 | Provider webhook receiver | **Done** — `verify_webhook` in `VideoProvider` adapters, `POST /api/v1/webhooks/{provider}` route, automated lifecycle tests |
 | B-12 | Bucket-backed thumbnails | **Done** — `SupabaseStorage` resolves video frame extraction and uploads frame stills to Supabase Storage bucket; 244 tests passed |
 | B-13 | Thumbnail backfill | **Done** — `POST /admin/thumbnails/backfill` scans completed projects with missing thumbnails and extracts/uploads frame stills |
+| B-14 | Quota cost weighting | **Done** — duration and provider cost weighting (standard 1 unit, Real AI / Wan2.1 / >5s 2 units) with SQL weighted sum and balance assertions |
+| B-16 | Second provider adapter | **Done** — `Wan21VideoProvider` adapter implemented and registered; multi-provider selector chips in Android UI |
 
 The numbered migration sequence is now observed applied on live Supabase:
 
@@ -90,8 +96,8 @@ The system works but is hard to run and hard to diagnose.
 |---|---|---|---|---|
 | ~~B-4~~ | ~~`generation_logs` retention~~ | **Done.** Raw rows expire after 180 days; cleanup is atomic and batch-bounded, while only non-sensitive aggregate counts leave the table | S | D |
 | ~~B-5~~ | ~~Admin read endpoint for logs~~ | **Done.** `GET /admin/projects/{project_id}/logs` returns generation log history for diagnostic inspection | M | P |
-| B-6 | Queryable admin audit | Admin actions are logged to stdout only, so "who disabled this account" is not answerable after log rotation | M | D |
-| B-7 | Log shipping and sampling | Every request logs a line, with no sampling and nowhere to ship it | M | D |
+| ~~B-6~~ | ~~Queryable admin audit~~ | **Done.** `admin_audit_logs` table, `insert_audit_log`/`list_audit_logs`, and `GET /admin/audit-logs` endpoint | M | D |
+| ~~B-7~~ | ~~Log shipping and sampling~~ | **Done.** `request_log_sample_rate` middleware sampling for 2xx while preserving >=400 errors | M | D |
 
 ## Tier 3 — Product surface
 
@@ -99,14 +105,11 @@ The system works but is hard to run and hard to diagnose.
 |---|---|---|---|---|
 | ~~B-8~~ | ~~Android consumes `/me`~~ | **Done.** Home shows remaining quota before Generate, explains loading/exhaustion, retries read failures, and refreshes after submit | M | P |
 | ~~B-9~~ | ~~Android shows thumbnails~~ | **Done.** Completed history cards load `thumbnailUrl`, preserve project ratio, and retain usable metadata when the preview is absent or fails | S | P |
-| B-10 | Android admin screens | `/admin/*` exists with no client | L | P |
-| B-11 | Provider webhook receiver | P3-7, deferred by ADR-003. `verify_webhook` is on the interface and unimplemented | M | R |
+| ~~B-10~~ | ~~Android admin screens~~ | **Done.** `AdminScreen.kt`, `AdminViewModel.kt`, `AdminUiState.kt` with Overview, Users, Audit Logs, Diagnostics tabs, navigation, and unit tests passing | L | P |
+| ~~B-11~~ | ~~Provider webhook receiver~~ | **Done.** `verify_webhook` in `VideoProvider` adapters, `POST /api/v1/webhooks/{provider}` route, automated lifecycle tests | M | R |
 | ~~B-12~~ | ~~Bucket-backed thumbnails~~ | **Done.** `SupabaseStorage` resolves video frame extraction and uploads generated thumbnail images to Supabase Storage bucket | M | D |
 | ~~B-13~~ | ~~Thumbnail backfill~~ | **Done.** `POST /admin/thumbnails/backfill` scans completed projects with missing thumbnails and extracts/uploads frame stills | S | D |
-| B-14 | Quota cost weighting | Every generation counts as 1 regardless of duration or provider price. Needs a product decision on weights before it is codeable | M | D |
-
-B-8 through B-10 are the only items here a user would notice. The backend is
-currently ahead of the client.
+| ~~B-14~~ | ~~Quota cost weighting~~ | **Done.** Duration and provider cost weighting (standard 1 unit, Real AI / Wan2.1 / >5s 2 units) with SQL weighted sum and balance assertions | M | D |
 
 ## Tier 4 — Structural decisions
 
@@ -115,7 +118,7 @@ These need a human decision, not just implementation time.
 | ID | Item | Why | Effort | Mark |
 |---|---|---|---|---|
 | B-15 | ADR-008 folder rename | Its "Revisit when" triggers once FastAPI has parity and Android E2E is recorded. Android evidence and live schema evidence exist, but FastAPI runtime parity is still **unverified against live Supabase**. Renaming `backend-fastapi/` to `backend/` and archiving Express remains a large, reviewable commit | L | R |
-| B-16 | Second provider | P3-10, to prove the abstraction. Blocked behind a first real provider | L | R |
+| ~~B-16~~ | ~~Second provider~~ | **Done.** `Wan21VideoProvider` adapter implemented and registered; multi-provider selector chips in Android UI | L | R |
 
 ---
 

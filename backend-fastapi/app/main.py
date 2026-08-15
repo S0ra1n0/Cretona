@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+import random
 from time import perf_counter
 from uuid import uuid4
 
@@ -22,7 +23,12 @@ from app.poller import JobPoller
 from app.postgres import PostgresDatabase
 from app.project_service import ProjectService
 from app.prompt_service import PromptEnhancer
-from app.providers import FakeVideoProvider, ProviderRegistry, RealAiVideoProvider
+from app.providers import (
+    FakeVideoProvider,
+    ProviderRegistry,
+    RealAiVideoProvider,
+    Wan21VideoProvider,
+)
 from app.quota_service import QuotaService
 from app.rate_limit import WINDOW_SECONDS, RateLimiter, bucket_for, caller_key
 from app.routes import router
@@ -76,8 +82,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         endpoint=active_settings.real_ai_endpoint,
         video_filename=active_settings.fake_video_filename,
     )
+    wan21_provider = Wan21VideoProvider(
+        video_filename=active_settings.fake_video_filename,
+    )
     providers = ProviderRegistry(
-        [fake_provider, real_provider], active_settings.default_video_provider
+        [fake_provider, real_provider, wan21_provider],
+        active_settings.default_video_provider,
     )
 
     @asynccontextmanager
@@ -171,16 +181,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         # Deliberately field-by-field. Logging the request object wholesale is
         # how an Authorization header ends up in a log aggregator.
-        logger.info(
-            "request",
-            extra={
-                "requestId": request.state.request_id,
-                "method": request.method,
-                "path": request.url.path,
-                "status": response.status_code,
-                "durationMs": round((perf_counter() - started) * 1000, 2),
-            },
+        should_log = (
+            response.status_code >= 400
+            or active_settings.request_log_sample_rate >= 1.0
+            or random.random() < active_settings.request_log_sample_rate
         )
+        if should_log:
+            logger.info(
+                "request",
+                extra={
+                    "requestId": request.state.request_id,
+                    "method": request.method,
+                    "path": request.url.path,
+                    "status": response.status_code,
+                    "durationMs": round((perf_counter() - started) * 1000, 2),
+                },
+            )
         return response
 
     if active_settings.environment != "production":

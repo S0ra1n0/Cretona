@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -348,6 +349,26 @@ class PostgresDatabase:
             ).fetchone()
         return _to_service_row(row) if row else None
 
+    def get_project_by_id(self, project_id: str) -> dict[str, Any] | None:
+        if not _is_uuid(project_id):
+            return None
+        with self.pool.connection() as connection:
+            row = connection.execute(
+                f"SELECT {SELECTED_COLUMNS} FROM {TABLE} "
+                "WHERE id = %s AND deleted_at IS NULL",
+                (project_id,),
+            ).fetchone()
+        return _to_service_row(row) if row else None
+
+    def find_by_provider_job_id(self, job_id: str) -> dict[str, Any] | None:
+        with self.pool.connection() as connection:
+            row = connection.execute(
+                f"SELECT {SELECTED_COLUMNS} FROM {TABLE} "
+                "WHERE provider_job_id = %s AND deleted_at IS NULL",
+                (job_id,),
+            ).fetchone()
+        return _to_service_row(row) if row else None
+
     def update_project(
         self,
         project_id: str,
@@ -496,12 +517,12 @@ class PostgresDatabase:
     def list_projects_missing_thumbnails(self) -> list[dict[str, Any]]:
         with self.pool.connection() as connection:
             rows = connection.execute(
-                "SELECT id, owner_id, title, prompt, image_path, provider, "
+                "SELECT id, user_id, title, prompt, image_path, provider, "
                 "status, provider_job_id, error_code, error_message, "
                 "duration_seconds, aspect_ratio, video_path, thumbnail_path, "
                 "poll_count, attempt_count, idempotency_key, started_at, "
                 "created_at, updated_at, completed_at, deleted_at "
-                "FROM public.projects "
+                "FROM public.video_projects "
                 "WHERE status = 'completed' AND video_path IS NOT NULL "
                 "AND (thumbnail_path IS NULL OR thumbnail_path = '') "
                 "AND deleted_at IS NULL"
@@ -539,7 +560,8 @@ class PostgresDatabase:
     ) -> tuple[int, str | None]:
         with self.pool.connection() as connection:
             row = connection.execute(
-                f"SELECT COUNT(*) AS used, MIN(created_at) AS oldest FROM {TABLE} "
+                f"SELECT COALESCE(SUM(CASE WHEN provider IN ('real', 'wan21') OR duration_seconds > 5 THEN 2 ELSE 1 END), 0) AS used, "
+                f"MIN(created_at) AS oldest FROM {TABLE} "
                 "WHERE user_id = %s AND created_at >= %s::timestamptz "
                 "AND deleted_at IS NULL "
                 "AND (error_code IS NULL OR NOT (error_code = ANY(%s)))",
@@ -562,6 +584,100 @@ class PostgresDatabase:
                 (deleted_at, project_id, owner_id),
             )
         return cursor.rowcount > 0
+
+    def insert_audit_log(
+        self,
+        *,
+        id: str,
+        actor_id: str,
+        action: str,
+        target_type: str,
+        target_id: str | None = None,
+        details: Any = None,
+        created_at: str,
+    ) -> dict[str, Any]:
+        with self.pool.connection() as connection:
+            connection.execute(
+                "INSERT INTO public.admin_audit_logs ("
+                "id, actor_id, action, target_type, target_id, details, created_at"
+                ") VALUES (%s, %s, %s, %s, %s, %s, %s::timestamptz)",
+                (
+                    id,
+                    actor_id,
+                    action,
+                    target_type,
+                    target_id,
+                    json.dumps(details) if details is not None else None,
+                    created_at,
+                ),
+            )
+        return {
+            "id": id,
+            "actor_id": actor_id,
+            "action": action,
+            "target_type": target_type,
+            "target_id": target_id,
+            "details": details,
+            "created_at": created_at,
+        }
+
+    def list_audit_logs(
+        self,
+        *,
+        limit: int = 50,
+        cursor: str | None = None,
+        action: str | None = None,
+        actor_id: str | None = None,
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        clauses: list[str] = []
+        params: list[Any] = []
+        if action:
+            clauses.append("action = %s")
+            params.append(action)
+        if actor_id:
+            clauses.append("actor_id = %s")
+            params.append(actor_id)
+        if cursor:
+            cursor_created_at, cursor_id = decode_cursor(cursor)
+            clauses.append("(created_at < %s::timestamptz OR (created_at = %s::timestamptz AND id < %s))")
+            params.extend([cursor_created_at, cursor_created_at, cursor_id])
+
+        where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        query = (
+            f"SELECT * FROM public.admin_audit_logs {where_sql} "
+            "ORDER BY created_at DESC, id DESC LIMIT %s"
+        )
+        params.append(limit + 1)
+        with self.pool.connection() as connection:
+            rows = [dict(row) for row in connection.execute(query, tuple(params)).fetchall()]
+
+        next_cursor = None
+        if len(rows) > limit:
+            rows = rows[:limit]
+            last = rows[-1]
+            last_created = last["created_at"]
+            if isinstance(last_created, datetime):
+                last_created = last_created.astimezone(UTC).isoformat().replace("+00:00", "Z")
+            next_cursor = encode_cursor(last_created, str(last["id"]))
+
+        entries = []
+        for row in rows:
+            created_at = row["created_at"]
+            if isinstance(created_at, datetime):
+                created_at = created_at.astimezone(UTC).isoformat().replace("+00:00", "Z")
+            details = row.get("details")
+            if isinstance(details, str):
+                details = json.loads(details)
+            entries.append({
+                "id": str(row["id"]),
+                "actor_id": str(row["actor_id"]),
+                "action": row["action"],
+                "target_type": row["target_type"],
+                "target_id": str(row["target_id"]) if row.get("target_id") else None,
+                "details": details,
+                "created_at": created_at,
+            })
+        return entries, next_cursor
 
 
 def _to_service_row(row: dict[str, Any]) -> dict[str, Any]:

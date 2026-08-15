@@ -8,21 +8,9 @@
 -- ############################################################################
 --
 -- Mirrors the parts of supabase/bootstrap.sql + migrations 002 through 007
--- that
--- app/postgres.py actually reads and
--- writes. Supabase-only concerns are deliberately absent because a plain
--- Postgres container has no `auth` or `storage` schema:
---
---   * users.id does not reference auth.users
---   * no RLS policies (the backend connects as owner/service_role, which
---     bypasses them; RLS protects the shipped anon key, not this path)
---   * no storage.objects policies
---   * no auth.users signup/email triggers
---
--- test_postgres_parity.py asserts that every column app/postgres.py selects
--- exists here, so a schema change that breaks the adapter fails a test rather
--- than only failing in production.
+-- that app/postgres.py actually reads and writes.
 
+drop table if exists public.admin_audit_logs cascade;
 drop table if exists public.generation_logs cascade;
 drop table if exists public.rate_limit_hits cascade;
 drop table if exists public.video_projects cascade;
@@ -107,6 +95,19 @@ create table public.generation_logs (
   constraint chk_log_event
     check (event in ('submit', 'poll', 'webhook', 'download', 'error'))
 );
+
+create table public.admin_audit_logs (
+  id          uuid        primary key default gen_random_uuid(),
+  actor_id    uuid        not null references public.users (id) on delete cascade,
+  action      text        not null,
+  target_type text        not null,
+  target_id   text,
+  details     jsonb,
+  created_at  timestamptz not null default now()
+);
+
+create index idx_admin_audit_logs_created
+  on public.admin_audit_logs (created_at desc, id desc);
 
 create table public.rate_limit_hits (
   id          bigserial   primary key,

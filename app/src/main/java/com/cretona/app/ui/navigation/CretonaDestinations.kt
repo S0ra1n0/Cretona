@@ -10,4 +10,8 @@ sealed interface CretonaRoute {
 
     @Serializable
     data object Home : CretonaRoute
+
+    @Serializable
+    data object Admin : CretonaRoute
 }
+

@@ -260,3 +260,44 @@ def test_admin_can_trigger_thumbnail_backfill(seeded: TestClient) -> None:
     data = res.json()
     assert "backfilled" in data
     assert "processed" in data
+
+
+def test_admin_can_list_audit_logs(seeded: TestClient) -> None:
+    # 1. Update user
+    update_res = seeded.patch(
+        f"/api/v1/admin/users/{USER_A}",
+        headers=ADMIN_HEADERS,
+        json={"role": "admin"},
+    )
+    assert update_res.status_code == 200
+
+    # 2. Trigger backfill
+    backfill_res = seeded.post("/api/v1/admin/thumbnails/backfill", headers=ADMIN_HEADERS)
+    assert backfill_res.status_code == 200
+
+    # 3. Query audit logs
+    audit_res = seeded.get("/api/v1/admin/audit-logs", headers=ADMIN_HEADERS)
+    assert audit_res.status_code == 200
+    body = audit_res.json()
+    assert "items" in body
+    assert len(body["items"]) >= 2
+    actions = [item["action"] for item in body["items"]]
+    assert "user_updated" in actions
+    assert "thumbnails_backfilled" in actions
+
+    # 4. Filter by action
+    filtered = seeded.get("/api/v1/admin/audit-logs?action=user_updated", headers=ADMIN_HEADERS).json()
+    assert len(filtered["items"]) == 1
+    assert filtered["items"][0]["action"] == "user_updated"
+    assert filtered["items"][0]["targetId"] == USER_A
+
+    # 5. Non-admin forbidden (demote USER_A back to user)
+    seeded.patch(
+        f"/api/v1/admin/users/{USER_A}",
+        headers=ADMIN_HEADERS,
+        json={"role": "user"},
+    )
+    forbidden = seeded.get("/api/v1/admin/audit-logs", headers=USER_HEADERS)
+    assert forbidden.status_code == 403
+
+

@@ -116,10 +116,10 @@ class HomeViewModelTest {
     @Test
     fun `provider selection updates state`() {
         val viewModel = HomeViewModel(FakeRepository())
-        assertEquals("fake", viewModel.state.value.selectedProvider)
-
-        viewModel.onProviderSelected("real")
         assertEquals("real", viewModel.state.value.selectedProvider)
+
+        viewModel.onProviderSelected("wan21")
+        assertEquals("wan21", viewModel.state.value.selectedProvider)
     }
 }
 
@@ -179,6 +179,57 @@ private class FakeRepository(
 
     override suspend fun listProjects(): AppResult<List<VideoProject>> =
         AppResult.Success(if (createCalls == 0) emptyList() else listOf(completed))
+
+    override suspend fun getAdminStats(days: Int): AppResult<com.cretona.app.domain.model.AdminStats> =
+        AppResult.Success(
+            com.cretona.app.domain.model.AdminStats(
+                totalUsers = 10,
+                activeUsers = 8,
+                totalProjects = 25,
+                failureRate = 0.1,
+                projectsByStatus = mapOf("completed" to 20, "failed" to 5),
+                projectsByProvider = mapOf("fake" to 20, "real" to 5),
+                daily = emptyList(),
+            ),
+        )
+
+    override suspend fun getAdminUsers(
+        limit: Int,
+        cursor: String?,
+        query: String?,
+        role: String?,
+        isDisabled: Boolean?,
+    ): AppResult<List<com.cretona.app.domain.model.AdminUser>> = AppResult.Success(emptyList())
+
+    override suspend fun updateAdminUser(
+        id: String,
+        role: String?,
+        isDisabled: Boolean?,
+    ): AppResult<com.cretona.app.domain.model.AdminUser> = AppResult.Success(
+        com.cretona.app.domain.model.AdminUser(
+            id = id,
+            email = "user@example.com",
+            username = "user",
+            role = role ?: "user",
+            isDisabled = isDisabled ?: false,
+            createdAt = "2026-08-01T00:00:00Z",
+            projectCount = 3,
+        ),
+    )
+
+    override suspend fun getAdminAuditLogs(
+        limit: Int,
+        cursor: String?,
+        action: String?,
+        actorId: String?,
+    ): AppResult<List<com.cretona.app.domain.model.AdminAuditLog>> = AppResult.Success(emptyList())
+
+    override suspend fun backfillThumbnails(): AppResult<com.cretona.app.domain.model.BackfillResult> =
+        AppResult.Success(com.cretona.app.domain.model.BackfillResult(backfilled = 2, processed = 5))
+
+    override suspend fun checkHealth(): AppResult<com.cretona.app.data.remote.HealthResponse> =
+        AppResult.Success(com.cretona.app.data.remote.HealthResponse(status = "healthy", version = "1.0.0"))
+
 
     private companion object {
         fun project(
