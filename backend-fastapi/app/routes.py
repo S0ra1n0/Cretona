@@ -33,7 +33,7 @@ from app.schemas import (
     UploadSignResponse,
     WebhookResponse,
 )
-from app.storage import StorageBackend
+from app.storage import MAX_IMAGE_BYTES, StorageBackend, read_bounded, validate_upload_request
 from app.users_service import UsersService
 
 router = APIRouter()
@@ -206,8 +206,12 @@ async def upload_image(
     file: Annotated[UploadFile, File(...)],
 ) -> UploadResponse:
     """Direct multipart image upload endpoint."""
-    content_type = file.content_type or "image/jpeg"
-    data = await file.read()
+    # No default to a permitted type: an absent Content-Type must be rejected,
+    # not silently treated as a JPEG.
+    content_type = file.content_type or "application/octet-stream"
+    # Type first, so an unsupported upload is refused before a byte is read.
+    validate_upload_request(content_type, 0)
+    data = await read_bounded(file, MAX_IMAGE_BYTES)
     storage_path = storage.store_image(user_id, content_type, data)
     image_url = storage.read_url(storage_path, request_base_url(request), video=False)
     return UploadResponse(storagePath=storage_path, imageUrl=image_url)

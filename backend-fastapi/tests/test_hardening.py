@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from app.config import Settings
 from app.errors import AppError
 from app.main import create_app
 from app.schemas import AdminUserUpdate
+from app.storage import MAX_IMAGE_BYTES, read_bounded
 from tests.conftest import USER_A, USER_B
 
 ADMIN_ID = "30000000-0000-4000-8000-000000000003"
@@ -275,6 +277,163 @@ def test_admin_changes_are_logged(
     assert "admin_user_updated" in captured
     assert ADMIN_ID in captured
     assert USER_A in captured
+
+
+# --- weighted retry cost (R-2) ----------------------------------------------
+
+
+@pytest.fixture
+def tight_quota(tmp_path: Path) -> Iterator[TestClient]:
+    media = tmp_path / "media"
+    media.mkdir()
+    (media / "demo-output.mp4").write_bytes(b"test-mp4-bytes")
+    settings = Settings(
+        environment="test",
+        auth_mode="dev",
+        database_path=tmp_path / "weighted.db",
+        media_dir=media,
+        prompt_llm_provider="deterministic",
+        generation_quota_limit=2,
+        poller_enabled=False,
+        generation_log_retention_enabled=False,
+    )
+    with TestClient(create_app(settings), raise_server_exceptions=False) as client:
+        yield client
+
+
+def spend_one_unit(client: TestClient) -> None:
+    """Consume exactly one charged unit with a completed fake generation."""
+    other = client.post(
+        "/api/v1/projects", headers=HEADERS, json={"prompt": "cheap", "provider": "fake"}
+    ).json()
+    for _ in range(2):
+        client.get(f"/api/v1/projects/{other['id']}", headers=HEADERS)
+
+
+def failed_project(client: TestClient, provider: str) -> str:
+    # provider_error is retryable and, being our fault, is not charged -- so
+    # the failed row itself contributes nothing to usage.
+    created = client.post(
+        "/api/v1/projects",
+        headers=HEADERS,
+        json={"prompt": "fail:provider_error down", "provider": provider},
+    ).json()
+    for _ in range(2):
+        client.get(f"/api/v1/projects/{created['id']}", headers=HEADERS)
+    return created["id"]
+
+
+def test_a_weighted_retry_cannot_exceed_the_quota(tight_quota: TestClient) -> None:
+    """The bug R-2 fixes.
+
+    create charged the weighted cost while retry charged a flat 1, so a 2-unit
+    wan21 retry was admitted with only 1 unit left of a limit of 2.
+    """
+    project_id = failed_project(tight_quota, "wan21")
+    spend_one_unit(tight_quota)
+
+    refused = tight_quota.post(f"/api/v1/projects/{project_id}/retry", headers=HEADERS)
+
+    assert refused.status_code == 429
+    assert refused.json()["error"]["code"] == "QUOTA_EXCEEDED"
+
+
+def test_an_unweighted_retry_still_fits(tight_quota: TestClient) -> None:
+    # Same remaining allowance, but a fake retry costs 1 rather than 2.
+    project_id = failed_project(tight_quota, "fake")
+    spend_one_unit(tight_quota)
+
+    assert (
+        tight_quota.post(f"/api/v1/projects/{project_id}/retry", headers=HEADERS).status_code
+        == 202
+    )
+
+
+# --- bounded upload (R-3) ---------------------------------------------------
+
+
+class CountingUpload:
+    """An upload that reports how much was actually pulled from it."""
+
+    def __init__(self, total: int) -> None:
+        self.remaining = total
+        self.served = 0
+
+    async def read(self, size: int) -> bytes:
+        if self.remaining <= 0:
+            return b""
+        served = min(size, self.remaining)
+        self.remaining -= served
+        self.served += served
+        return b"x" * served
+
+
+def test_read_bounded_stops_instead_of_materialising_the_body() -> None:
+    """The property R-3 adds.
+
+    The old code read everything and then checked the length, so the limit
+    bounded the response but not the resources spent producing it. Asserting
+    the 413 alone would pass either way; this asserts we stopped reading.
+    """
+    upload = CountingUpload(MAX_IMAGE_BYTES * 4)
+
+    with pytest.raises(AppError) as caught:
+        asyncio.run(read_bounded(upload, MAX_IMAGE_BYTES))
+
+    assert caught.value.status_code == 413
+    # One chunk past the limit, not the whole 40 MB.
+    assert upload.served <= MAX_IMAGE_BYTES + 64 * 1024
+
+
+def test_read_bounded_returns_a_body_within_the_limit() -> None:
+    upload = CountingUpload(1024)
+
+    assert asyncio.run(read_bounded(upload, MAX_IMAGE_BYTES)) == b"x" * 1024
+
+
+def test_an_oversized_upload_is_refused(client: TestClient) -> None:
+    payload = b"x" * (MAX_IMAGE_BYTES + 1024)
+
+    response = client.post(
+        "/api/v1/uploads",
+        headers=HEADERS,
+        files={"file": ("big.png", payload, "image/png")},
+    )
+
+    assert response.status_code == 413
+    assert response.json()["error"]["code"] == "PAYLOAD_TOO_LARGE"
+
+
+def test_an_unsupported_upload_type_is_refused(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/uploads",
+        headers=HEADERS,
+        files={"file": ("x.svg", b"<svg/>", "image/svg+xml")},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["details"][0]["issue"] == "unsupported_type"
+
+
+def test_a_missing_content_type_is_not_treated_as_a_jpeg(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/uploads",
+        headers=HEADERS,
+        files={"file": ("x.bin", b"data", "application/octet-stream")},
+    )
+
+    assert response.status_code == 400
+
+
+def test_a_valid_upload_still_works(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/uploads",
+        headers=HEADERS,
+        files={"file": ("small.png", b"png-bytes", "image/png")},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["storagePath"].startswith(f"{USER_A}/")
 
 
 # --- releasing a username ---------------------------------------------------
