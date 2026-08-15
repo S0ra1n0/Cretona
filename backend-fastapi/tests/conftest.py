@@ -27,6 +27,7 @@ os.environ["CRETONA_DATABASE_BACKEND"] = "sqlite"
 os.environ["CRETONA_STORAGE_BACKEND"] = "local"
 
 JWT_SECRET = "local-test-signing-key-not-a-supabase-secret"
+WEBHOOK_SECRET = "local-test-webhook-secret-not-a-provider-value"
 JWT_AUDIENCE = "authenticated"
 JWT_ISSUER = "https://project-ref.supabase.co/auth/v1"
 
@@ -52,6 +53,7 @@ def _settings(tmp_path: Path, **overrides: Any) -> Settings:
         # Retention has its own lifecycle. Tests call it explicitly so an
         # immediate startup sweep cannot make time-sensitive assertions race.
         "generation_log_retention_enabled": False,
+        "webhook_secret": WEBHOOK_SECRET,
     }
     return Settings(**{**defaults, **overrides})
 

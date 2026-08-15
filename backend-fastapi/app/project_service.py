@@ -29,6 +29,23 @@ def utc_now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
+# Providers whose output costs enough to charge double (B-14).
+WEIGHTED_PROVIDERS = frozenset({"real", "wan21"})
+
+
+def quota_cost(provider_name: str, duration_seconds: int | None) -> int:
+    """Weighted cost of one submission.
+
+    Shared by create and retry so both charge what the row will later be
+    counted at. The SQL in count_quota_usage applies the same rule.
+    """
+    if provider_name in WEIGHTED_PROVIDERS:
+        return 2
+    if duration_seconds is not None and duration_seconds > 5:
+        return 2
+    return 1
+
+
 def _parse_timestamp(value: Any) -> datetime | None:
     if not isinstance(value, str) or not value:
         return None
@@ -77,17 +94,11 @@ class ProjectService:
 
         provider = self.providers.get(request.provider)
 
-        # Cost weighting: real providers or longer videos consume 2 quota units
-        has_long_duration = (
-            request.options is not None
-            and request.options.duration_seconds is not None
-            and request.options.duration_seconds > 5
-        )
-        cost = 2 if (has_long_duration or provider.name in ("real", "wan21")) else 1
+        duration = request.options.duration_seconds if request.options is not None else None
 
         # Before the provider call, never after: checking afterwards is
         # accounting, not control (ADR-007).
-        self.quota.assert_available(owner_id, cost=cost)
+        self.quota.assert_available(owner_id, cost=quota_cost(provider.name, duration))
 
         now = utc_now()
         prompt = request.prompt
@@ -229,8 +240,13 @@ class ProjectService:
         if attempts >= self.settings.max_generation_attempts:
             raise AppError(409, "CONFLICT", "This generation has been retried too many times.")
 
-        # A retry is a real provider call, so it costs an allowance (ADR-007).
-        self.quota.assert_available(owner_id)
+        # A retry is a real provider call, so it costs an allowance (ADR-007) —
+        # and it is charged at the same weight the row will be counted at, or a
+        # weighted retry could take a user past the limit.
+        self.quota.assert_available(
+            owner_id,
+            cost=quota_cost(row["provider"], row["duration_seconds"]),
+        )
 
         provider = self.providers.get(row["provider"])
         submitted = provider.submit(prompt=row["prompt"], image_path=row["image_path"])
@@ -480,7 +496,11 @@ class ProjectService:
         base_url: str,
     ) -> WebhookResponse:
         provider = self.providers.get(provider_name)
-        payload = provider.verify_webhook(headers=headers, body=body)
+        payload = provider.verify_webhook(
+            headers=headers,
+            body=body,
+            secret=self.settings.webhook_secret.get_secret_value(),
+        )
 
         job_id = payload.get("job_id") or payload.get("provider_job_id")
         project_id = payload.get("project_id") or payload.get("projectId")

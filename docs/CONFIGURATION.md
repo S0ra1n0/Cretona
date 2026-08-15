@@ -47,6 +47,7 @@ credentials it needs.
 | `RATE_LIMIT_GENERATION_PER_MIN` | `10` | Tighter bucket for writes that cost money |
 | `POLLER_ENABLED` | `true` | Advances jobs without waiting for a client read |
 | `POLL_INTERVAL_SECONDS` / `POLL_BATCH_SIZE` | `5` / `20` | |
+| **`WEBHOOK_SECRET`** | — | **Secret.** HMAC-SHA256 over the raw webhook body. Empty rejects every webhook; the route is public, so this is its only gate |
 | `POLL_LEASE_SECONDS` | `120` | Durable claim on a batch. Must exceed batch duration, or another instance re-claims rows still being worked |
 | `GENERATION_LOG_RETENTION_ENABLED` | `true` | Runs one cleanup batch at startup and then on the configured interval |
 | `GENERATION_LOG_RETENTION_DAYS` | `180` | Raw provider audit lifetime; rows exactly at the cutoff are retained |

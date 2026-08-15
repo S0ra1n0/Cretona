@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     max_generation_attempts: int = Field(default=3, ge=1, le=10)
     log_level: Literal["debug", "info", "warning", "error"] = "info"
     generation_timeout_seconds: int = Field(default=600, ge=30, le=86400)
+    # Shared secret for provider webhook signatures. Empty means the public
+    # webhook route rejects everything, which is the safe default.
+    webhook_secret: SecretStr = SecretStr("")
     thumbnails_enabled: bool = True
     # External binary, not a Python dependency. Absent means no thumbnail, not
     # a failed generation.
