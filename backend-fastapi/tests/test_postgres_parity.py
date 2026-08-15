@@ -330,6 +330,81 @@ def test_postgres_schema_has_the_retention_index(
     assert "created_at" in row[0]
 
 
+def test_audit_rows_round_trip_through_jsonb(
+    postgres_client: TestClient,
+    postgres_url: str,
+) -> None:
+    """The audit path had no Postgres test at all.
+
+    It was written with json.dumps against a jsonb column, so `details` was
+    either rejected or stored as a JSON string. Only Postgres shows that;
+    SQLite stores text either way.
+    """
+    database = postgres_client.app.state.database
+    database.insert_audit_log(
+        id="11111111-2222-4333-8444-555555555555",
+        actor_id=USER_B,
+        action="user_updated",
+        target_type="user",
+        target_id=USER_A,
+        details={"roleFrom": "user", "roleTo": "admin"},
+        created_at="2026-08-15T00:00:00Z",
+    )
+
+    rows = database.list_audit_logs(limit=10, cursor=None, action=None, actor_id=None)[0]
+
+    assert len(rows) == 1
+    # An object, not a string: the read path returns usable structure.
+    assert rows[0]["details"] == {"roleFrom": "user", "roleTo": "admin"}
+
+
+def test_a_system_wide_audit_row_needs_no_target(
+    postgres_client: TestClient,
+) -> None:
+    """Migration 008 originally made target_id NOT NULL.
+
+    The thumbnail backfill audits a system-wide action with no single target,
+    so that constraint would have failed every backfill after it had already
+    done the work.
+    """
+    database = postgres_client.app.state.database
+
+    database.insert_audit_log(
+        id="99999999-2222-4333-8444-555555555555",
+        actor_id=USER_B,
+        action="thumbnails_backfilled",
+        target_type="system",
+        details={"backfilled": 0, "processed": 0},
+        created_at="2026-08-15T00:00:00Z",
+    )
+
+    rows = database.list_audit_logs(limit=10, cursor=None, action=None, actor_id=None)[0]
+    assert rows[0]["target_id"] is None
+
+
+def test_an_audit_row_survives_the_actor(
+    postgres_client: TestClient,
+    postgres_url: str,
+) -> None:
+    """No cascade from users: the trail must outlive the account."""
+    database = postgres_client.app.state.database
+    database.insert_audit_log(
+        id="77777777-2222-4333-8444-555555555555",
+        actor_id=USER_B,
+        action="user_updated",
+        target_type="user",
+        target_id=USER_A,
+        details={},
+        created_at="2026-08-15T00:00:00Z",
+    )
+
+    with psycopg.connect(postgres_url, autocommit=True, connect_timeout=5) as connection:
+        connection.execute("DELETE FROM public.users WHERE id = %s", (USER_B,))
+
+    rows = database.list_audit_logs(limit=10, cursor=None, action=None, actor_id=None)[0]
+    assert len(rows) == 1
+
+
 def make_admin(postgres_url: str, user_id: str) -> None:
     with psycopg.connect(postgres_url, autocommit=True) as connection:
         connection.execute(
