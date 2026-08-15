@@ -25,6 +25,7 @@ import com.cretona.app.domain.model.ProjectStatus
 import com.cretona.app.domain.model.UserProfile
 import com.cretona.app.domain.model.VideoProject
 import com.cretona.app.domain.repository.CretonaRepository
+import kotlinx.coroutines.CancellationException
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -142,6 +143,12 @@ class CretonaRepositoryImpl @Inject constructor(
 
     private suspend fun <T> apiCall(block: suspend () -> T): AppResult<T> = try {
         AppResult.Success(block())
+    } catch (cancellation: CancellationException) {
+        // Must be rethrown, and must come before the catch-all below.
+        // CancellationException is an Exception, so swallowing it turns a
+        // deliberate cancel into a user-visible error and leaves the coroutine
+        // running instead of unwinding.
+        throw cancellation
     } catch (error: HttpException) {
         AppResult.Failure(error.toAppError())
     } catch (_: IOException) {

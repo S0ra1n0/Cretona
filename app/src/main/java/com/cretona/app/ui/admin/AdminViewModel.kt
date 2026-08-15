@@ -6,6 +6,8 @@ import com.cretona.app.core.result.AppResult
 import com.cretona.app.domain.model.AdminUser
 import com.cretona.app.domain.repository.CretonaRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,6 +22,8 @@ class AdminViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(AdminUiState())
     val state: StateFlow<AdminUiState> = _state.asStateFlow()
+
+    private var usersJob: Job? = null
 
     init {
         loadStats()
@@ -61,30 +65,37 @@ class AdminViewModel @Inject constructor(
     }
 
     fun loadUsers() {
-        viewModelScope.launch {
-            _state.update { it.copy(isLoadingUsers = true, usersError = null) }
-            val current = _state.value
-            when (val result = repository.getAdminUsers(
+        // Cancelling the previous request is what stops a slower earlier
+        // response from landing after a newer one and winning.
+        usersJob?.cancel()
+        usersJob = viewModelScope.launch { loadUsersNow() }
+    }
+
+    private suspend fun loadUsersNow() {
+        _state.update { it.copy(isLoadingUsers = true, usersError = null) }
+        val current = _state.value
+        when (
+            val result = repository.getAdminUsers(
                 query = current.userSearchQuery.ifBlank { null },
                 role = current.userRoleFilter,
                 isDisabled = current.userStatusFilter,
-            )) {
-                is AppResult.Success -> {
-                    _state.update {
-                        it.copy(
-                            isLoadingUsers = false,
-                            users = result.data,
-                            usersError = null,
-                        )
-                    }
+            )
+        ) {
+            is AppResult.Success -> {
+                _state.update {
+                    it.copy(
+                        isLoadingUsers = false,
+                        users = result.data,
+                        usersError = null,
+                    )
                 }
-                is AppResult.Failure -> {
-                    _state.update {
-                        it.copy(
-                            isLoadingUsers = false,
-                            usersError = result.error.message,
-                        )
-                    }
+            }
+            is AppResult.Failure -> {
+                _state.update {
+                    it.copy(
+                        isLoadingUsers = false,
+                        usersError = result.error.message,
+                    )
                 }
             }
         }
@@ -92,7 +103,13 @@ class AdminViewModel @Inject constructor(
 
     fun onSearchQueryChanged(query: String) {
         _state.update { it.copy(userSearchQuery = query) }
-        loadUsers()
+        // Debounced: a keystroke-per-request search both floods the server and
+        // races itself, because responses need not arrive in send order.
+        usersJob?.cancel()
+        usersJob = viewModelScope.launch {
+            delay(SEARCH_DEBOUNCE_MS)
+            loadUsersNow()
+        }
     }
 
     fun onRoleFilterChanged(role: String?) {
@@ -209,6 +226,12 @@ class AdminViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    private companion object {
+        // Long enough to swallow a burst of typing, short enough that the list
+        // still feels reactive.
+        const val SEARCH_DEBOUNCE_MS = 300L
     }
 
     fun runHealthCheck() {
