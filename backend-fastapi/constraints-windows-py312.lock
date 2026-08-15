@@ -24,6 +24,7 @@ pydantic-settings==2.15.0
 Pygments==2.20.0
 pytest==8.4.2
 python-dotenv==1.2.2
+python-multipart==0.0.32
 PyYAML==6.0.3
 ruff==0.16.2
 starlette==1.6.0
