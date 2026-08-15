@@ -263,6 +263,61 @@ private fun StatsTabContent(
                 }
             }
         }
+
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "System Volume Distribution",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    val primaryColor = MaterialTheme.colorScheme.primary
+                    val secondaryColor = MaterialTheme.colorScheme.secondary
+                    val tertiaryColor = MaterialTheme.colorScheme.tertiary
+                    val surfaceColor = MaterialTheme.colorScheme.surface
+
+                    androidx.compose.foundation.Canvas(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(120.dp),
+                    ) {
+                        val barWidth = size.width / 5f
+                        val maxVal = maxOf(stats.totalProjects, stats.totalUsers, 1).toFloat()
+
+                        val bars = listOf(
+                            Triple("Users", stats.totalUsers.toFloat(), primaryColor),
+                            Triple("Active", stats.activeUsers.toFloat(), secondaryColor),
+                            Triple("Projects", stats.totalProjects.toFloat(), tertiaryColor),
+                        )
+
+                        bars.forEachIndexed { index, (label, value, color) ->
+                            val barHeight = (value / maxVal) * (size.height - 20f)
+                            val x = index * (barWidth + 24f) + 16f
+                            val y = size.height - barHeight - 10f
+
+                            drawRect(
+                                color = color,
+                                topLeft = androidx.compose.ui.geometry.Offset(x, y),
+                                size = androidx.compose.ui.geometry.Size(barWidth, barHeight),
+                            )
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceAround,
+                    ) {
+                        Text("Users (${stats.totalUsers})", style = MaterialTheme.typography.labelSmall)
+                        Text("Active (${stats.activeUsers})", style = MaterialTheme.typography.labelSmall)
+                        Text("Projects (${stats.totalProjects})", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
+        }
     }
 }
 

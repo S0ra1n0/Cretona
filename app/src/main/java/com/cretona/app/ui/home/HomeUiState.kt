@@ -21,6 +21,7 @@ data class HomeUiState(
     val selectedImageMimeType: String? = null,
     val selectedImageFileName: String? = null,
     val isUploadingImage: Boolean = false,
+    val previousPrompt: String? = null,
 ) {
     val isQuotaExhausted: Boolean
         get() = account?.quota?.remaining == 0

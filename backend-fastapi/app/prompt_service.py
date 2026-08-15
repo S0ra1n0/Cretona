@@ -72,10 +72,40 @@ class PromptEnhancer:
             return None
         return None
 
-    @staticmethod
-    def _deterministic(prompt: str, aspect_ratio: str) -> str:
+    @classmethod
+    def _deterministic(cls, prompt: str, aspect_ratio: str) -> str:
+        translated = cls._expand_vietnamese_if_present(prompt)
         return (
-            f"Cinematic {aspect_ratio} video of {prompt}. Clear subject motion, coherent "
+            f"Cinematic {aspect_ratio} video of {translated}. Clear subject motion, coherent "
             "environment, smooth camera movement, natural lighting, consistent details, "
             "high visual quality, no text or watermark."
         )[:1000]
+
+    @staticmethod
+    def _expand_vietnamese_if_present(prompt: str) -> str:
+        lowered = prompt.lower()
+        replacements = [
+            ("con mèo", "a graceful agile cat"),
+            ("mèo", "a cute cinematic cat"),
+            ("con chó", "a playful faithful dog"),
+            ("chó", "a dog"),
+            ("rồng", "a majestic mystical dragon with glowing scales"),
+            ("hoàng hôn", "a dramatic golden hour sunset over the horizon"),
+            ("bình minh", "a serene golden sunrise with soft morning mist"),
+            ("thành phố", "a vibrant futuristic cyberpunk metropolis at night"),
+            ("biển", "a crystal-clear turquoise ocean with rolling waves"),
+            ("núi", "majestic snow-capped mountain peaks"),
+            ("hoa", "blooming vibrant exotic flowers"),
+            ("mưa", "cinematic gentle rain with reflective glistening streets"),
+            ("vũ trụ", "deep outer space with colorful glowing nebulae and stars"),
+            ("cô gái", "a beautiful elegant young woman with expressive eyes"),
+            ("chàng trai", "a handsome young man"),
+            ("xe hơi", "a sleek aerodynamic modern supercar cruising"),
+        ]
+        result = prompt
+        for vn, en in replacements:
+            if vn in lowered:
+                # Replace case-insensitively
+                import re
+                result = re.sub(re.escape(vn), en, result, flags=re.IGNORECASE)
+        return result

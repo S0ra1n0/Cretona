@@ -120,6 +120,8 @@ fun HomeScreen(
             hideKeyboard(focusManager, keyboardController)
             viewModel.enhancePrompt()
         },
+        onRevertPrompt = viewModel::revertPrompt,
+        onSelectPromptIdea = viewModel::onSelectPromptIdea,
         onGenerate = {
             hideKeyboard(focusManager, keyboardController)
             viewModel.generateVideo()
@@ -142,6 +144,8 @@ private fun HomeContent(
     onPickImage: () -> Unit,
     onClearImage: () -> Unit,
     onEnhance: () -> Unit,
+    onRevertPrompt: () -> Unit,
+    onSelectPromptIdea: (String) -> Unit,
     onGenerate: () -> Unit,
     onCancelCurrent: () -> Unit,
     onDeleteProject: (String) -> Unit,
@@ -195,21 +199,46 @@ private fun HomeContent(
             }
 
             item {
-                OutlinedTextField(
-                    value = state.prompt,
-                    onValueChange = onPromptChanged,
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 4,
-                    maxLines = 8,
-                    label = { Text("Describe the video") },
-                    supportingText = {
-                        Text(
-                            state.enhancementNote
-                                ?: if (state.selectedProvider == "real") "Real AI video provider - model AI"
-                                else "Fake video provider - zero-spend demo",
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = state.prompt,
+                        onValueChange = onPromptChanged,
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 4,
+                        maxLines = 8,
+                        label = { Text("Describe the video") },
+                        supportingText = {
+                            Text(
+                                state.enhancementNote
+                                    ?: if (state.selectedProvider == "real") "Real AI video provider - model AI"
+                                    else if (state.selectedProvider == "wan21") "Wan 2.1 video provider"
+                                    else "Fake video provider - zero-spend demo",
+                            )
+                        },
+                    )
+
+                    if (state.prompt.isBlank()) {
+                        val ideas = listOf(
+                            "🐉 Rồng bay trên núi",
+                            "🌆 Cyberpunk city",
+                            "🌊 Hoàng hôn trên biển",
+                            "🐱 Mèo trong vũ trụ",
+                            "🎆 Fireworks celebration",
                         )
-                    },
-                )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            ideas.take(3).forEach { idea ->
+                                FilterChip(
+                                    selected = false,
+                                    onClick = { onSelectPromptIdea(idea) },
+                                    label = { Text(idea, style = MaterialTheme.typography.labelSmall) },
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
             item {
@@ -246,10 +275,19 @@ private fun HomeContent(
             }
 
             item {
+                val quotaCost = if (state.selectedProvider in listOf("real", "wan21")) 2 else 1
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
+                    if (state.previousPrompt != null) {
+                        OutlinedButton(
+                            onClick = onRevertPrompt,
+                            enabled = !state.isEnhancing && !state.isSubmitting,
+                        ) {
+                            Text("Revert")
+                        }
+                    }
                     OutlinedButton(
                         onClick = onEnhance,
                         enabled = !state.isEnhancing && !state.isSubmitting,
@@ -272,7 +310,7 @@ private fun HomeContent(
                         if (state.isSubmitting) {
                             CircularProgressIndicator(modifier = Modifier.padding(2.dp))
                         } else {
-                            Text("Generate")
+                            Text("Generate (-$quotaCost Quota)")
                         }
                     }
                 }
@@ -858,6 +896,8 @@ private fun HomeScreenPreview() {
             onPickImage = {},
             onClearImage = {},
             onEnhance = {},
+            onRevertPrompt = {},
+            onSelectPromptIdea = {},
             onGenerate = {},
             onCancelCurrent = {},
             onDeleteProject = {},

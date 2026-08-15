@@ -113,6 +113,7 @@ class HomeViewModel @Inject constructor(
                     }
                     it.copy(
                         prompt = result.data.text,
+                        previousPrompt = current,
                         isEnhancing = false,
                         enhancementNote = source,
                     )
@@ -122,6 +123,29 @@ class HomeViewModel @Inject constructor(
                     it.copy(isEnhancing = false, errorMessage = result.error.message)
                 }
             }
+        }
+    }
+
+    fun revertPrompt() {
+        val prev = state.value.previousPrompt ?: return
+        _state.update {
+            it.copy(
+                prompt = prev,
+                previousPrompt = null,
+                enhancementNote = null,
+                errorMessage = null,
+            )
+        }
+    }
+
+    fun onSelectPromptIdea(idea: String) {
+        _state.update {
+            it.copy(
+                prompt = idea,
+                previousPrompt = null,
+                enhancementNote = null,
+                errorMessage = null,
+            )
         }
     }
 

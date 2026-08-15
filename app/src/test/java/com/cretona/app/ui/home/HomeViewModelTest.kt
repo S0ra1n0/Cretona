@@ -50,10 +50,34 @@ class HomeViewModelTest {
         advanceUntilIdle()
 
         assertEquals("Enhanced cat astronaut", viewModel.state.value.prompt)
+        assertEquals("cat astronaut", viewModel.state.value.previousPrompt)
         assertEquals(
             "Deterministic fallback (no live LLM)",
             viewModel.state.value.enhancementNote,
         )
+    }
+
+    @Test
+    fun `revertPrompt restores previous prompt before enhancement`() = runTest(mainDispatcherRule.dispatcher) {
+        val viewModel = HomeViewModel(FakeRepository())
+        viewModel.onPromptChanged("cat astronaut")
+
+        viewModel.enhancePrompt()
+        advanceUntilIdle()
+
+        assertEquals("Enhanced cat astronaut", viewModel.state.value.prompt)
+        assertEquals("cat astronaut", viewModel.state.value.previousPrompt)
+
+        viewModel.revertPrompt()
+        assertEquals("cat astronaut", viewModel.state.value.prompt)
+        org.junit.Assert.assertNull(viewModel.state.value.previousPrompt)
+    }
+
+    @Test
+    fun `onSelectPromptIdea updates prompt`() {
+        val viewModel = HomeViewModel(FakeRepository())
+        viewModel.onSelectPromptIdea("🐉 Rồng bay trên núi")
+        assertEquals("🐉 Rồng bay trên núi", viewModel.state.value.prompt)
     }
 
     @Test
