@@ -1,2 +1,1 @@
 """Cretona FastAPI backend."""
-

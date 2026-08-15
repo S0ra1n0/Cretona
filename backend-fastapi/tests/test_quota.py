@@ -35,9 +35,7 @@ def quota_client(tmp_path: Path) -> Iterator[TestClient]:
 
 
 def create(client: TestClient, prompt: str = "a lantern") -> int:
-    return client.post(
-        "/api/v1/projects", headers=HEADERS, json={"prompt": prompt}
-    ).status_code
+    return client.post("/api/v1/projects", headers=HEADERS, json={"prompt": prompt}).status_code
 
 
 def drive_to_failure(client: TestClient, prompt: str) -> str:
@@ -144,9 +142,10 @@ def test_retry_costs_an_allowance(quota_client: TestClient) -> None:
     assert retried.status_code == 409  # content_policy is not retryable
 
     create(quota_client)
-    assert quota_client.post(
-        "/api/v1/projects", headers=HEADERS, json={"prompt": "third"}
-    ).status_code == 429
+    assert (
+        quota_client.post("/api/v1/projects", headers=HEADERS, json={"prompt": "third"}).status_code
+        == 429
+    )
 
 
 # --- window arithmetic ------------------------------------------------------

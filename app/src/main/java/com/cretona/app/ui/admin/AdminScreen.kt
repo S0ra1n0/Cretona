@@ -29,9 +29,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -59,7 +59,7 @@ fun AdminScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Admin Dashboard") },
+                title = { Text("Admin Panel") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
@@ -69,14 +69,16 @@ fun AdminScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = {
-                        when (state.selectedTab) {
-                            AdminTab.STATS -> viewModel.loadStats()
-                            AdminTab.USERS -> viewModel.loadUsers()
-                            AdminTab.AUDIT_LOGS -> viewModel.loadAuditLogs()
-                            AdminTab.DIAGNOSTICS -> viewModel.runHealthCheck()
-                        }
-                    }) {
+                    IconButton(
+                        onClick = {
+                            when (state.selectedTab) {
+                                AdminTab.STATS -> viewModel.loadStats()
+                                AdminTab.USERS -> viewModel.loadUsers()
+                                AdminTab.AUDIT_LOGS -> viewModel.loadAuditLogs()
+                                AdminTab.DIAGNOSTICS -> viewModel.runHealthCheck()
+                            }
+                        },
+                    ) {
                         Icon(
                             imageVector = Icons.Default.Refresh,
                             contentDescription = "Refresh",
@@ -92,7 +94,7 @@ fun AdminScreen(
                 .fillMaxSize()
                 .padding(innerPadding),
         ) {
-            TabRow(selectedTabIndex = state.selectedTab.ordinal) {
+            PrimaryTabRow(selectedTabIndex = state.selectedTab.ordinal) {
                 AdminTab.entries.forEach { tab ->
                     Tab(
                         selected = state.selectedTab == tab,

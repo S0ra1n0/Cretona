@@ -52,4 +52,3 @@ async def validation_error_handler(
         details,
     )
     return JSONResponse(status_code=400, content=error_payload(request, app_error))
-

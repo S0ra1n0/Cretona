@@ -107,9 +107,7 @@ def test_fake_failure_is_mapped_to_a_safe_message(
     created = drive_to_failure(client, user_headers, "fail:content_policy unsafe input")
     body = client.get(f"/api/v1/projects/{created['id']}", headers=user_headers).json()
 
-    assert body["errorMessage"] == (
-        "The prompt or image could not be used. Try different content."
-    )
+    assert body["errorMessage"] == ("The prompt or image could not be used. Try different content.")
     assert "Fake provider" not in body["errorMessage"]
 
 
@@ -153,9 +151,10 @@ def test_retry_budget_is_enforced(
 
     # The create already spent attempt 1; the default budget is 3.
     for _ in range(2):
-        assert client.post(
-            f"/api/v1/projects/{project_id}/retry", headers=user_headers
-        ).status_code == 202
+        assert (
+            client.post(f"/api/v1/projects/{project_id}/retry", headers=user_headers).status_code
+            == 202
+        )
         client.get(f"/api/v1/projects/{project_id}", headers=user_headers)
         client.get(f"/api/v1/projects/{project_id}", headers=user_headers)
 
@@ -258,4 +257,3 @@ def test_invalid_cursor_uses_validation_error(
 
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "VALIDATION_ERROR"
-

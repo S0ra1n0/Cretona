@@ -166,12 +166,12 @@ def test_reads_are_limited_and_report_the_headers(limited: TestClient) -> None:
 
 
 def test_generation_has_a_tighter_budget_than_reads(limited: TestClient) -> None:
-    assert limited.post(
-        "/api/v1/projects", headers=HEADERS, json={"prompt": "one"}
-    ).status_code == 201
-    assert limited.post(
-        "/api/v1/projects", headers=HEADERS, json={"prompt": "two"}
-    ).status_code == 201
+    assert (
+        limited.post("/api/v1/projects", headers=HEADERS, json={"prompt": "one"}).status_code == 201
+    )
+    assert (
+        limited.post("/api/v1/projects", headers=HEADERS, json={"prompt": "two"}).status_code == 201
+    )
 
     third = limited.post("/api/v1/projects", headers=HEADERS, json={"prompt": "three"})
 
@@ -189,9 +189,7 @@ def test_one_caller_cannot_exhaust_anothers_budget(limited: TestClient) -> None:
 
 def test_refusal_still_carries_the_correlation_id(limited: TestClient) -> None:
     for _ in range(4):
-        response = limited.get(
-            "/api/v1/projects", headers={**HEADERS, "X-Request-ID": "trace"}
-        )
+        response = limited.get("/api/v1/projects", headers={**HEADERS, "X-Request-ID": "trace"})
 
     assert response.status_code == 429
     assert response.headers["X-Request-ID"] == "trace"

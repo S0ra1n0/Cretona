@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 from uuid import uuid4
 
 ProviderFailure = Literal[
@@ -44,7 +44,12 @@ class FakeVideoProvider:
 
     name = "fake"
 
-    def __init__(self, *, polls_before_complete: int, video_filename: str) -> None:
+    def __init__(
+        self,
+        *,
+        polls_before_complete: int = 1,
+        video_filename: str = "demo-output.mp4",
+    ) -> None:
         self.polls_before_complete = polls_before_complete
         self.video_filename = video_filename
 
@@ -73,6 +78,7 @@ class FakeVideoProvider:
         required = 3 if normalized_prompt.startswith("slow") else self.polls_before_complete
         if poll_count < required:
             return PollResult(status="running")
+
         return PollResult(
             status="succeeded",
             video_path=f"/media/{self.video_filename}",
@@ -83,6 +89,7 @@ class FakeVideoProvider:
         self, *, headers: dict[str, str], body: bytes, secret: str = ""
     ) -> dict[str, Any]:
         import json
+
         del headers, secret
         if not body:
             return {}
@@ -95,8 +102,9 @@ class FakeVideoProvider:
 class RealAiVideoProvider:
     """Real AI Video generation provider adapter.
 
-    Connects to external Cloud AI video inference APIs (e.g. Replicate / Hugging Face / Pollinations)
-    when `api_key` or `endpoint` is provided. If unconfigured, executes dynamic real synthetic video synthesis.
+    Connects to external Cloud AI video inference APIs (e.g. Replicate/HF/Pollinations)
+    when `api_key` or `endpoint` is provided. If unconfigured, executes dynamic real
+    video synthesis.
     """
 
     name = "real"
@@ -132,6 +140,7 @@ class RealAiVideoProvider:
         self, *, headers: dict[str, str], body: bytes, secret: str = ""
     ) -> dict[str, Any]:
         import json
+
         del headers, secret
         if not body:
             return {}
@@ -176,6 +185,7 @@ class Wan21VideoProvider:
         self, *, headers: dict[str, str], body: bytes, secret: str = ""
     ) -> dict[str, Any]:
         import json
+
         del headers, secret
         if not body:
             return {}
@@ -205,5 +215,3 @@ class ProviderRegistry:
                 [{"field": "body.provider", "issue": "unknown_provider"}],
             )
         return provider
-
-

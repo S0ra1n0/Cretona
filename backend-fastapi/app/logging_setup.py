@@ -88,9 +88,7 @@ class JsonFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         payload: dict[str, Any] = {
-            "time": datetime.fromtimestamp(record.created, UTC)
-            .isoformat()
-            .replace("+00:00", "Z"),
+            "time": datetime.fromtimestamp(record.created, UTC).isoformat().replace("+00:00", "Z"),
             "level": record.levelname.lower(),
             "logger": record.name,
             "message": record.getMessage(),

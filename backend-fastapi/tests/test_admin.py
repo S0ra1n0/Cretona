@@ -16,15 +16,23 @@ USER_HEADERS = {"X-Debug-User-Id": USER_A}
 def seeded(client: TestClient) -> TestClient:
     database = client.app.state.database
     database.upsert_user(
-        ADMIN_ID, email="admin@example.com", username="theadmin", role="admin",
+        ADMIN_ID,
+        email="admin@example.com",
+        username="theadmin",
+        role="admin",
         created_at="2026-01-03T00:00:00Z",
     )
     database.upsert_user(
-        USER_A, email="alice@example.com", username="alice",
+        USER_A,
+        email="alice@example.com",
+        username="alice",
         created_at="2026-01-02T00:00:00Z",
     )
     database.upsert_user(
-        USER_B, email="bob@example.com", username="bob", is_disabled=True,
+        USER_B,
+        email="bob@example.com",
+        username="bob",
+        is_disabled=True,
         created_at="2026-01-01T00:00:00Z",
     )
     return client
@@ -286,7 +294,9 @@ def test_admin_can_list_audit_logs(seeded: TestClient) -> None:
     assert "thumbnails_backfilled" in actions
 
     # 4. Filter by action
-    filtered = seeded.get("/api/v1/admin/audit-logs?action=user_updated", headers=ADMIN_HEADERS).json()
+    filtered = seeded.get(
+        "/api/v1/admin/audit-logs?action=user_updated", headers=ADMIN_HEADERS
+    ).json()
     assert len(filtered["items"]) == 1
     assert filtered["items"][0]["action"] == "user_updated"
     assert filtered["items"][0]["targetId"] == USER_A
@@ -299,5 +309,3 @@ def test_admin_can_list_audit_logs(seeded: TestClient) -> None:
     )
     forbidden = seeded.get("/api/v1/admin/audit-logs", headers=USER_HEADERS)
     assert forbidden.status_code == 403
-
-

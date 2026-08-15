@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from fastapi.testclient import TestClient
 
 from tests.conftest import USER_A

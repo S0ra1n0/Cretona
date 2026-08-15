@@ -111,9 +111,7 @@ def test_expired_token_is_rejected(
     supabase_client: TestClient,
     bearer: BearerFactory,
 ) -> None:
-    _assert_token_invalid(
-        supabase_client.get("/api/v1/projects", headers=bearer(expires_in=-60))
-    )
+    _assert_token_invalid(supabase_client.get("/api/v1/projects", headers=bearer(expires_in=-60)))
 
 
 def test_wrong_signature_is_rejected(
@@ -144,9 +142,7 @@ def test_wrong_audience_is_rejected(
     supabase_client: TestClient,
     bearer: BearerFactory,
 ) -> None:
-    _assert_token_invalid(
-        supabase_client.get("/api/v1/projects", headers=bearer(audience="anon"))
-    )
+    _assert_token_invalid(supabase_client.get("/api/v1/projects", headers=bearer(audience="anon")))
 
 
 def test_unsigned_alg_none_token_is_rejected(
@@ -199,9 +195,11 @@ def test_tampered_subject_is_rejected(
     padding = "=" * (-len(payload_segment) % 4)
     claims = json.loads(base64.urlsafe_b64decode(payload_segment + padding))
     claims["sub"] = USER_B
-    forged = base64.urlsafe_b64encode(
-        json.dumps(claims, separators=(",", ":")).encode()
-    ).decode().rstrip("=")
+    forged = (
+        base64.urlsafe_b64encode(json.dumps(claims, separators=(",", ":")).encode())
+        .decode()
+        .rstrip("=")
+    )
 
     _assert_token_invalid(
         supabase_client.get(
@@ -245,15 +243,20 @@ def test_another_user_cannot_read_update_or_delete_a_project(
     created = create_project(supabase_client, bearer(subject=USER_A))
     intruder = bearer(subject=USER_B)
 
-    assert supabase_client.get(
-        f"/api/v1/projects/{created['id']}", headers=intruder
-    ).status_code == 404
-    assert supabase_client.post(
-        f"/api/v1/projects/{created['id']}/retry", headers=intruder
-    ).status_code == 404
-    assert supabase_client.delete(
-        f"/api/v1/projects/{created['id']}", headers=intruder
-    ).status_code == 404
+    assert (
+        supabase_client.get(f"/api/v1/projects/{created['id']}", headers=intruder).status_code
+        == 404
+    )
+    assert (
+        supabase_client.post(
+            f"/api/v1/projects/{created['id']}/retry", headers=intruder
+        ).status_code
+        == 404
+    )
+    assert (
+        supabase_client.delete(f"/api/v1/projects/{created['id']}", headers=intruder).status_code
+        == 404
+    )
     assert supabase_client.get("/api/v1/projects", headers=intruder).json()["items"] == []
 
     # The owner's project survived every attempt.

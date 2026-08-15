@@ -219,7 +219,3 @@ class WebhookResponse(ApiModel):
 class UploadResponse(ApiModel):
     storage_path: str = Field(alias="storagePath")
     image_url: str | None = Field(default=None, alias="imageUrl")
-
-
-
-

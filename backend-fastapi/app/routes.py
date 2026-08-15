@@ -172,7 +172,6 @@ def admin_backfill_thumbnails(
     return service.backfill_thumbnails(storage, thumbnails, acting_admin_id=admin_id)
 
 
-
 @router.post("/uploads/sign", response_model=UploadSignResponse)
 def sign_upload(
     payload: UploadSignRequest,
@@ -215,7 +214,6 @@ async def upload_image(
 
 
 @router.post(
-
     "/projects",
     response_model=ProjectResponse,
     status_code=status.HTTP_201_CREATED,
@@ -306,5 +304,3 @@ async def handle_provider_webhook(
         body,
         request_base_url(request),
     )
-
-

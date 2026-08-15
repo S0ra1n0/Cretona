@@ -70,9 +70,7 @@ def test_retention_deletes_only_rows_strictly_older_than_the_cutoff(
     _record_at(client, project_id, cutoff, marker="boundary")
     _record_at(client, project_id, cutoff + timedelta(seconds=1), marker="recent")
 
-    summary = client.app.state.generation_log.prune(
-        retention_days=180, batch_size=10, now=now
-    )
+    summary = client.app.state.generation_log.prune(retention_days=180, batch_size=10, now=now)
 
     remaining_markers = {
         row["request"]["marker"]
@@ -93,9 +91,7 @@ def test_retention_deletes_the_oldest_bounded_batch(client: TestClient) -> None:
     for age, marker in ((400, "oldest"), (300, "middle"), (200, "newest-old")):
         _record_at(client, project_id, now - timedelta(days=age), marker=marker)
 
-    first = client.app.state.generation_log.prune(
-        retention_days=180, batch_size=2, now=now
-    )
+    first = client.app.state.generation_log.prune(retention_days=180, batch_size=2, now=now)
 
     remaining_markers = {
         row["request"]["marker"]
@@ -106,9 +102,7 @@ def test_retention_deletes_the_oldest_bounded_batch(client: TestClient) -> None:
     assert first.batch_full is True
     assert remaining_markers == {"newest-old"}
 
-    second = client.app.state.generation_log.prune(
-        retention_days=180, batch_size=2, now=now
-    )
+    second = client.app.state.generation_log.prune(retention_days=180, batch_size=2, now=now)
     assert second.deleted == 1
     assert second.batch_full is False
 
@@ -126,9 +120,7 @@ def test_retention_summary_never_contains_provider_payloads(
 
     monkeypatch.setattr("app.generation_log_service.logger.info", capture)
 
-    summary = client.app.state.generation_log.prune(
-        retention_days=180, batch_size=10, now=now
-    )
+    summary = client.app.state.generation_log.prune(retention_days=180, batch_size=10, now=now)
 
     rendered = repr(summary)
     assert "must-not-reach-summary" not in rendered

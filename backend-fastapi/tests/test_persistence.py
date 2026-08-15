@@ -27,4 +27,3 @@ def test_projects_survive_application_restart(tmp_path: Path) -> None:
         listed = second_client.get("/api/v1/projects")
         assert listed.status_code == 200
         assert [item["id"] for item in listed.json()["items"]] == [project_id]
-

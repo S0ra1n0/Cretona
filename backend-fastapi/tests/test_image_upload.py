@@ -1,4 +1,5 @@
 import io
+
 from fastapi.testclient import TestClient
 
 
@@ -16,7 +17,10 @@ def test_sign_upload_endpoint(client: TestClient, user_headers: dict[str, str]):
 
 
 def test_direct_multipart_upload_endpoint(client: TestClient, user_headers: dict[str, str]):
-    fake_png_bytes = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4"
+    fake_png_bytes = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
+        b"\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4"
+    )
     files = {"file": ("test_frame.png", io.BytesIO(fake_png_bytes), "image/png")}
 
     response = client.post("/api/v1/uploads", headers=user_headers, files=files)
@@ -27,7 +31,9 @@ def test_direct_multipart_upload_endpoint(client: TestClient, user_headers: dict
     assert data["imageUrl"] is not None
 
 
-def test_direct_multipart_upload_rejects_invalid_type(client: TestClient, user_headers: dict[str, str]):
+def test_direct_multipart_upload_rejects_invalid_type(
+    client: TestClient, user_headers: dict[str, str]
+):
     files = {"file": ("script.sh", io.BytesIO(b"echo 'hello'"), "text/plain")}
 
     response = client.post("/api/v1/uploads", headers=user_headers, files=files)
@@ -63,7 +69,9 @@ def test_create_project_with_image_path(client: TestClient, user_headers: dict[s
     assert storage_path in proj_data["imageUrl"]
 
 
-def test_create_project_rejects_unowned_image_path(client: TestClient, user_headers: dict[str, str]):
+def test_create_project_rejects_unowned_image_path(
+    client: TestClient, user_headers: dict[str, str]
+):
     proj_res = client.post(
         "/api/v1/projects",
         headers=user_headers,

@@ -166,9 +166,7 @@ def test_the_poller_sweeps_stuck_projects(impatient: TestClient) -> None:
 
 
 def test_a_completed_project_is_never_timed_out(impatient: TestClient) -> None:
-    created = impatient.post(
-        "/api/v1/projects", headers=HEADERS, json={"prompt": "quick"}
-    ).json()
+    created = impatient.post("/api/v1/projects", headers=HEADERS, json={"prompt": "quick"}).json()
     impatient.get(f"/api/v1/projects/{created['id']}", headers=HEADERS)
     impatient.get(f"/api/v1/projects/{created['id']}", headers=HEADERS)
     age_project(impatient, created["id"], "2020-01-01T00:00:00Z")
@@ -242,9 +240,7 @@ def test_the_service_refuses_to_strip_the_last_admin(admins: TestClient) -> None
 
 
 def test_the_service_allows_it_once_a_second_admin_exists(admins: TestClient) -> None:
-    admins.app.state.database.upsert_user(
-        SECOND_ADMIN, email="second@example.com", role="admin"
-    )
+    admins.app.state.database.upsert_user(SECOND_ADMIN, email="second@example.com", role="admin")
     service = admins.app.state.admin_service
 
     result = service.update_user("someone-else", ADMIN_ID, AdminUserUpdate(role="user"))
@@ -272,9 +268,7 @@ def test_admin_changes_are_logged(
     admins: TestClient,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    admins.patch(
-        f"/api/v1/admin/users/{USER_A}", headers=ADMIN_HEADERS, json={"role": "admin"}
-    )
+    admins.patch(f"/api/v1/admin/users/{USER_A}", headers=ADMIN_HEADERS, json={"role": "admin"})
 
     captured = capsys.readouterr().out
 

@@ -124,9 +124,7 @@ def build_stats(
             "projects": int(totals["projects"]),
         },
         "projectsByStatus": {status: status_counts.get(status, 0) for status in STATUSES},
-        "projectsByProvider": {
-            row["provider"]: int(row["total"]) for row in by_provider
-        },
+        "projectsByProvider": {row["provider"]: int(row["total"]) for row in by_provider},
         # The denominator is finished generations, not all of them: counting
         # in-flight work as a success would make the rate drift with load.
         "failureRate": 0.0 if finished == 0 else round(failed / finished, 4),

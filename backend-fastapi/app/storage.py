@@ -186,17 +186,24 @@ class LocalStorage:
         relative = path.lstrip("/").removeprefix("media/")
         candidate = (self.media_dir / relative).resolve()
         media_root = self.media_dir.resolve()
-        if candidate != media_root and (media_root in candidate.parents or candidate == media_root) and candidate.exists():
+        if (
+            candidate != media_root
+            and (media_root in candidate.parents or candidate == media_root)
+            and candidate.exists()
+        ):
             return candidate
 
         uploads_candidate = (self.media_dir / "uploads" / relative).resolve()
-        if uploads_candidate != media_root and (media_root in uploads_candidate.parents) and uploads_candidate.exists():
+        if (
+            uploads_candidate != media_root
+            and (media_root in uploads_candidate.parents)
+            and uploads_candidate.exists()
+        ):
             return uploads_candidate
 
         if candidate == media_root or media_root not in candidate.parents:
             return None
         return candidate
-
 
 
 class SupabaseStorage:
@@ -266,7 +273,7 @@ class SupabaseStorage:
         """
         if self._media_dir is not None and stored_path:
             if stored_path.startswith("/media/"):
-                candidate = self._media_dir / stored_path[len("/media/"):]
+                candidate = self._media_dir / stored_path[len("/media/") :]
             else:
                 candidate = self._media_dir / stored_path
             if candidate.is_file():
@@ -310,7 +317,6 @@ class SupabaseStorage:
         if upload.status_code >= 400:
             raise AppError(500, "INTERNAL_ERROR", "Could not store the uploaded image.")
         return path
-
 
     def read_url(self, path: str | None, base_url: str, *, video: bool = True) -> str | None:
         """Mint a short-lived read URL.
@@ -374,7 +380,7 @@ class SupabaseStorage:
             # the local StaticFiles mount to an actual filesystem path via
             # media_dir, then read the bytes directly from disk.
             if source.startswith("/media/") and self._media_dir is not None:
-                local = self._media_dir / source[len("/media/"):]
+                local = self._media_dir / source[len("/media/") :]
             else:
                 local = Path(source)
             if not local.is_file():

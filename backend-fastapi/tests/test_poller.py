@@ -38,9 +38,7 @@ def poller(client: TestClient) -> JobPoller:
 
 
 def test_a_project_completes_without_anyone_reading_it(polled: TestClient) -> None:
-    created = polled.post(
-        "/api/v1/projects", headers=HEADERS, json={"prompt": "unattended"}
-    ).json()
+    created = polled.post("/api/v1/projects", headers=HEADERS, json={"prompt": "unattended"}).json()
     assert created["status"] == "pending"
 
     # pending -> generating, then generating -> completed. No client read.
@@ -69,9 +67,7 @@ def test_terminal_projects_are_left_alone(polled: TestClient) -> None:
 
 
 def test_deleted_projects_are_not_claimed(polled: TestClient) -> None:
-    created = polled.post(
-        "/api/v1/projects", headers=HEADERS, json={"prompt": "abandoned"}
-    ).json()
+    created = polled.post("/api/v1/projects", headers=HEADERS, json={"prompt": "abandoned"}).json()
     polled.delete(f"/api/v1/projects/{created['id']}", headers=HEADERS)
 
     assert poller(polled).run_once() == 0
@@ -107,9 +103,7 @@ def test_one_bad_project_does_not_stall_the_batch(polled: TestClient) -> None:
 
 
 def test_read_and_poller_share_one_state_machine(polled: TestClient) -> None:
-    created = polled.post(
-        "/api/v1/projects", headers=HEADERS, json={"prompt": "shared"}
-    ).json()
+    created = polled.post("/api/v1/projects", headers=HEADERS, json={"prompt": "shared"}).json()
 
     # Poller does the first step, a read does the second.
     poller(polled).run_once()
@@ -190,9 +184,7 @@ def test_two_pollers_do_not_claim_the_same_work(polled: TestClient) -> None:
 
 def test_an_expired_lease_is_reclaimable(polled: TestClient) -> None:
     """Recovery path: a crashed poller must not strand work forever."""
-    created = polled.post(
-        "/api/v1/projects", headers=HEADERS, json={"prompt": "abandoned"}
-    ).json()
+    created = polled.post("/api/v1/projects", headers=HEADERS, json={"prompt": "abandoned"}).json()
 
     polled.app.state.database.claim_in_flight_projects(
         10, owner="dead-poller", now="2026-01-01T00:00:00Z", lease_until="2026-01-01T00:01:00Z"
@@ -207,9 +199,7 @@ def test_an_expired_lease_is_reclaimable(polled: TestClient) -> None:
 
 
 def test_a_batch_releases_its_rows(polled: TestClient) -> None:
-    created = polled.post(
-        "/api/v1/projects", headers=HEADERS, json={"prompt": "released"}
-    ).json()
+    created = polled.post("/api/v1/projects", headers=HEADERS, json={"prompt": "released"}).json()
 
     poller(polled).run_once()
 
@@ -220,9 +210,7 @@ def test_a_batch_releases_its_rows(polled: TestClient) -> None:
 
 
 def test_a_failed_advance_still_releases(polled: TestClient, monkeypatch) -> None:
-    created = polled.post(
-        "/api/v1/projects", headers=HEADERS, json={"prompt": "poisoned"}
-    ).json()
+    created = polled.post("/api/v1/projects", headers=HEADERS, json={"prompt": "poisoned"}).json()
 
     def explode(row: dict) -> dict:
         raise RuntimeError("poisoned row")
@@ -235,9 +223,7 @@ def test_a_failed_advance_still_releases(polled: TestClient, monkeypatch) -> Non
 
 
 def test_release_is_scoped_to_the_holder(polled: TestClient) -> None:
-    created = polled.post(
-        "/api/v1/projects", headers=HEADERS, json={"prompt": "contested"}
-    ).json()
+    created = polled.post("/api/v1/projects", headers=HEADERS, json={"prompt": "contested"}).json()
     database = polled.app.state.database
     database.claim_in_flight_projects(
         10, owner="holder", now="2026-01-01T00:00:00Z", lease_until="2999-01-01T00:00:00Z"

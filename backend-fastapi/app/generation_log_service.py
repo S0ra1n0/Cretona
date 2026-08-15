@@ -35,9 +35,7 @@ class GenerationLogRepository(Protocol):
 
     def record_generation_log(self, values: dict[str, Any]) -> None: ...
 
-    def prune_generation_logs(
-        self, before: str, limit: int
-    ) -> list[dict[str, Any]]: ...
+    def prune_generation_logs(self, before: str, limit: int) -> list[dict[str, Any]]: ...
 
 
 class GenerationLogService:
@@ -110,8 +108,7 @@ class GenerationLogService:
         providers = Counter(str(row["provider"]) for row in rows)
         events = Counter(str(row["event"]) for row in rows)
         statuses = Counter(
-            "none" if row.get("http_status") is None else str(row["http_status"])
-            for row in rows
+            "none" if row.get("http_status") is None else str(row["http_status"]) for row in rows
         )
         summary = RetentionSummary(
             cutoff=cutoff,

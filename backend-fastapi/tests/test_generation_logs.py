@@ -105,9 +105,7 @@ def test_a_write_failure_does_not_break_the_generation() -> None:
 
     # Must not raise: failing a generation because its audit row could not be
     # written would trade a working feature for a diagnostic.
-    GenerationLogService(BrokenDatabase()).record(
-        project_id="p1", provider="fake", event="submit"
-    )
+    GenerationLogService(BrokenDatabase()).record(project_id="p1", provider="fake", event="submit")
 
 
 @pytest.mark.parametrize("event", ["submit", "poll", "webhook", "download", "error"])
@@ -115,7 +113,9 @@ def test_every_contract_event_is_accepted(client: TestClient, event: str) -> Non
     project_id = drive(client)
 
     GenerationLogService(client.app.state.database).record(
-        project_id=project_id, provider="fake", event=event  # type: ignore[arg-type]
+        project_id=project_id,
+        provider="fake",
+        event=event,  # type: ignore[arg-type]
     )
 
     assert event in events(client, project_id)

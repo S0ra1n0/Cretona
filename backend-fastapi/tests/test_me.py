@@ -13,7 +13,9 @@ OTHER = {"X-Debug-User-Id": USER_B}
 def profiled(client: TestClient) -> TestClient:
     database = client.app.state.database
     database.upsert_user(
-        USER_A, email="alice@example.com", username="alice",
+        USER_A,
+        email="alice@example.com",
+        username="alice",
         created_at="2026-01-02T00:00:00Z",
     )
     database.upsert_user(USER_B, email="bob@example.com", username="bob")
@@ -78,9 +80,9 @@ def test_taken_username_is_a_conflict(profiled: TestClient) -> None:
 
 
 def test_keeping_your_own_username_is_not_a_conflict(profiled: TestClient) -> None:
-    assert profiled.patch(
-        "/api/v1/me", headers=HEADERS, json={"username": "alice"}
-    ).status_code == 200
+    assert (
+        profiled.patch("/api/v1/me", headers=HEADERS, json={"username": "alice"}).status_code == 200
+    )
 
 
 @pytest.mark.parametrize(

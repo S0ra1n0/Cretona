@@ -78,10 +78,12 @@ class ProjectService:
         provider = self.providers.get(request.provider)
 
         # Cost weighting: real providers or longer videos consume 2 quota units
-        cost = 2 if (
-            (request.options and request.options.duration_seconds and request.options.duration_seconds > 5)
-            or provider.name in ("real", "wan21")
-        ) else 1
+        has_long_duration = (
+            request.options is not None
+            and request.options.duration_seconds is not None
+            and request.options.duration_seconds > 5
+        )
+        cost = 2 if (has_long_duration or provider.name in ("real", "wan21")) else 1
 
         # Before the provider call, never after: checking afterwards is
         # accounting, not control (ADR-007).
@@ -372,9 +374,7 @@ class ProjectService:
         column existed have none, and fall back to `created_at` rather than
         being read as having started at the epoch and failed on sight.
         """
-        started = _parse_timestamp(row.get("started_at")) or _parse_timestamp(
-            row.get("created_at")
-        )
+        started = _parse_timestamp(row.get("started_at")) or _parse_timestamp(row.get("created_at"))
         if started is None:
             return False
         age = (datetime.now(UTC) - started).total_seconds()
@@ -498,12 +498,15 @@ class ProjectService:
         status_event = payload.get("status")
         now = utc_now()
 
+        safe_headers = {
+            k: v for k, v in headers.items() if not k.lower().startswith("authorization")
+        }
         self.generation_log.record(
             project_id=row["id"],
             provider=provider_name,
             event="webhook",
             request_id=job_id,
-            request={"headers": {k: v for k, v in headers.items() if not k.lower().startswith("authorization")}},
+            request={"headers": safe_headers},
             response=payload,
         )
 
@@ -516,6 +519,7 @@ class ProjectService:
                 self._mark_failed(row, owner_id, "provider_error")
                 return WebhookResponse(received=True, projectId=row["id"], status="failed")
 
+            duration = payload.get("duration_seconds") or row.get("duration_seconds") or 5
             self.database.update_project(
                 row["id"],
                 owner_id,
@@ -523,7 +527,7 @@ class ProjectService:
                     "status": "completed",
                     "video_path": stored_path,
                     "thumbnail_path": thumbnail_path,
-                    "duration_seconds": payload.get("duration_seconds") or row.get("duration_seconds") or 5,
+                    "duration_seconds": duration,
                     "updated_at": now,
                     "completed_at": now,
                 },
@@ -535,5 +539,3 @@ class ProjectService:
             return WebhookResponse(received=True, projectId=row["id"], status="failed")
 
         return WebhookResponse(received=True, projectId=row["id"], status=row["status"])
-
-

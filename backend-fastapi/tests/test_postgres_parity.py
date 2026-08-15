@@ -119,12 +119,14 @@ def test_ownership_is_enforced_in_postgres(
     created = create_project(postgres_client, bearer(subject=USER_A))
     intruder = bearer(subject=USER_B)
 
-    assert postgres_client.get(
-        f"/api/v1/projects/{created['id']}", headers=intruder
-    ).status_code == 404
-    assert postgres_client.delete(
-        f"/api/v1/projects/{created['id']}", headers=intruder
-    ).status_code == 404
+    assert (
+        postgres_client.get(f"/api/v1/projects/{created['id']}", headers=intruder).status_code
+        == 404
+    )
+    assert (
+        postgres_client.delete(f"/api/v1/projects/{created['id']}", headers=intruder).status_code
+        == 404
+    )
     assert postgres_client.get("/api/v1/projects", headers=intruder).json()["items"] == []
 
 
@@ -172,12 +174,13 @@ def test_delete_is_soft_and_retains_the_row(
     headers = bearer(subject=USER_A)
     created = create_project(postgres_client, headers)
 
-    assert postgres_client.delete(
-        f"/api/v1/projects/{created['id']}", headers=headers
-    ).status_code == 204
-    assert postgres_client.get(
-        f"/api/v1/projects/{created['id']}", headers=headers
-    ).status_code == 404
+    assert (
+        postgres_client.delete(f"/api/v1/projects/{created['id']}", headers=headers).status_code
+        == 204
+    )
+    assert (
+        postgres_client.get(f"/api/v1/projects/{created['id']}", headers=headers).status_code == 404
+    )
     assert postgres_client.get("/api/v1/projects", headers=headers).json()["items"] == []
 
     # A late provider callback needs a row to write to, so it is retained.
@@ -309,8 +312,7 @@ def test_generation_log_retention_is_atomic_on_postgres(
 
     assert summary.deleted == 1
     assert [
-        row["event"]
-        for row in postgres_client.app.state.database.generation_logs(created["id"])
+        row["event"] for row in postgres_client.app.state.database.generation_logs(created["id"])
     ] == ["poll"]
 
 
@@ -414,8 +416,6 @@ def test_retry_rules_match_the_reference(
     postgres_client.get(f"/api/v1/projects/{created['id']}", headers=headers)
     postgres_client.get(f"/api/v1/projects/{created['id']}", headers=headers)
 
-    response = postgres_client.post(
-        f"/api/v1/projects/{created['id']}/retry", headers=headers
-    )
+    response = postgres_client.post(f"/api/v1/projects/{created['id']}/retry", headers=headers)
 
     assert response.status_code == expected

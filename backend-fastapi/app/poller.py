@@ -11,6 +11,7 @@ from uuid import uuid4
 def _iso(moment: datetime) -> str:
     return moment.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
+
 logger = logging.getLogger("cretona.poller")
 
 

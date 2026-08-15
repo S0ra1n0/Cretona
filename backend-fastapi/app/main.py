@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import random
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-import random
 from time import perf_counter
 from uuid import uuid4
 

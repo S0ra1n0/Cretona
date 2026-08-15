@@ -44,9 +44,7 @@ class Settings(BaseSettings):
     # bounded batches so maintenance cannot monopolize the database.
     generation_log_retention_enabled: bool = True
     generation_log_retention_days: int = Field(default=180, ge=1, le=3650)
-    generation_log_retention_interval_seconds: int = Field(
-        default=86400, ge=60, le=604800
-    )
+    generation_log_retention_interval_seconds: int = Field(default=86400, ge=60, le=604800)
     generation_log_retention_batch_size: int = Field(default=10000, ge=1, le=100000)
     rate_limit_enabled: bool = True
     rate_limit_default_per_min: int = Field(default=120, ge=1, le=10000)

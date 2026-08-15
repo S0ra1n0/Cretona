@@ -261,7 +261,6 @@ class AdminService:
         )
 
 
-
 def to_admin_user(row: dict[str, Any]) -> AdminUser:
     return AdminUser(
         id=row["id"],

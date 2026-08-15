@@ -19,9 +19,7 @@ from app.repository import (
     reject_immutable_columns,
 )
 
-USER_COLUMNS = (
-    "u.id, u.email, u.username, u.is_disabled, u.created_at, r.name AS role"
-)
+USER_COLUMNS = "u.id, u.email, u.username, u.is_disabled, u.created_at, r.name AS role"
 
 # The Supabase table spells the owner `user_id` and lives under a different
 # name. Adapters own this translation so ProjectService never learns it.
@@ -84,8 +82,7 @@ class PostgresDatabase:
         try:
             with self.pool.connection() as connection:
                 connection.execute(
-                    "SELECT caller_key, bucket, occurred_at "
-                    "FROM public.rate_limit_hits LIMIT 0"
+                    "SELECT caller_key, bucket, occurred_at FROM public.rate_limit_hits LIMIT 0"
                 )
         except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn) as exc:
             raise SchemaMismatchError(
@@ -354,8 +351,7 @@ class PostgresDatabase:
             return None
         with self.pool.connection() as connection:
             row = connection.execute(
-                f"SELECT {SELECTED_COLUMNS} FROM {TABLE} "
-                "WHERE id = %s AND deleted_at IS NULL",
+                f"SELECT {SELECTED_COLUMNS} FROM {TABLE} WHERE id = %s AND deleted_at IS NULL",
                 (project_id,),
             ).fetchone()
         return _to_service_row(row) if row else None
@@ -419,8 +415,7 @@ class PostgresDatabase:
             if not _is_uuid(project_id):
                 raise ValueError("Invalid cursor")
             where.append(
-                "(created_at < %s::timestamptz "
-                "OR (created_at = %s::timestamptz AND id < %s::uuid))"
+                "(created_at < %s::timestamptz OR (created_at = %s::timestamptz AND id < %s::uuid))"
             )
             parameters.extend([created_at, created_at, project_id])
 
@@ -560,8 +555,10 @@ class PostgresDatabase:
     ) -> tuple[int, str | None]:
         with self.pool.connection() as connection:
             row = connection.execute(
-                f"SELECT COALESCE(SUM(CASE WHEN provider IN ('real', 'wan21') OR duration_seconds > 5 THEN 2 ELSE 1 END), 0) AS used, "
-                f"MIN(created_at) AS oldest FROM {TABLE} "
+                "SELECT COALESCE("
+                "SUM(CASE WHEN provider IN ('real', 'wan21') "
+                "OR duration_seconds > 5 THEN 2 ELSE 1 END), "
+                f"0) AS used, MIN(created_at) AS oldest FROM {TABLE} "
                 "WHERE user_id = %s AND created_at >= %s::timestamptz "
                 "AND deleted_at IS NULL "
                 "AND (error_code IS NULL OR NOT (error_code = ANY(%s)))",
@@ -639,7 +636,9 @@ class PostgresDatabase:
             params.append(actor_id)
         if cursor:
             cursor_created_at, cursor_id = decode_cursor(cursor)
-            clauses.append("(created_at < %s::timestamptz OR (created_at = %s::timestamptz AND id < %s))")
+            clauses.append(
+                "(created_at < %s::timestamptz OR (created_at = %s::timestamptz AND id < %s))"
+            )
             params.extend([cursor_created_at, cursor_created_at, cursor_id])
 
         where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
@@ -668,15 +667,17 @@ class PostgresDatabase:
             details = row.get("details")
             if isinstance(details, str):
                 details = json.loads(details)
-            entries.append({
-                "id": str(row["id"]),
-                "actor_id": str(row["actor_id"]),
-                "action": row["action"],
-                "target_type": row["target_type"],
-                "target_id": str(row["target_id"]) if row.get("target_id") else None,
-                "details": details,
-                "created_at": created_at,
-            })
+            entries.append(
+                {
+                    "id": str(row["id"]),
+                    "actor_id": str(row["actor_id"]),
+                    "action": row["action"],
+                    "target_type": row["target_type"],
+                    "target_id": str(row["target_id"]) if row.get("target_id") else None,
+                    "details": details,
+                    "created_at": created_at,
+                }
+            )
         return entries, next_cursor
 
 

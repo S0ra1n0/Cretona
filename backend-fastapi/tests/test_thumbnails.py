@@ -52,9 +52,12 @@ def test_a_missing_binary_is_unavailable() -> None:
 
 
 def test_extract_declines_when_unavailable(tmp_path: Path) -> None:
-    assert build(ffmpeg_path="definitely-not-a-real-binary-xyz").extract(
-        tmp_path / "in.mp4", tmp_path / "out.jpg"
-    ) is False
+    assert (
+        build(ffmpeg_path="definitely-not-a-real-binary-xyz").extract(
+            tmp_path / "in.mp4", tmp_path / "out.jpg"
+        )
+        is False
+    )
 
 
 # --- failure handling -------------------------------------------------------

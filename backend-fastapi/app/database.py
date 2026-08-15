@@ -151,8 +151,7 @@ class Database:
     def _add_missing_columns(connection: sqlite3.Connection) -> None:
         for table, columns in ADDED_COLUMNS.items():
             existing = {
-                row["name"]
-                for row in connection.execute(f"PRAGMA table_info({table})").fetchall()
+                row["name"] for row in connection.execute(f"PRAGMA table_info({table})").fetchall()
             }
             for column, definition in columns.items():
                 if column not in existing:
@@ -205,8 +204,7 @@ class Database:
     def get_user(self, user_id: str) -> dict[str, Any] | None:
         with self.connect() as connection:
             row = connection.execute(
-                "SELECT id, email, username, role, is_disabled, created_at "
-                "FROM users WHERE id = ?",
+                "SELECT id, email, username, role, is_disabled, created_at FROM users WHERE id = ?",
                 (user_id,),
             ).fetchone()
         return self._user_row(row)
@@ -305,8 +303,7 @@ class Database:
     def count_enabled_admins(self) -> int:
         with self.connect() as connection:
             row = connection.execute(
-                "SELECT COUNT(*) AS total FROM users "
-                "WHERE role = 'admin' AND is_disabled = 0"
+                "SELECT COUNT(*) AS total FROM users WHERE role = 'admin' AND is_disabled = 0"
             ).fetchone()
         return int(row["total"] or 0)
 
@@ -384,8 +381,7 @@ class Database:
     def get_project(self, project_id: str, owner_id: str) -> dict[str, Any] | None:
         with self.connect() as connection:
             row = connection.execute(
-                "SELECT * FROM projects "
-                "WHERE id = ? AND owner_id = ? AND deleted_at IS NULL",
+                "SELECT * FROM projects WHERE id = ? AND owner_id = ? AND deleted_at IS NULL",
                 (project_id, owner_id),
             ).fetchone()
         return dict(row) if row else None
@@ -438,7 +434,6 @@ class Database:
                 (job_id,),
             ).fetchone()
         return dict(row) if row else None
-
 
     def list_projects(
         self,
@@ -597,7 +592,10 @@ class Database:
         placeholders = ", ".join("?" for _ in not_charged) or "NULL"
         with self.connect() as connection:
             row = connection.execute(
-                "SELECT COALESCE(SUM(CASE WHEN provider IN ('real', 'wan21') OR duration_seconds > 5 THEN 2 ELSE 1 END), 0) AS used, "
+                "SELECT COALESCE("
+                "SUM(CASE WHEN provider IN ('real', 'wan21') "
+                "OR duration_seconds > 5 THEN 2 ELSE 1 END), "
+                "0) AS used, "
                 "MIN(created_at) AS oldest FROM projects "
                 "WHERE owner_id = ? AND created_at >= ? AND deleted_at IS NULL "
                 f"AND (error_code IS NULL OR error_code NOT IN ({placeholders}))",
@@ -679,8 +677,7 @@ class Database:
 
         where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         query = (
-            f"SELECT * FROM admin_audit_logs {where_sql} "
-            "ORDER BY created_at DESC, id DESC LIMIT ?"
+            f"SELECT * FROM admin_audit_logs {where_sql} ORDER BY created_at DESC, id DESC LIMIT ?"
         )
         params.append(limit + 1)
         with self.connect() as connection:
@@ -697,4 +694,3 @@ class Database:
                 row["details"] = _from_json(row["details"])
 
         return rows, next_cursor
-
