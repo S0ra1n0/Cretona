@@ -153,6 +153,36 @@ class HomeViewModel @Inject constructor(
         _state.update { it.copy(selectedProvider = provider, errorMessage = null) }
     }
 
+    fun onStylePresetSelected(preset: String?) {
+        _state.update {
+            val next = if (it.selectedStylePreset == preset) null else preset
+            it.copy(selectedStylePreset = next, errorMessage = null)
+        }
+    }
+
+    fun onCameraMotionSelected(motion: String?) {
+        _state.update {
+            val next = if (it.selectedCameraMotion == motion) null else motion
+            it.copy(selectedCameraMotion = next, errorMessage = null)
+        }
+    }
+
+    fun onAspectRatioSelected(ratio: String) {
+        _state.update { it.copy(selectedAspectRatio = ratio, errorMessage = null) }
+    }
+
+    fun remixProject(project: VideoProject) {
+        _state.update {
+            it.copy(
+                prompt = project.prompt ?: it.prompt,
+                selectedAspectRatio = project.aspectRatio,
+                selectedProvider = project.provider,
+                errorMessage = null,
+                enhancementNote = "Remixing: ${project.title}",
+            )
+        }
+    }
+
     fun generateVideo() {
         val prompt = state.value.prompt.trim()
         val hasImage = state.value.selectedImageBytes != null
@@ -168,6 +198,10 @@ class HomeViewModel @Inject constructor(
             }
             return
         }
+
+        val currentAspectRatio = state.value.selectedAspectRatio
+        val currentStylePreset = state.value.selectedStylePreset
+        val currentCameraMotion = state.value.selectedCameraMotion
 
         pollingJob?.cancel()
         viewModelScope.launch {
@@ -203,6 +237,9 @@ class HomeViewModel @Inject constructor(
                     imagePath = imagePath,
                     idempotencyKey = UUID.randomUUID().toString(),
                     provider = state.value.selectedProvider,
+                    aspectRatio = currentAspectRatio,
+                    stylePreset = currentStylePreset,
+                    cameraMotion = currentCameraMotion,
                 )
             ) {
                 is AppResult.Success -> {

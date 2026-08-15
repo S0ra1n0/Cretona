@@ -26,6 +26,9 @@ interface CretonaRepository {
         imagePath: String? = null,
         idempotencyKey: String,
         provider: String = "fake",
+        aspectRatio: String = "16:9",
+        stylePreset: String? = null,
+        cameraMotion: String? = null,
     ): AppResult<VideoProject>
 
 

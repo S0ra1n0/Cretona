@@ -149,6 +149,81 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun `style preset and camera motion selection toggles state`() {
+        val viewModel = HomeViewModel(FakeRepository())
+        org.junit.Assert.assertNull(viewModel.state.value.selectedStylePreset)
+        org.junit.Assert.assertNull(viewModel.state.value.selectedCameraMotion)
+
+        viewModel.onStylePresetSelected("anime")
+        assertEquals("anime", viewModel.state.value.selectedStylePreset)
+        viewModel.onStylePresetSelected("anime") // toggle off
+        org.junit.Assert.assertNull(viewModel.state.value.selectedStylePreset)
+
+        viewModel.onCameraMotionSelected("dolly_zoom")
+        assertEquals("dolly_zoom", viewModel.state.value.selectedCameraMotion)
+        viewModel.onCameraMotionSelected("dolly_zoom") // toggle off
+        org.junit.Assert.assertNull(viewModel.state.value.selectedCameraMotion)
+    }
+
+    @Test
+    fun `aspect ratio selection updates state`() {
+        val viewModel = HomeViewModel(FakeRepository())
+        assertEquals("16:9", viewModel.state.value.selectedAspectRatio)
+
+        viewModel.onAspectRatioSelected("9:16")
+        assertEquals("9:16", viewModel.state.value.selectedAspectRatio)
+    }
+
+    @Test
+    fun `remixProject pre-fills prompt, ratio and provider`() {
+        val viewModel = HomeViewModel(FakeRepository())
+        val completedProject = VideoProject(
+            id = "proj-1",
+            title = "A cyberpunk city",
+            prompt = "A cyberpunk city in rain",
+            imageUrl = null,
+            videoUrl = "http://example.test/video.mp4",
+            thumbnailUrl = null,
+            status = com.cretona.app.domain.model.ProjectStatus.COMPLETED,
+            provider = "wan21",
+            errorMessage = null,
+            progressPercent = 100,
+            stepMessage = "Complete",
+            durationSeconds = 5,
+            aspectRatio = "9:16",
+            createdAt = "2026-08-15T00:00:00Z",
+        )
+
+        viewModel.remixProject(completedProject)
+
+        val state = viewModel.state.value
+        assertEquals("A cyberpunk city in rain", state.prompt)
+        assertEquals("9:16", state.selectedAspectRatio)
+        assertEquals("wan21", state.selectedProvider)
+        assertEquals("Remixing: A cyberpunk city", state.enhancementNote)
+    }
+
+    @Test
+    fun `generate passes aspect ratio, style preset and camera motion to repository`() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val repository = FakeRepository()
+            val viewModel = HomeViewModel(repository)
+
+            viewModel.onPromptChanged("A majestic dragon")
+            viewModel.onAspectRatioSelected("9:16")
+            viewModel.onStylePresetSelected("anime")
+            viewModel.onCameraMotionSelected("orbit")
+
+            viewModel.generateVideo()
+            advanceUntilIdle()
+
+            assertEquals(1, repository.createCalls)
+            assertEquals("9:16", repository.lastAspectRatio)
+            assertEquals("anime", repository.lastStylePreset)
+            assertEquals("orbit", repository.lastCameraMotion)
+        }
+
+    @Test
     fun `selecting and clearing image updates state`() = runTest(mainDispatcherRule.dispatcher) {
         val viewModel = HomeViewModel(FakeRepository()).apply {
             ioDispatcher = mainDispatcherRule.dispatcher
@@ -244,6 +319,9 @@ private class FakeRepository(
     var cancelCalls = 0
     var deleteCalls = 0
     var lastCreatedImagePath: String? = null
+    var lastAspectRatio: String? = null
+    var lastStylePreset: String? = null
+    var lastCameraMotion: String? = null
 
     override suspend fun getCurrentUser(): AppResult<UserProfile> {
         accountCalls += 1
@@ -289,13 +367,20 @@ private class FakeRepository(
         imagePath: String?,
         idempotencyKey: String,
         provider: String,
+        aspectRatio: String,
+        stylePreset: String?,
+        cameraMotion: String?,
     ): AppResult<VideoProject> {
         createCalls += 1
         lastCreatedImagePath = imagePath
+        lastAspectRatio = aspectRatio
+        lastStylePreset = stylePreset
+        lastCameraMotion = cameraMotion
         return AppResult.Success(
             pending.copy(
                 prompt = prompt,
                 provider = provider,
+                aspectRatio = aspectRatio,
                 imageUrl = imagePath?.let { "http://example.test/media/$it" },
             ),
         )

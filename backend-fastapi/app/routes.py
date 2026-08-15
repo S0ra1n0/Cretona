@@ -4,6 +4,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Header, Query, Request, Response, UploadFile, status
+from fastapi.responses import StreamingResponse
 
 from app.admin_service import AdminService
 from app.auth import current_user_id, require_admin
@@ -269,6 +270,50 @@ def get_project(
     service: Annotated[ProjectService, Depends(project_service)],
 ) -> ProjectResponse:
     return service.get(user_id, project_id, request_base_url(request))
+
+
+@router.get("/projects/{project_id}/events")
+async def stream_project_events(
+    project_id: str,
+    request: Request,
+    user_id: UserId,
+    service: Annotated[ProjectService, Depends(project_service)],
+) -> StreamingResponse:
+    import asyncio
+    import json
+
+    async def event_generator():
+        base_url = request_base_url(request)
+        for _ in range(60):
+            try:
+                proj = service.get(user_id, project_id, base_url)
+                data = json.dumps(
+                    {
+                        "id": proj.id,
+                        "status": str(proj.status),
+                        "progressPercent": proj.progress_percent,
+                        "stepMessage": proj.step_message,
+                        "videoUrl": proj.video_url,
+                        "thumbnailUrl": proj.thumbnail_url,
+                        "errorMessage": proj.error_message,
+                    }
+                )
+                yield f"event: project_update\ndata: {data}\n\n"
+                if proj.status in (ProjectStatus.completed, ProjectStatus.failed):
+                    break
+                await asyncio.sleep(1.5)
+            except Exception:
+                break
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.delete("/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)

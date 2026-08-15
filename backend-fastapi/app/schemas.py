@@ -19,11 +19,15 @@ class ProjectStatus(StrEnum):
 
 
 AspectRatio = Literal["16:9", "9:16", "1:1"]
+StylePreset = Literal["anime", "cyberpunk", "3d_pixar", "vintage_film", "photorealistic"]
+CameraMotion = Literal["pan_left", "pan_right", "zoom_in", "zoom_out", "dolly_zoom", "orbit"]
 
 
 class GenerationOptions(ApiModel):
     duration_seconds: Annotated[int, Field(alias="durationSeconds", ge=2, le=10)] = 5
     aspect_ratio: AspectRatio = Field(default="16:9", alias="aspectRatio")
+    style_preset: StylePreset | None = Field(default=None, alias="stylePreset")
+    camera_motion: CameraMotion | None = Field(default=None, alias="cameraMotion")
 
 
 class ProjectCreate(ApiModel):

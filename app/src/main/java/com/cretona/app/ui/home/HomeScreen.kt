@@ -5,6 +5,8 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn as AndroidxOptIn
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -122,6 +124,10 @@ fun HomeScreen(
         },
         onRevertPrompt = viewModel::revertPrompt,
         onSelectPromptIdea = viewModel::onSelectPromptIdea,
+        onStylePresetSelected = viewModel::onStylePresetSelected,
+        onCameraMotionSelected = viewModel::onCameraMotionSelected,
+        onAspectRatioSelected = viewModel::onAspectRatioSelected,
+        onRemixProject = viewModel::remixProject,
         onGenerate = {
             hideKeyboard(focusManager, keyboardController)
             viewModel.generateVideo()
@@ -146,6 +152,10 @@ private fun HomeContent(
     onEnhance: () -> Unit,
     onRevertPrompt: () -> Unit,
     onSelectPromptIdea: (String) -> Unit,
+    onStylePresetSelected: (String?) -> Unit,
+    onCameraMotionSelected: (String?) -> Unit,
+    onAspectRatioSelected: (String) -> Unit,
+    onRemixProject: (VideoProject) -> Unit,
     onGenerate: () -> Unit,
     onCancelCurrent: () -> Unit,
     onDeleteProject: (String) -> Unit,
@@ -263,6 +273,78 @@ private fun HomeContent(
                         onClick = { onProviderSelected("wan21") },
                         label = { Text("⚡ Wan 2.1") },
                     )
+                }
+            }
+
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Ratio:", style = MaterialTheme.typography.bodyMedium)
+                    listOf("9:16" to "📱 9:16", "16:9" to "📺 16:9", "1:1" to "🔲 1:1").forEach { (ratio, label) ->
+                        FilterChip(
+                            selected = state.selectedAspectRatio == ratio,
+                            onClick = { onAspectRatioSelected(ratio) },
+                            label = { Text(label) },
+                        )
+                    }
+                }
+            }
+
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Style Preset:", style = MaterialTheme.typography.bodyMedium)
+                    val styles = listOf(
+                        "anime" to "🌸 Anime",
+                        "cyberpunk" to "🌆 Cyberpunk",
+                        "3d_pixar" to "🧸 3D Pixar",
+                        "vintage_film" to "🎞️ Vintage Film",
+                        "photorealistic" to "🌿 8K Realistic",
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        styles.forEach { (key, label) ->
+                            FilterChip(
+                                selected = state.selectedStylePreset == key,
+                                onClick = { onStylePresetSelected(key) },
+                                label = { Text(label) },
+                            )
+                        }
+                    }
+                }
+            }
+
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Camera Motion:", style = MaterialTheme.typography.bodyMedium)
+                    val motions = listOf(
+                        "pan_left" to "⬅️ Pan Left",
+                        "pan_right" to "➡️ Pan Right",
+                        "zoom_in" to "🔍 Zoom In",
+                        "zoom_out" to "🔭 Zoom Out",
+                        "dolly_zoom" to "🌀 Dolly Zoom",
+                        "orbit" to "🔄 Orbit 360",
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        motions.forEach { (key, label) ->
+                            FilterChip(
+                                selected = state.selectedCameraMotion == key,
+                                onClick = { onCameraMotionSelected(key) },
+                                label = { Text(label) },
+                            )
+                        }
+                    }
                 }
             }
 
@@ -898,6 +980,10 @@ private fun HomeScreenPreview() {
             onEnhance = {},
             onRevertPrompt = {},
             onSelectPromptIdea = {},
+            onStylePresetSelected = {},
+            onCameraMotionSelected = {},
+            onAspectRatioSelected = {},
+            onRemixProject = {},
             onGenerate = {},
             onCancelCurrent = {},
             onDeleteProject = {},

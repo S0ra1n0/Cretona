@@ -68,6 +68,9 @@ class CretonaRepositoryImpl @Inject constructor(
         imagePath: String?,
         idempotencyKey: String,
         provider: String,
+        aspectRatio: String,
+        stylePreset: String?,
+        cameraMotion: String?,
     ): AppResult<VideoProject> = apiCall {
         api.createProject(
             idempotencyKey = idempotencyKey,
@@ -75,6 +78,11 @@ class CretonaRepositoryImpl @Inject constructor(
                 prompt = prompt,
                 imagePath = imagePath,
                 provider = provider,
+                options = com.cretona.app.data.remote.GenerationOptionsDto(
+                    aspectRatio = aspectRatio,
+                    stylePreset = stylePreset,
+                    cameraMotion = cameraMotion,
+                ),
             ),
         ).toDomain()
     }

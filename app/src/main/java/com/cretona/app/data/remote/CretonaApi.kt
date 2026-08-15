@@ -155,6 +155,8 @@ data class UploadSignResponseDto(
 data class GenerationOptionsDto(
     val durationSeconds: Int = 5,
     val aspectRatio: String = "16:9",
+    val stylePreset: String? = null,
+    val cameraMotion: String? = null,
 )
 
 @Serializable

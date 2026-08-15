@@ -41,6 +41,54 @@ def utc_now() -> str:
 WEIGHTED_PROVIDERS = frozenset({"real", "wan21"})
 
 
+STYLE_PRESET_DIRECTIVES: dict[str, str] = {
+    "anime": (
+        "in vibrant anime aesthetic, Studio Ghibli style lighting, "
+        "rich hand-drawn details, expressive atmosphere"
+    ),
+    "cyberpunk": (
+        "in cyberpunk 2077 aesthetic, glowing neon lights, futuristic cityscape, "
+        "rainy volumetric reflections, dark atmosphere"
+    ),
+    "3d_pixar": (
+        "in 3D animation Pixar Disney style, soft subsurface scattering, "
+        "cute character rendering, vibrant warm lighting, octane render"
+    ),
+    "vintage_film": (
+        "in vintage 35mm film aesthetic, Kodak Portra grain, "
+        "warm analog color grading, soft vintage lens blur"
+    ),
+    "photorealistic": (
+        "in 8k hyperrealistic cinematic look, ultra detailed textures, "
+        "IMAX camera quality, natural depth of field"
+    ),
+}
+
+CAMERA_MOTION_DIRECTIVES: dict[str, str] = {
+    "pan_left": "camera smoothly panning left",
+    "pan_right": "camera smoothly panning right",
+    "zoom_in": "slow dramatic camera zoom in",
+    "zoom_out": "smooth camera zoom out revealing the wider scene",
+    "dolly_zoom": "dramatic dolly zoom vertigo effect",
+    "orbit": "camera smoothly orbiting around the subject 360 degrees",
+}
+
+
+def compose_enhanced_prompt(
+    prompt: str | None,
+    style_preset: str | None = None,
+    camera_motion: str | None = None,
+) -> str | None:
+    if not prompt:
+        return None
+    parts = [prompt.strip()]
+    if style_preset and style_preset in STYLE_PRESET_DIRECTIVES:
+        parts.append(STYLE_PRESET_DIRECTIVES[style_preset])
+    if camera_motion and camera_motion in CAMERA_MOTION_DIRECTIVES:
+        parts.append(CAMERA_MOTION_DIRECTIVES[camera_motion])
+    return ", ".join(parts)[:1000]
+
+
 def quota_cost(provider_name: str, duration_seconds: int | None) -> int:
     """Weighted cost of one submission.
 
@@ -109,7 +157,12 @@ class ProjectService:
         self.quota.assert_available(owner_id, cost=quota_cost(provider.name, duration))
 
         now = utc_now()
-        prompt = request.prompt
+        effective_prompt = compose_enhanced_prompt(
+            request.prompt,
+            request.options.style_preset if request.options else None,
+            request.options.camera_motion if request.options else None,
+        )
+        prompt = effective_prompt or request.prompt
         title = request.title or self._derive_title(prompt)
         values: dict[str, Any] = {
             "id": str(uuid4()),

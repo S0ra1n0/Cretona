@@ -22,6 +22,9 @@ data class HomeUiState(
     val selectedImageFileName: String? = null,
     val isUploadingImage: Boolean = false,
     val previousPrompt: String? = null,
+    val selectedStylePreset: String? = null,
+    val selectedCameraMotion: String? = null,
+    val selectedAspectRatio: String = "16:9",
 ) {
     val isQuotaExhausted: Boolean
         get() = account?.quota?.remaining == 0
