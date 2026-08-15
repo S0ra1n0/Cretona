@@ -4,9 +4,12 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cretona.app.core.result.AppResult
+import com.cretona.app.core.util.ImageCompressor
 import com.cretona.app.domain.model.VideoProject
 import com.cretona.app.domain.repository.CretonaRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,6 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
 import javax.inject.Inject
 
@@ -21,6 +25,8 @@ import javax.inject.Inject
 class HomeViewModel @Inject constructor(
     private val repository: CretonaRepository,
 ) : ViewModel() {
+    var ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+
     private val _state = MutableStateFlow(HomeUiState())
     val state: StateFlow<HomeUiState> = _state.asStateFlow()
 
@@ -60,14 +66,20 @@ class HomeViewModel @Inject constructor(
     }
 
     fun onImageSelected(uri: Uri?, bytes: ByteArray, mimeType: String, fileName: String) {
-        _state.update {
-            it.copy(
-                selectedImageUri = uri,
-                selectedImageBytes = bytes,
-                selectedImageMimeType = mimeType,
-                selectedImageFileName = fileName,
-                errorMessage = null,
-            )
+        viewModelScope.launch {
+            // Compress on IO thread so the main thread stays responsive
+            val (compressedBytes, finalMime) = withContext(ioDispatcher) {
+                ImageCompressor.compress(bytes, mimeType)
+            }
+            _state.update {
+                it.copy(
+                    selectedImageUri = uri,
+                    selectedImageBytes = compressedBytes,
+                    selectedImageMimeType = finalMime,
+                    selectedImageFileName = fileName,
+                    errorMessage = null,
+                )
+            }
         }
     }
 

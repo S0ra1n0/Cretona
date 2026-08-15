@@ -125,8 +125,10 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun `selecting and clearing image updates state`() {
-        val viewModel = HomeViewModel(FakeRepository())
+    fun `selecting and clearing image updates state`() = runTest(mainDispatcherRule.dispatcher) {
+        val viewModel = HomeViewModel(FakeRepository()).apply {
+            ioDispatcher = mainDispatcherRule.dispatcher
+        }
 
         viewModel.onImageSelected(
             uri = null,
@@ -134,6 +136,7 @@ class HomeViewModelTest {
             mimeType = "image/png",
             fileName = "sample.png",
         )
+        advanceUntilIdle() // wait for async compression coroutine
 
         val stateWithImage = viewModel.state.value
         assertEquals("image/png", stateWithImage.selectedImageMimeType)
@@ -150,7 +153,9 @@ class HomeViewModelTest {
     @Test
     fun `generate with image uploads image and creates image-to-video project`() = runTest(mainDispatcherRule.dispatcher) {
         val repository = FakeRepository()
-        val viewModel = HomeViewModel(repository)
+        val viewModel = HomeViewModel(repository).apply {
+            ioDispatcher = mainDispatcherRule.dispatcher
+        }
 
         viewModel.onImageSelected(
             uri = null,
@@ -158,6 +163,7 @@ class HomeViewModelTest {
             mimeType = "image/jpeg",
             fileName = "portrait.jpg",
         )
+        advanceUntilIdle() // wait for async compression coroutine
         viewModel.onPromptChanged("Make the portrait smile and wave")
         viewModel.generateVideo()
         advanceUntilIdle()
