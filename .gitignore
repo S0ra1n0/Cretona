@@ -78,3 +78,6 @@ temp/
 *.db
 *.sqlite
 *.sqlite3
+
+# Generic cache directories
+.cache/
