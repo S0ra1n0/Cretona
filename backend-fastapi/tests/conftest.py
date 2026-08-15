@@ -20,11 +20,13 @@ from tests.db_safety import assert_disposable_database
 USER_A = "10000000-0000-4000-8000-000000000001"
 USER_B = "20000000-0000-4000-8000-000000000002"
 
-# Test-only signing material. This is not a Supabase value and never was; the
-# real secret is supplied per machine through CRETONA_SUPABASE_JWT_SECRET.
-os.environ["CRETONA_AUTH_MODE"] = "dev"
-os.environ["CRETONA_DATABASE_BACKEND"] = "sqlite"
-os.environ["CRETONA_STORAGE_BACKEND"] = "local"
+# Detach the settings model from any real backend-fastapi/.env for the whole
+# test session. Pinning a few keys through os.environ instead left the rest of
+# the file leaking in, so the moment a developer created a real .env the suite
+# read `environment=production` alongside a forced `auth_mode=dev` and every
+# bare Settings() raised. Tests assert against declared defaults, not against
+# whatever machine they run on.
+Settings.model_config["env_file"] = None
 
 JWT_SECRET = "local-test-signing-key-not-a-supabase-secret"
 WEBHOOK_SECRET = "local-test-webhook-secret-not-a-provider-value"
