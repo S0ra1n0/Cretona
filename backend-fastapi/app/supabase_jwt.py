@@ -9,6 +9,10 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+import jwt
+
+from app.jwks import JwksError
+
 # Supabase's legacy signing uses HS256 with the project JWT secret (ADR-002).
 # If a project is migrated to asymmetric signing keys, only this module changes:
 # swap the shared secret for a JWKS lookup and widen the pinned algorithm.
@@ -34,6 +38,63 @@ class VerifiedIdentity:
 
     user_id: str
     email: str | None
+
+
+def verify_asymmetric_token(
+    token: str,
+    *,
+    jwks: Any,
+    audience: str | None = None,
+    issuer: str | None = None,
+    leeway_seconds: int = 0,
+    algorithms: tuple[str, ...] = ("ES256",),
+) -> VerifiedIdentity:
+    """Verify a token signed with the project's published signing key.
+
+    Supabase's current default. The backend holds no signing secret at all
+    here: it fetches the public key named by the token's `kid` and checks the
+    signature against it.
+
+    The algorithm list is still supplied by us, never taken from the token, so
+    a caller cannot downgrade to `none` or substitute HMAC and have the public
+    key treated as a shared secret.
+    """
+    try:
+        header = jwt.get_unverified_header(token)
+    except jwt.PyJWTError as exc:
+        raise TokenError("Token header could not be read.") from exc
+
+    kid = header.get("kid")
+    if not isinstance(kid, str) or not kid:
+        raise TokenError("Token names no signing key.")
+    if header.get("alg") not in algorithms:
+        raise TokenError("Unsupported token algorithm.")
+
+    try:
+        key = jwt.PyJWK.from_dict(jwks.key_for(kid)).key
+    except JwksError as exc:
+        raise TokenError("Signing key is unavailable.") from exc
+    except (jwt.PyJWTError, ValueError, KeyError) as exc:
+        raise TokenError("Signing key could not be parsed.") from exc
+
+    try:
+        claims = jwt.decode(
+            token,
+            key=key,
+            algorithms=list(algorithms),
+            audience=audience or None,
+            issuer=issuer or None,
+            leeway=leeway_seconds,
+            options={
+                "require": ["exp", "sub"],
+                "verify_aud": bool(audience),
+                "verify_iss": bool(issuer),
+            },
+        )
+    except jwt.PyJWTError as exc:
+        raise TokenError("Token did not verify.") from exc
+
+    return _identity(claims)
 
 
 def verify_supabase_token(
@@ -77,6 +138,10 @@ def verify_supabase_token(
     if audience and not _audience_matches(claims.get("aud"), audience):
         raise TokenError("Token audience is not accepted.")
 
+    return _identity(claims)
+
+
+def _identity(claims: dict[str, Any]) -> VerifiedIdentity:
     subject = claims.get("sub")
     if not isinstance(subject, str) or not subject:
         raise TokenError("Token carries no subject claim.")

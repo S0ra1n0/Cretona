@@ -41,9 +41,19 @@ Post-parity work is tracked separately in [docs/BACKLOG.md](docs/BACKLOG.md),
 which marks each item by provenance so a proposal is not mistaken for an
 assignment.
 
-**Settled 2026-08-12:** the Supabase project signs user tokens with the legacy
-HS256 shared secret, so the shipped verifier is correct and no JWKS work is
-needed. Runway is not a pending task — ADR-009 superseded it, `RUNWAY_API_KEY`
+**Corrected 2026-08-15:** the project signs user tokens with **ES256**, not the
+legacy HS256 shared secret. An earlier note here claimed the opposite and was
+wrong; the HS256-only verifier could never have authenticated a real user, and
+only running the service against live Supabase exposed it. Both schemes are now
+supported, chosen by `CRETONA_SUPABASE_JWT_ALGORITHM` rather than inferred from
+the token, with the public keys fetched from the project's JWKS endpoint.
+
+**Live verification 2026-08-15:** a real Supabase-issued token authenticated
+end to end against live Postgres — signature verified from JWKS, `sub` resolved
+to a `public.users` row, role read from the database, quota computed from
+`video_projects`. That closes the gap open since TASK A.
+
+Runway is not a pending task — ADR-009 superseded it, `RUNWAY_API_KEY`
 is deliberately empty, and the FastAPI provider registry does not accept it.
 
 ---

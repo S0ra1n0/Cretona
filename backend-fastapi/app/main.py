@@ -18,6 +18,7 @@ from app.database import Database
 from app.errors import AppError, app_error_handler, error_payload, validation_error_handler
 from app.generation_log_retention import GenerationLogRetentionWorker
 from app.generation_log_service import GenerationLogService
+from app.jwks import JwksCache
 from app.logging_setup import configure_logging
 from app.poller import JobPoller
 from app.postgres import PostgresDatabase
@@ -116,6 +117,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.state.settings_version = APP_VERSION
     api.state.database = database
     api.state.storage = storage
+    api.state.jwks = (
+        JwksCache(active_settings.resolved_jwks_url())
+        if active_settings.supabase_jwt_algorithm == "ES256"
+        else None
+    )
     api.state.admin_service = AdminService(database)
     api.state.quota_service = QuotaService(database, active_settings)
     api.state.users_service = UsersService(database, api.state.quota_service)

@@ -25,7 +25,9 @@ credentials it needs.
 | `ENVIRONMENT` | `development` | `production` refuses `AUTH_MODE=dev` |
 | `LOG_LEVEL` | `info` | JSON logs; redaction is central, not per call site |
 | `AUTH_MODE` | `dev` | `dev` injects an identity and honours `X-Debug-User-Id`; `supabase` verifies tokens and ignores that header entirely |
-| **`SUPABASE_JWT_SECRET`** | — | **Secret.** Required when `AUTH_MODE=supabase` |
+| `SUPABASE_JWT_ALGORITHM` | `HS256` | `ES256` is Supabase's current default and what this project uses; `HS256` is the legacy shared secret. Chosen here, never inferred from the token |
+| `SUPABASE_JWKS_URL` | derived | ES256 only. Defaults to `<SUPABASE_URL>/auth/v1/.well-known/jwks.json` |
+| **`SUPABASE_JWT_SECRET`** | — | **Secret.** HS256 only. Not needed under ES256, where the backend holds no signing material at all |
 | `SUPABASE_JWT_AUDIENCE` | `authenticated` | |
 | `SUPABASE_JWT_ISSUER` | empty | Enforced only when set |
 | `SUPABASE_JWT_LEEWAY_SECONDS` | `0` | Clock-skew tolerance |
