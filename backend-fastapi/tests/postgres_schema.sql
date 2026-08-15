@@ -56,6 +56,8 @@ create table public.video_projects (
   idempotency_key  text,
   attempt_count    smallint       not null default 0,
   started_at       timestamptz,
+  progress_percent smallint       not null default 0,
+  step_message     text,
   lease_owner      text,
   lease_expires_at timestamptz,
   created_at       timestamptz    not null default now(),
@@ -74,7 +76,7 @@ create table public.video_projects (
     check (status <> 'failed' or error_code is not null),
   constraint chk_error_code check (
     error_code is null or error_code in (
-      'content_policy', 'invalid_input', 'quota', 'timeout', 'provider_error', 'unknown'
+      'content_policy', 'invalid_input', 'quota', 'timeout', 'provider_error', 'cancelled', 'unknown'
     )
   ),
   constraint chk_aspect_ratio check (aspect_ratio in ('16:9', '9:16', '1:1')),

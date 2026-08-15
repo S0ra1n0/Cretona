@@ -31,6 +31,7 @@ SELECTED_COLUMNS = (
     "id, user_id, title, prompt, image_path, provider, status, provider_job_id, "
     "error_code, error_message, duration_seconds, aspect_ratio, video_path, "
     "thumbnail_path, poll_count, attempt_count, idempotency_key, started_at, "
+    "progress_percent, step_message, "
     "lease_owner, lease_expires_at, created_at, updated_at, completed_at"
 )
 
