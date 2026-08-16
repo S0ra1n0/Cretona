@@ -1,211 +1,82 @@
 # Software Requirements Specification — Cretona
 
-**Version:** 0.1 · **Status:** Draft · **Last updated:** 2026-08-06
+**Version:** 1.0 · **Status:** Accepted Baseline · **Last updated:** 2026-08-16
 
 ---
 
 ## 1. Introduction
 
 ### 1.1 Purpose
-Cretona is a native Android application that turns a text prompt, an image, or both into a short AI-generated video. It handles user accounts, role-based access, generation history, and media delivery. This document specifies what the system must do and the constraints it operates under.
+Cretona is a native Android application designed to produce short AI-generated videos from text prompts and reference images through high-performance cloud/local AI adapters. The application provides complete end-to-end functionality including authentication, role-based access control (RBAC), creative prompt engineering, live progress streaming, media playback, local gallery downloads, and 1-tap remixing.
 
-### 1.2 Scope
-The product consists of three parts:
+### 1.2 System Boundary & Scope
+The Cretona architecture consists of three integrated components:
 
-| Component | Responsibility |
-|---|---|
-| Android app (Kotlin/Compose) | All user interaction; authenticates with Supabase; talks to the Cretona backend |
-| Backend (Node.js/Express) | Business rules, quota enforcement, AI provider orchestration, admin operations |
-| Supabase | Postgres database, auth (JWT issuer), object storage for images and videos |
-
-Third-party AI video providers are external systems reached only by the backend.
-
-### 1.3 Definitions
-
-| Term | Meaning |
-|---|---|
-| **Project** | One generation request and its result. Row in `video_projects`. |
-| **Generation** | The act of producing a video for a project. |
-| **Provider** | A third-party AI video API (Runway, Kling, Pika, Luma, Veo). |
-| **Job** | A unit of work at the provider, identified by a provider job id. |
-| **Quota** | The number of generations a user may run within a period. |
-| **RLS** | Postgres Row Level Security. |
-
-### 1.4 Actors
-
-- **Guest** — unauthenticated; may only register or log in.
-- **User** — authenticated; owns projects; can generate, view, download, delete their own.
-- **Admin** — everything a User can do, plus user management and statistics.
-
----
-
-## 2. Overall Description
-
-### 2.1 Product perspective
-A new, self-contained system. It depends on Supabase for identity/storage and on at least one external AI video provider. It is not a replacement for an existing system and has no legacy data to migrate.
-
-### 2.2 Operating environment
-- Android 8.0 (API 26) and above, phone form factor, portrait-first.
-- Requires network connectivity; no offline generation.
-- Backend runs on Node.js 20+ against Postgres 15+ (Supabase-managed).
-
-### 2.3 Constraints
-- **C-1** AI provider API keys must never exist on the device or in the APK.
-- **C-2** Generation is asynchronous and can take from ~30 seconds to several minutes. No UI may assume a synchronous result.
-- **C-3** Provider-hosted result URLs expire; results must be re-hosted before being persisted.
-- **C-4** Provider usage costs real money per generation, so quota enforcement is a functional requirement, not an optimization.
-- **C-5** The provider layer must be swappable without changing controllers or the Android app.
-
-### 2.4 Assumptions
-- One provider is live at launch; more are added behind the same interface.
-- Users supply their own source images; no stock library is provided.
-- Videos are short (typically 5–10 s) as constrained by the chosen provider.
-
----
-
-## 3. Functional Requirements
-
-Priority: **M** = MVP (must ship), **S** = should, **C** = could / post-MVP.
-
-### 3.1 Authentication & Account
-
-| ID | Requirement | Pri |
+| Component | Responsibility | Technology Stack |
 |---|---|---|
-| FR-1.1 | A guest can register with email and password. Email must be unique and syntactically valid; password minimum 8 characters. | M |
-| FR-1.2 | A guest can log in with email and password and receives a session (JWT + refresh token). | M |
-| FR-1.3 | The session persists across app restarts and is refreshed automatically before expiry. | M |
-| FR-1.4 | A user can log out, which clears all locally stored session material. | M |
-| FR-1.5 | On registration a `users` row is created automatically with the default role `user`. | M |
-| FR-1.6 | A user can view and edit their profile (username). | M |
-| FR-1.7 | A user can request a password reset by email. | S |
-| FR-1.8 | A disabled account is refused at the API boundary with `403 ACCOUNT_DISABLED` on every authenticated request. | M |
+| **Android Client** (`app/`) | Native user interface, Supabase authentication, creative studio controls, real-time SSE progress visualization, Media3 playback, MediaStore gallery integration, and Social Share sheets. | Kotlin 2.3, Jetpack Compose, Material 3, Hilt, Retrofit/OkHttp, Media3 ExoPlayer, Coil. |
+| **Production Backend** (`backend/`) | API routing, JWT verification (ES256/JWKS), generation lifecycle management, quota enforcement, background poller, prompt enhancer, SSE streaming, and AI provider adapters. | Python 3.12, FastAPI, Uvicorn, psycopg, Pydantic, Starlette SSE. |
+| **Data & Storage** (`supabase/`) | User identity, PostgreSQL data layer with Row Level Security (RLS), and private object storage buckets (`uploads`, `videos`). | PostgreSQL 16 (Supabase), Supabase Auth & Storage. |
 
-### 3.2 Video Generation
+Third-party AI video providers are isolated behind the server-side provider boundary. The Android client never possesses provider credentials.
 
-| ID | Requirement | Pri |
-|---|---|---|
-| FR-2.1 | A user can submit a **text-only** generation: a prompt of 1–1000 characters. | M |
-| FR-2.2 | A user can submit an **image-only** generation by selecting an image from device storage. | M |
-| FR-2.3 | A user can submit a **text + image** generation. | M |
-| FR-2.4 | Source images are validated: JPEG/PNG/WebP, ≤ 10 MB, and uploaded to Supabase Storage before the project is created. | M |
-| FR-2.5 | Submitting a generation creates a project with status `pending` and returns immediately with the project id. | M |
-| FR-2.6 | The backend submits the job to the configured provider and moves the project to `generating`. | M |
-| FR-2.7 | The system detects completion (polling or webhook), re-hosts the video in Supabase Storage, and sets status `completed` with a permanent `video_url`. | M |
-| FR-2.8 | On provider error or timeout the project moves to `failed` and stores a user-readable error message. | M |
-| FR-2.9 | The app reflects status changes without the user leaving and re-entering the screen. | M |
-| FR-2.10 | Every provider request and response is recorded in `generation_logs`, with credentials redacted. | M |
-| FR-2.11 | A user may retry a `failed` project, which creates a new generation attempt. | S |
-| FR-2.12 | A user may choose the provider and generation parameters (duration, aspect ratio). | C |
-
-### 3.3 History & Media
-
-| ID | Requirement | Pri |
-|---|---|---|
-| FR-3.1 | A user can list their own projects, newest first, paginated. | M |
-| FR-3.2 | The list shows title/prompt excerpt, status, and creation time; completed items show a thumbnail. | M |
-| FR-3.3 | A user can open a project to see the full prompt, source image, and play the video in-app. | M |
-| FR-3.4 | A user can download a completed video to device storage. | M |
-| FR-3.5 | A user can share a completed video via the Android share sheet. | S |
-| FR-3.6 | A user can delete their own project; associated stored media is deleted too. | M |
-| FR-3.7 | A user can filter history by status. | S |
-| FR-3.8 | A user is notified when a generation finishes while the app is backgrounded. | C |
-
-### 3.4 Administration
-
-| ID | Requirement | Pri |
-|---|---|---|
-| FR-4.1 | An admin can list all users with search and pagination. | M |
-| FR-4.2 | An admin can disable and re-enable a user account. | M |
-| FR-4.3 | An admin can change a user's role. | S |
-| FR-4.4 | An admin can view statistics: total users, total projects, counts by status, counts by provider, generations over the last 30 days. | M |
-| FR-4.5 | Admin-only screens and endpoints are inaccessible to non-admins; the app hides them and the API rejects them with `403`. | M |
-| FR-4.6 | An admin cannot disable or demote their own account. | S |
-
-### 3.5 Quota & Abuse Control
-
-| ID | Requirement | Pri |
-|---|---|---|
-| FR-5.1 | Each user has a generation quota per rolling period; exceeding it returns `429 QUOTA_EXCEEDED`. | M |
-| FR-5.2 | Remaining quota is visible in the app before submitting. | S |
-| FR-5.3 | Generation endpoints are rate-limited per user and per IP independently of quota. | M |
+### 1.3 Actors & Roles
+- **Guest**: Unauthenticated user; may register a new account or log into an existing account.
+- **User**: Authenticated account holder; owns creative projects, submits generation jobs, watches live progress, downloads and shares videos, and tracks daily quotas.
+- **Admin**: Authenticated account with elevated privileges; can inspect system-wide generation metrics and manage user account states (enable/disable users, update roles).
 
 ---
 
-## 4. Non-Functional Requirements
+## 2. Functional Requirements
 
-### 4.1 Performance
-- **NFR-1.1** Non-generation API calls respond in < 500 ms at p95 under nominal load.
-- **NFR-1.2** History list renders the first page in < 1 s on a mid-range device.
-- **NFR-1.3** Status changes surface in the app within 10 s of the backend recording them.
-- **NFR-1.4** The app remains responsive (no ANR) while a generation is in flight.
+### 2.1 Authentication & Authorization
+- **FR-AUTH-001**: A guest shall be able to register with email and password via Supabase Auth.
+- **FR-AUTH-002**: A registered user shall be able to log in, receive a secure JWT access token, and persist the session across app launches.
+- **FR-AUTH-003**: The backend shall verify Supabase JWT tokens via JWKS (supporting both ES256 and HS256) and reject expired, invalid, or disabled accounts (`ACCOUNT_DISABLED`).
+- **FR-AUTH-004**: Administrative endpoints shall require the `admin` role enforced by the backend (`FORBIDDEN`).
 
-### 4.2 Security
-- **NFR-2.1** All traffic over HTTPS/TLS 1.2+. Cleartext is permitted only for `10.0.2.2` in debug builds.
-- **NFR-2.2** Every non-public endpoint verifies the Supabase JWT signature and expiry.
-- **NFR-2.3** RLS is enabled on every user-data table; a compromised anon key must not expose other users' rows.
-- **NFR-2.4** Authorization is enforced server-side on every resource access — never by hiding UI alone (IDOR protection on `/projects/:id`).
-- **NFR-2.5** Provider keys and the Supabase `service_role` key exist only in backend environment variables.
-- **NFR-2.6** Logs redact `Authorization` headers, API keys, and tokens.
-- **NFR-2.7** Storage objects are served through short-lived signed URLs, scoped to the owner.
+### 2.2 Creative Studio & Video Generation
+- **FR-GEN-001 (Text-to-Video)**: The user shall be able to enter a text prompt (1–1000 characters) to initiate video generation.
+- **FR-GEN-002 (Prompt Enhancement)**: The user shall be able to request AI prompt enhancement to expand a concise idea into a detailed prompt with clear confirmation.
+- **FR-GEN-003 (Style Presets)**: The user shall be able to select from curated artistic styles:
+  - `🌸 Anime`: Japanese animation aesthetic, vibrant colors, stylized lighting.
+  - `🌆 Cyberpunk`: Neon glows, futuristic sci-fi cityscapes, atmospheric fog.
+  - `🧸 3D Pixar`: 3D animated character style, warm ambient lighting, expressive depth.
+  - `🎞️ Vintage Film`: 35mm grain, retro color palette, classic cinematic framing.
+  - `📸 Photorealistic`: Natural lighting, 8k documentary detail, authentic textures.
+- **FR-GEN-004 (Camera Motion)**: The user shall be able to specify cinematic camera movements:
+  - `⬅️ Pan Left` / `➡️ Pan Right`: Horizontal camera panning.
+  - `🔍 Zoom In` / `🔎 Zoom Out`: Focal distance transitions.
+  - `🔄 Orbit`: 360-degree circling motion around the subject.
+- **FR-GEN-005 (Aspect Ratios)**: The user shall be able to choose output dimensions: `9:16` (Vertical/Reels/TikTok), `16:9` (Widescreen/Cinematic), or `1:1` (Square).
+- **FR-GEN-006 (Multi-Provider Selection)**: The user shall be able to select the target video engine:
+  - `Fake`: Instant mock generation for development and offline testing.
+  - `Real AI`: Generic Cloud AI Router (Fal.ai / Replicate / Cloud GPU).
+  - `Wan 2.1`: Advanced open-source diffusion model adapter.
+- **FR-GEN-007 (Real-Time Progress Streaming)**: The backend shall expose an SSE stream (`GET /api/v1/projects/{id}/events`) delivering real-time percentage progress (0–100%) and descriptive step messages (`"Synthesizing prompt..."`, `"Generating frames..."`, `"Encoding video..."`).
+- **FR-GEN-008 (Job Cancellation)**: The user shall be able to cancel an in-flight video generation job via `POST /api/v1/projects/{id}/cancel`.
 
-### 4.3 Reliability
-- **NFR-3.1** A backend restart must not lose in-flight generations; job state lives in the database, not in memory.
-- **NFR-3.2** Provider calls retry transient failures (5xx, timeout) up to 3 times with exponential backoff.
-- **NFR-3.3** A job that has not completed within its provider timeout is marked `failed` rather than left `generating` indefinitely.
-- **NFR-3.4** Generation submission is idempotent per client request id, so a retried submit does not double-charge.
+### 2.3 Media & Project Operations
+- **FR-MEDIA-001 (1-Tap Save to Gallery)**: The user shall be able to download the generated MP4 video directly into the device's public `Movies/Cretona` gallery via `MediaStore.Video.Media`.
+- **FR-MEDIA-002 (1-Tap Social Share)**: The user shall be able to share the video file to external apps (WhatsApp, Telegram, YouTube, etc.) via Android `FileProvider` and system Share Sheet.
+- **FR-MEDIA-003 (1-Tap Remix)**: The user shall be able to tap **"✨ Remix"** on any completed project in their history to instantly populate the prompt, style preset, camera motion, and aspect ratio into the creation studio.
+- **FR-MEDIA-004 (In-App Playback)**: The user shall be able to play generated videos seamlessly within the app using AndroidX Media3 (ExoPlayer).
 
-### 4.4 Usability
-- **NFR-4.1** Every screen has explicit loading, empty, and error states with a retry path.
-- **NFR-4.2** Errors are shown in plain language; raw provider or stack messages are never surfaced.
-- **NFR-4.3** Light and dark theme, Material 3, minimum 4.5:1 text contrast, content descriptions on interactive elements.
-
-### 4.5 Maintainability
-- **NFR-5.1** Android follows MVVM + repository; ViewModels hold no Android framework references beyond `ViewModel` itself.
-- **NFR-5.2** Adding a provider requires implementing one interface and registering it — no changes to controllers, routes, or the app.
-- **NFR-5.3** Business logic in services, not controllers; controllers only translate HTTP.
-
-### 4.6 Privacy & Compliance
-- **NFR-6.1** Users can delete their projects and the underlying media.
-- **NFR-6.2** The Play Store data-safety declaration must state that prompts and uploaded images are transmitted to third-party AI providers.
-- **NFR-6.3** A privacy policy is published before release.
-
----
-
-## 5. Data Requirements
-
-Entities, columns, relationships, and RLS policies are specified in [DATA_MODEL.md](DATA_MODEL.md). Summary:
-
-`roles` 1—N `users` 1—N `video_projects` 1—N `generation_logs`
-
-Project status is a state machine: `pending → generating → completed | failed`. No other transition is legal except `failed → pending` via retry (FR-2.11).
+### 2.4 Quota & Spend Controls
+- **FR-QUOTA-001**: The backend shall enforce a daily rolling quota (default: 10 generations/day) per user.
+- **FR-QUOTA-002**: When quota is exceeded, creation attempts shall be rejected with HTTP 429 `QUOTA_EXCEEDED` before invoking any third-party provider.
+- **FR-QUOTA-003**: The Android client shall display the current remaining quota and time-to-reset on the studio dashboard.
 
 ---
 
-## 6. External Interfaces
+## 3. Non-Functional Requirements
 
-- **Client ↔ Backend:** REST/JSON over HTTPS, specified in [API_CONTRACT.md](API_CONTRACT.md).
-- **Client ↔ Supabase:** Auth (sign-up, sign-in, refresh) and direct-to-Storage image upload via signed URL.
-- **Backend ↔ Provider:** per-provider HTTP, normalized behind the interface in [AI_PROVIDER_SPEC.md](AI_PROVIDER_SPEC.md).
+### 3.1 Security & Data Protection
+- **NFR-SEC-001**: AI provider API keys, model endpoints, and secret tokens must never exist in the client APK or client-side storage.
+- **NFR-SEC-002**: All client-server communication must use TLS (HTTPS in staging/production).
+- **NFR-SEC-003**: Row Level Security (RLS) policies in PostgreSQL must isolate project records so users can never read or modify another user's media.
 
----
-
-## 7. Acceptance Criteria for MVP
-
-The MVP is accepted when, on a clean install:
-
-1. A new user can register, log in, and see an empty history.
-2. Each of the three input modes (text, image, text+image) produces a playable video.
-3. Status transitions are visible in the app without a manual restart.
-4. A completed video can be downloaded and plays outside the app.
-5. Deleting a project removes it from history and removes its stored media.
-6. A second user cannot read, open, or delete the first user's projects — verified by direct API call, not just UI.
-7. A non-admin receives `403` from every `/admin/*` endpoint.
-8. An admin can disable an account, and that account is refused on its next request.
-9. Exceeding the quota returns `429` and a clear message in the app.
-10. Killing and restarting the backend mid-generation still yields a completed project.
-
----
-
-## 8. Out of Scope
-
-Payments and subscriptions · social feed or public sharing · in-app video editing or trimming · multi-language UI · web or iOS clients · offline queueing · team/organization accounts.
+### 3.2 Performance & Reliability
+- **NFR-REL-001**: The backend poller shall use database leases (`poll_lease_until`) to prevent race conditions during concurrent worker polling.
+- **NFR-REL-002**: Idempotent project submission (`Idempotency-Key` header) must prevent duplicate job charges on network reconnects.
+- **NFR-REL-003**: The Android UI must remain completely responsive (60fps+) during background video polling, downloads, and playback.

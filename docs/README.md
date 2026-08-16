@@ -1,12 +1,14 @@
 # Cretona Documentation
 
+# Cretona Documentation
+
 ## Start here
 
 | If you want to… | Read |
 |---|---|
 | Get the project running on your machine | [SETUP.md](SETUP.md) |
 | Know what the system must do | [SRS.md](SRS.md) |
-| Know what to build next | [../Cretona_Roadmap.md](../Cretona_Roadmap.md) |
+| Know what to build next | [ROADMAP.md](ROADMAP.md) |
 | Call or implement an endpoint | [API_CONTRACT.md](API_CONTRACT.md) |
 | Change the database | [DATA_MODEL.md](DATA_MODEL.md) |
 | Understand how the pieces fit | [ARCHITECTURE.md](ARCHITECTURE.md) |
@@ -34,4 +36,4 @@ Requirements have ids (`FR-2.1`, `NFR-2.3`) and everything else refers back to t
 - Making a decision that a future reader would ask "why?" about? Write an ADR. They are short by design.
 - Adding a `local.properties` or `.env` key? Add it to [SETUP.md](SETUP.md) and `.env.example`, or the next person's build breaks in a way that is hard to diagnose.
 
-Progress against the plan is tracked in [Cretona_Roadmap.md](../Cretona_Roadmap.md), which is the file to update when a task lands.
+Progress against the plan is tracked in [ROADMAP.md](ROADMAP.md), which is the file to update when a task lands.

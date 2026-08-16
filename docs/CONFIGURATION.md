@@ -6,17 +6,15 @@ Status: accepted baseline on 2026-08-10; FastAPI variables added 2026-08-12.
 
 - Android machine-local values belong in root `local.properties`, because the
   repository root is the Android Gradle project.
-- Backend environment values belong in `backend-fastapi/.env` for the active
-  service, and `backend/.env` for the Express reference. Each committed
-  `.env.example` must mirror its config loader without containing a real value.
-- Only `local.properties.example` and the two `.env.example` files are safe to
-  commit.
+- Backend environment values belong in `backend/.env`. The committed
+  `backend/.env.example` must mirror its config loader without containing a real value.
+- Only `local.properties.example` and `backend/.env.example` are safe to commit.
 - Android must never receive a provider service key, JWT signing secret, or
   database administrator credential.
 
 ## FastAPI variables
 
-Every setting is prefixed `CRETONA_` and loaded by `backend-fastapi/app/config.py`.
+Every setting is prefixed `CRETONA_` and loaded by `backend/app/config.py`.
 Startup fails rather than degrading when a profile is selected without the
 credentials it needs.
 

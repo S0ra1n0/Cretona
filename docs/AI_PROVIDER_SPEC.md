@@ -5,10 +5,9 @@
 Defines the boundary between Cretona and any third-party AI video API. Satisfies NFR-5.2: adding a provider means implementing one interface and registering it — nothing above `services/ai` changes.
 
 The TypeScript below is the original executable reference contract. The active
-Python equivalent lives in `backend-fastapi/app/providers.py`; names differ by
+Python equivalent lives in `backend/app/providers.py`; names differ by
 language, but capabilities, normalized states, and secret boundaries must stay
-behaviorally compatible. A fake adapter is currently selected. It returns a
-bundled synthetic MP4 and must never be presented as AI-generated evidence.
+behaviorally compatible. Adapters currently supported include `fake`, `real`, and `wan21`.
 
 ---
 
@@ -151,7 +150,7 @@ Redaction happens **in the adapter, before the row is built** — not at the log
 
 ## 6. Adding a Provider — Checklist
 
-1. Create `backend-fastapi/app/providers/<name>.py` implementing the normalized provider protocol. Keep a TypeScript adapter only when maintaining the Express reference.
+1. Create `backend/app/providers/<name>.py` (or add provider class in `backend/app/providers.py`) implementing the normalized provider protocol.
 2. Fill in `capabilities` honestly — the values are used for validation, not documentation.
 3. Map the provider's statuses to `JobState` and its errors to `ProviderFailure`.
 4. Add `<NAME>_API_KEY` to config validation and `.env.example`.
