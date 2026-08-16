@@ -233,6 +233,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         safe = AppError(500, "INTERNAL_ERROR", "An unexpected server error occurred.")
         return JSONResponse(status_code=500, content=error_payload(request, safe))
 
+    @api.get("/healthz", tags=["health"])
+    @api.get("/health", tags=["health"])
+    def root_health() -> dict[str, str]:
+        return {"status": "ok", "version": APP_VERSION}
+
     api.include_router(router, prefix="/api/v1")
     api.mount(
         "/media",
