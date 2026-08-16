@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import subprocess
 import urllib.parse
 import urllib.request
@@ -49,6 +50,27 @@ class VideoProvider(Protocol):
     def verify_webhook(
         self, *, headers: dict[str, str], body: bytes, secret: str = ""
     ) -> dict[str, Any]: ...
+def _clean_prompt_for_diffusion(raw_prompt: str) -> str:
+    """Clean emojis, non-ASCII characters, and normalize keywords to maximize
+
+    AI diffusion model subject fidelity.
+    """
+    replacements = {
+        "bay trên": "flying over",
+        "đang bay": "flying",
+        "trên đỉnh": "on top of",
+        "núi tuyết": "snowy mountain",
+        "thành phố": "city",
+        "vũ trụ": "outer space",
+        "phát sáng": "glowing",
+        "rồng": "dragon",
+    }
+    cleaned = raw_prompt
+    for vn, en in replacements.items():
+        cleaned = re.sub(re.escape(vn), en, cleaned, flags=re.IGNORECASE)
+    # Strip emojis and non-ASCII characters that pollute CLIP text encoders
+    cleaned = cleaned.encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"\s+", " ", cleaned).strip()
 
 
 def _synthesize_live_ai_video(
@@ -58,7 +80,6 @@ def _synthesize_live_ai_video(
     ffmpeg_bin: str = "ffmpeg",
 ) -> str | None:
     """Generate genuine AI video from the user's prompt using live AI diffusion
-
     imagery and cinematic motion interpolation.
     """
     if not media_dir or not prompt:
@@ -69,12 +90,12 @@ def _synthesize_live_ai_video(
         if target_mp4.exists() and target_mp4.stat().st_size > 1024:
             return f"/media/{output_filename}"
 
-        clean_prompt = prompt.strip()
+        clean_prompt = _clean_prompt_for_diffusion(prompt)
         encoded = urllib.parse.quote(clean_prompt)
-        url = f"https://image.pollinations.ai/prompt/{encoded}?width=1280&height=720&model=turbo&nologo=true"
+        url = f"https://image.pollinations.ai/prompt/{encoded}?width=1280&height=720&model=flux&enhance=true&nologo=true"
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         temp_img = media_dir / f"temp_{target_mp4.stem}.jpg"
-        with urllib.request.urlopen(req, timeout=12) as resp:
+        with urllib.request.urlopen(req, timeout=15) as resp:
             data = resp.read()
         temp_img.write_bytes(data)
 
