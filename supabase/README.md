@@ -27,7 +27,7 @@ Database and storage setup for Cretona. Specified in [docs/DATA_MODEL.md](../doc
    update public.users set role_id = 2 where email = 'you@example.com';
    ```
 6. **Copy the keys** (Settings → API and Settings → Database) into
-   `local.properties` and the active `backend-fastapi/.env`, as described in
+   `local.properties` and the active `backend/.env`, as described in
    [docs/SETUP.md](../docs/SETUP.md).
 
 > Only the **anon** key goes in `local.properties`. The `service_role` key bypasses RLS entirely and belongs in the backend environment alone.
@@ -70,7 +70,7 @@ values from output:
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/backup-live-supabase.ps1
 
 # Current post-migration catalog/security verification.
-backend-fastapi/.venv/Scripts/python.exe scripts/live-supabase-migration-gate.py verify-007
+backend/.venv/Scripts/python.exe scripts/live-supabase-migration-gate.py verify-007
 
 # Official Supabase Security and Performance Advisors.
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-live-supabase-advisors.ps1
