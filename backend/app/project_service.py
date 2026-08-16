@@ -38,7 +38,7 @@ def utc_now() -> str:
 
 
 # Providers whose output costs enough to charge double (B-14).
-WEIGHTED_PROVIDERS = frozenset({"real", "wan21"})
+WEIGHTED_PROVIDERS = frozenset({"real", "wan21", "cloud", "local"})
 
 
 STYLE_PRESET_DIRECTIVES: dict[str, str] = {
@@ -170,7 +170,7 @@ class ProjectService:
             "title": title,
             "prompt": prompt,
             "image_path": request.image_path,
-            "provider": provider.name,
+            "provider": request.provider or provider.name,
             "status": "pending",
             "provider_job_id": None,
             "error_code": None,

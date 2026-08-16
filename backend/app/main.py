@@ -25,10 +25,10 @@ from app.postgres import PostgresDatabase
 from app.project_service import ProjectService
 from app.prompt_service import PromptEnhancer
 from app.providers import (
-    FakeVideoProvider,
+    CloudAiVideoProvider,
+    LocalModelVideoProvider,
+    MockVideoProvider,
     ProviderRegistry,
-    RealAiVideoProvider,
-    Wan21VideoProvider,
 )
 from app.quota_service import QuotaService
 from app.rate_limit import WINDOW_SECONDS, RateLimiter, bucket_for, caller_key
@@ -74,20 +74,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     logger = configure_logging(active_settings.log_level)
     database = build_database(active_settings)
     storage = build_storage(active_settings)
-    fake_provider = FakeVideoProvider(
+    mock_provider = MockVideoProvider(
         polls_before_complete=active_settings.fake_polls_before_complete,
         video_filename=active_settings.fake_video_filename,
     )
-    real_provider = RealAiVideoProvider(
-        api_key=active_settings.real_ai_api_key.get_secret_value(),
-        endpoint=active_settings.real_ai_endpoint,
+    cloud_provider = CloudAiVideoProvider(
+        api_key=active_settings.cloud_ai_api_key.get_secret_value()
+        or active_settings.real_ai_api_key.get_secret_value(),
+        endpoint=active_settings.cloud_ai_endpoint or active_settings.real_ai_endpoint,
         video_filename=active_settings.fake_video_filename,
     )
-    wan21_provider = Wan21VideoProvider(
+    local_provider = LocalModelVideoProvider(
+        endpoint=active_settings.local_model_endpoint,
         video_filename=active_settings.fake_video_filename,
     )
     providers = ProviderRegistry(
-        [fake_provider, real_provider, wan21_provider],
+        [mock_provider, cloud_provider, local_provider],
         active_settings.default_video_provider,
     )
 

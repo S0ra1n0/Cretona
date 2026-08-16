@@ -254,27 +254,42 @@ private fun HomeContent(
             }
 
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text("Model:", style = MaterialTheme.typography.bodyMedium)
-                    FilterChip(
-                        selected = state.selectedProvider == "fake",
-                        onClick = { onProviderSelected("fake") },
-                        label = { Text("🎭 Fake") },
-                    )
-                    FilterChip(
-                        selected = state.selectedProvider == "real",
-                        onClick = { onProviderSelected("real") },
-                        label = { Text("🤖 Real AI") },
-                    )
-                    FilterChip(
-                        selected = state.selectedProvider == "wan21",
-                        onClick = { onProviderSelected("wan21") },
-                        label = { Text("⚡ Wan 2.1") },
-                    )
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Model / Engine:", style = MaterialTheme.typography.bodyMedium)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        FilterChip(
+                            selected = state.selectedProvider == "mock" || state.selectedProvider == "fake",
+                            onClick = { onProviderSelected("mock") },
+                            label = { Text("🎭 Mock / Dev") },
+                        )
+                        FilterChip(
+                            selected = state.selectedProvider == "cloud" || state.selectedProvider == "real" || state.selectedProvider == "wan21",
+                            onClick = { onProviderSelected("cloud") },
+                            label = { Text("☁️ Cloud AI (Wan 2.1 / LTX)") },
+                        )
+                        FilterChip(
+                            selected = state.selectedProvider == "local",
+                            onClick = { onProviderSelected("local") },
+                            label = { Text("💻 Local Model (LTX-Video)") },
+                        )
+                    }
+                    val modelDesc = when (state.selectedProvider) {
+                        "mock", "fake" -> "⚡ Instant zero-cost simulation (best for UI testing & demo)"
+                        "cloud", "real", "wan21" -> "🌐 Live Cloud AI generation via GPU cluster"
+                        "local" -> "🖥️ Runs local model weights on PC (Ollama / LTX)"
+                        else -> ""
+                    }
+                    if (modelDesc.isNotEmpty()) {
+                        Text(
+                            modelDesc,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
 

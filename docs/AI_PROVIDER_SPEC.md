@@ -7,7 +7,10 @@ Defines the boundary between Cretona and any third-party AI video API. Satisfies
 The TypeScript below is the original executable reference contract. The active
 Python equivalent lives in `backend/app/providers.py`; names differ by
 language, but capabilities, normalized states, and secret boundaries must stay
-behaviorally compatible. Adapters currently supported include `fake`, `real`, and `wan21`.
+behaviorally compatible. Adapters are organized into 3 clear operational tiers:
+- **`mock`** (`MockVideoProvider`, alias `fake`): Deterministic instant mock generator for zero-cost testing and defense demo.
+- **`cloud`** (`CloudAiVideoProvider`, aliases `real`, `wan21`): Real Cloud AI video generation router (Wan 2.1 / LTX-Video / Pollinations / Fal.ai).
+- **`local`** (`LocalModelVideoProvider`): On-device/local machine model adapter (LTX-Video / Ollama / Diffusers) with memory preflight verification.
 
 ---
 

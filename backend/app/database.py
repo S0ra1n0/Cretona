@@ -597,7 +597,7 @@ class Database:
         with self.connect() as connection:
             row = connection.execute(
                 "SELECT COALESCE("
-                "SUM(CASE WHEN provider IN ('real', 'wan21') "
+                "SUM(CASE WHEN provider IN ('real', 'wan21', 'cloud', 'local') "
                 "OR duration_seconds > 5 THEN 2 ELSE 1 END), "
                 "0) AS used, "
                 "MIN(created_at) AS oldest FROM projects "

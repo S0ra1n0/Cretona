@@ -142,10 +142,13 @@ class HomeViewModelTest {
     @Test
     fun `provider selection updates state`() {
         val viewModel = HomeViewModel(FakeRepository())
-        assertEquals("real", viewModel.state.value.selectedProvider)
+        assertEquals("mock", viewModel.state.value.selectedProvider)
 
-        viewModel.onProviderSelected("wan21")
-        assertEquals("wan21", viewModel.state.value.selectedProvider)
+        viewModel.onProviderSelected("cloud")
+        assertEquals("cloud", viewModel.state.value.selectedProvider)
+
+        viewModel.onProviderSelected("local")
+        assertEquals("local", viewModel.state.value.selectedProvider)
     }
 
     @Test

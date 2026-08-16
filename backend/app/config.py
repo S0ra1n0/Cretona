@@ -57,9 +57,12 @@ class Settings(BaseSettings):
     generation_quota_window_hours: int = Field(default=24, ge=1, le=720)
     database_path: Path = BACKEND_ROOT / "data" / "cretona.db"
     media_dir: Path = BACKEND_ROOT / "assets"
-    default_video_provider: Literal["fake", "real"] = "fake"
+    default_video_provider: Literal["mock", "cloud", "local", "fake", "real", "wan21"] = "mock"
     real_ai_api_key: SecretStr = SecretStr("")
     real_ai_endpoint: str = ""
+    cloud_ai_api_key: SecretStr = SecretStr("")
+    cloud_ai_endpoint: str = ""
+    local_model_endpoint: str = "http://localhost:11434"
 
     # local keeps media on the filesystem for the credential-free profile;
     # supabase stores it in a bucket and hands out bounded signed URLs.

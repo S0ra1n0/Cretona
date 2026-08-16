@@ -13,7 +13,7 @@ data class HomeUiState(
     val isSubmitting: Boolean = false,
     val currentProject: VideoProject? = null,
     val projects: List<VideoProject> = emptyList(),
-    val selectedProvider: String = "real",
+    val selectedProvider: String = "mock",
     val enhancementNote: String? = null,
     val errorMessage: String? = null,
     val selectedImageUri: Uri? = null,

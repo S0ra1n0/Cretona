@@ -150,3 +150,38 @@ def test_quota_cost_weighting(client: TestClient) -> None:
     )
     assert r3.status_code == 429
     assert r3.json()["error"]["code"] == "QUOTA_EXCEEDED"
+
+
+def test_3_tier_provider_architecture(client: TestClient) -> None:
+    # 1. Test Mock tier
+    r_mock = client.post(
+        "/api/v1/projects",
+        headers=USER_HEADERS,
+        json={"prompt": "mock generation", "provider": "mock"},
+    )
+    assert r_mock.status_code == 201
+    mock_id = r_mock.json()["id"]
+    p_mock = client.get(f"/api/v1/projects/{mock_id}", headers=USER_HEADERS).json()
+    assert p_mock["status"] in ("pending", "generating", "completed")
+
+    # 2. Test Cloud tier
+    r_cloud = client.post(
+        "/api/v1/projects",
+        headers=USER_HEADERS,
+        json={"prompt": "cloud AI generation", "provider": "cloud"},
+    )
+    assert r_cloud.status_code == 201
+    cloud_id = r_cloud.json()["id"]
+    p_cloud = client.get(f"/api/v1/projects/{cloud_id}", headers=USER_HEADERS).json()
+    assert p_cloud["status"] in ("pending", "generating", "completed")
+
+    # 3. Test Local tier
+    r_local = client.post(
+        "/api/v1/projects",
+        headers=USER_HEADERS,
+        json={"prompt": "local model generation", "provider": "local"},
+    )
+    assert r_local.status_code == 201
+    local_id = r_local.json()["id"]
+    p_local = client.get(f"/api/v1/projects/{local_id}", headers=USER_HEADERS).json()
+    assert p_local["status"] in ("pending", "generating", "completed")
