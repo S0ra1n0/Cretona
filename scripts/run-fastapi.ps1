@@ -9,7 +9,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $projectRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
-$backendRoot = Join-Path $projectRoot 'backend-fastapi'
+$backendRoot = Join-Path $projectRoot 'backend'
 $python = Join-Path $backendRoot '.venv\Scripts\python.exe'
 
 if (-not (Test-Path -LiteralPath $python)) {

@@ -20,7 +20,7 @@ from tests.db_safety import assert_disposable_database
 USER_A = "10000000-0000-4000-8000-000000000001"
 USER_B = "20000000-0000-4000-8000-000000000002"
 
-# Detach the settings model from any real backend-fastapi/.env for the whole
+# Detach the settings model from any real backend/.env for the whole
 # test session. Pinning a few keys through os.environ instead left the rest of
 # the file leaking in, so the moment a developer created a real .env the suite
 # read `environment=production` alongside a forced `auth_mode=dev` and every

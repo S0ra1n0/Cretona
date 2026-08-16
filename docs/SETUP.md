@@ -73,7 +73,7 @@ $env:JAVA_HOME = 'C:\Program Files\Android\Android Studio\jbr'
 Create an isolated environment and install the locked dependency ranges:
 
 ```powershell
-Set-Location backend-fastapi
+Set-Location backend
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -c constraints-windows-py312.lock -e ".[dev]"
 Copy-Item .env.example .env
@@ -96,7 +96,7 @@ or `X-Debug-User-Id`; this mode must never be used as a deployed auth profile.
 Verify the backend:
 
 ```powershell
-Set-Location backend-fastapi
+Set-Location backend
 .\.venv\Scripts\python.exe -m ruff check .
 .\.venv\Scripts\python.exe -m pytest
 Set-Location ..
@@ -106,7 +106,7 @@ Set-Location ..
 
 The default prompt enhancer is deterministic and keeps the demo offline. To
 prove a real local LLM call, install Ollama, pull the selected model, then set
-these values in `backend-fastapi/.env`:
+these values in `backend/.env`:
 
 ```properties
 CRETONA_PROMPT_LLM_PROVIDER=ollama

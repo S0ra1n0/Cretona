@@ -111,12 +111,12 @@ if ($python) {
     Add-Result 'Python' $false 'Python 3.12+ is required.'
 }
 
-$fastApiPython = Join-Path $projectRoot 'backend-fastapi\.venv\Scripts\python.exe'
+$fastApiPython = Join-Path $projectRoot 'backend\.venv\Scripts\python.exe'
 if (Test-Path -LiteralPath $fastApiPython) {
     $probe = Invoke-Probe $fastApiPython @('-c', 'import fastapi; print(fastapi.__version__)')
     Add-Result 'FastAPI venv' ($probe.ExitCode -eq 0) "FastAPI $($probe.Line)"
 } else {
-    Add-Result 'FastAPI venv' $false 'Run the venv/install commands in backend-fastapi/README.md.'
+    Add-Result 'FastAPI venv' $false 'Run the venv/install commands in backend/README.md.'
 }
 
 $defaultAndroidJbr = Join-Path $env:ProgramFiles 'Android\Android Studio\jbr'
