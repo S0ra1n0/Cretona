@@ -83,10 +83,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         or active_settings.real_ai_api_key.get_secret_value(),
         endpoint=active_settings.cloud_ai_endpoint or active_settings.real_ai_endpoint,
         video_filename=active_settings.fake_video_filename,
+        media_dir=active_settings.resolved_media_dir(),
+        ffmpeg_path=active_settings.ffmpeg_path,
     )
     local_provider = LocalModelVideoProvider(
         endpoint=active_settings.local_model_endpoint,
         video_filename=active_settings.fake_video_filename,
+        media_dir=active_settings.resolved_media_dir(),
+        ffmpeg_path=active_settings.ffmpeg_path,
     )
     providers = ProviderRegistry(
         [mock_provider, cloud_provider, local_provider],
