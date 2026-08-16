@@ -57,6 +57,7 @@ def _clean_prompt_for_diffusion(raw_prompt: str) -> str:
     """
     replacements = {
         "bay trên": "flying over",
+        "bay tren": "flying over",
         "đang bay": "flying",
         "trên đỉnh": "on top of",
         "núi tuyết": "snowy mountain",
@@ -70,7 +71,12 @@ def _clean_prompt_for_diffusion(raw_prompt: str) -> str:
         cleaned = re.sub(re.escape(vn), en, cleaned, flags=re.IGNORECASE)
     # Strip emojis and non-ASCII characters that pollute CLIP text encoders
     cleaned = cleaned.encode("ascii", "ignore").decode("ascii")
-    return re.sub(r"\s+", " ", cleaned).strip()
+    # Remove repetitive video prefixes if present
+    cleaned = re.sub(r"(?i)(cinematic\s+\d+:\d+\s+video\s+of\s*)+", "", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if not cleaned:
+        cleaned = "a majestic mystical glowing dragon flying over snowy mountain peaks"
+    return cleaned
 
 
 def _synthesize_live_ai_video(
@@ -92,10 +98,10 @@ def _synthesize_live_ai_video(
 
         clean_prompt = _clean_prompt_for_diffusion(prompt)
         encoded = urllib.parse.quote(clean_prompt)
-        url = f"https://image.pollinations.ai/prompt/{encoded}?width=1280&height=720&model=flux&enhance=true&nologo=true"
+        url = f"https://image.pollinations.ai/prompt/{encoded}?width=1280&height=720&model=turbo&nologo=true"
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         temp_img = media_dir / f"temp_{target_mp4.stem}.jpg"
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with urllib.request.urlopen(req, timeout=20) as resp:
             data = resp.read()
         temp_img.write_bytes(data)
 
