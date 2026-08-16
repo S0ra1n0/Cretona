@@ -257,7 +257,9 @@ private fun HomeContent(
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Model / Engine:", style = MaterialTheme.typography.bodyMedium)
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
