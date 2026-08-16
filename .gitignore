@@ -42,6 +42,8 @@ htmlcov/
 venv/
 backend/data/
 backend/media/
+backend-fastapi/
+backend-legacy/
 
 # Local AI models and generated output
 models/
