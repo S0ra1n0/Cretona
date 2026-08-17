@@ -42,6 +42,48 @@ def video_path(user_id: str, project_id: str) -> str:
     return f"{user_id}/{project_id}/video.mp4"
 
 
+def discard_provider_scratch(
+    media_dir: Path | None,
+    source: str,
+    reserved_names: frozenset[str],
+) -> None:
+    """Delete a provider's per-job output once its bytes are re-hosted.
+
+    Providers write `/media/<job_id>.mp4` into the media root; re-hosting then
+    copies it to an owner-scoped path, and that scoped copy is the only one the
+    project row knows about. Deleting the project removes the copy and leaves
+    the original, which is reachable by anyone who can guess a job id, survives
+    the delete the user asked for, and grows the media root by one file per
+    generation (T2-1).
+
+    Only files sitting directly in the media root are candidates. The scoped
+    copy lives one directory down, so it can never be the thing removed here,
+    and `reserved_names` keeps the bundled demo clip — shared by every mock
+    generation rather than produced by one — out of scope.
+    """
+    if media_dir is None or not source or source.startswith(("http://", "https://")):
+        return
+    if not source.startswith("/media/"):
+        return
+
+    relative = source[len("/media/") :]
+    if not relative or "/" in relative or relative in reserved_names:
+        return
+
+    root = media_dir.resolve()
+    candidate = (media_dir / relative).resolve()
+    # A stored path is provider-supplied, so re-check containment rather than
+    # trusting the prefix test above to have excluded traversal.
+    if candidate.parent != root or not candidate.is_file():
+        return
+    try:
+        candidate.unlink()
+    except OSError:
+        # Cleanup is an optimisation. Failing here would fail a generation whose
+        # bytes are already safely stored.
+        return
+
+
 def assert_owns_path(user_id: str, path: str) -> None:
     """Reject a path whose owner segment is not the caller.
 
@@ -125,8 +167,14 @@ class LocalStorage:
 
     name = "local"
 
-    def __init__(self, media_dir: Path) -> None:
+    def __init__(
+        self,
+        media_dir: Path,
+        *,
+        reserved_media_names: frozenset[str] = frozenset(),
+    ) -> None:
         self.media_dir = media_dir
+        self.reserved_media_names = reserved_media_names
 
     def create_signed_upload(
         self, user_id: str, content_type: str, size_bytes: int, base_url: str
@@ -181,6 +229,9 @@ class LocalStorage:
             shutil.copyfile(source_file, target)
         else:
             target.write_bytes(b"")
+        # Only after the copy has landed: a scratch file deleted before its
+        # bytes are safe is a lost generation.
+        discard_provider_scratch(self.media_dir, source, self.reserved_media_names)
         return f"/media/{user_id}/{project_id}/video.mp4"
 
     def remove_objects(self, image_path: str | None, video_path: str | None) -> None:
@@ -247,6 +298,7 @@ class SupabaseStorage:
         signed_url_ttl_seconds: int,
         client: httpx.Client | None = None,
         media_dir: Path | None = None,
+        reserved_media_names: frozenset[str] = frozenset(),
     ) -> None:
         self.api = f"{base_url.rstrip('/')}/storage/v1"
         self.uploads_bucket = uploads_bucket
@@ -260,6 +312,7 @@ class SupabaseStorage:
         # Optional: lets store_video read fake-provider local files by resolving
         # the /media/<name> URL prefix to an actual on-disk path.
         self._media_dir: Path | None = media_dir
+        self.reserved_media_names = reserved_media_names
 
     def create_signed_upload(
         self, user_id: str, content_type: str, size_bytes: int, base_url: str
@@ -422,6 +475,9 @@ class SupabaseStorage:
         )
         if upload.status_code >= 400:
             raise AppError(500, "INTERNAL_ERROR", "Could not store the generated video.")
+        # The bytes are in the bucket now, so the local scratch file has no
+        # remaining reader (T2-1).
+        discard_provider_scratch(self._media_dir, source, self.reserved_media_names)
         return path
 
     def remove_objects(self, image_path: str | None, video_path: str | None) -> None:

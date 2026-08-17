@@ -38,7 +38,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -295,7 +294,7 @@ private fun StatsTabContent(
                             Triple("Projects", stats.totalProjects.toFloat(), tertiaryColor),
                         )
 
-                        bars.forEachIndexed { index, (label, value, color) ->
+                        bars.forEachIndexed { index, (_, value, color) ->
                             val barHeight = (value / maxVal) * (size.height - 20f)
                             val x = index * (barWidth + 24f) + 16f
                             val y = size.height - barHeight - 10f
@@ -475,7 +474,12 @@ private fun UserCard(
                         text = user.role.uppercase(),
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
-                        color = if (user.role == "admin") MaterialTheme.colorScheme.primary else Color.Gray,
+                        color = if (user.role == "admin") {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            // Theme-driven, so the label stays legible in dark mode.
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
                     )
                     if (user.isDisabled) {
                         Text(
@@ -651,7 +655,12 @@ private fun DiagnosticsTabContent(
                         enabled = !state.isCheckingHealth,
                     ) {
                         if (state.isCheckingHealth) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White)
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                // The spinner sits on a filled Button, so it takes the
+                                // container's own contrast colour rather than a fixed white.
+                                color = MaterialTheme.colorScheme.onPrimary,
+                            )
                             Spacer(modifier = Modifier.width(8.dp))
                         }
                         Text("Ping Server Health")
@@ -682,7 +691,12 @@ private fun DiagnosticsTabContent(
                         enabled = !state.isBackfilling,
                     ) {
                         if (state.isBackfilling) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White)
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                // The spinner sits on a filled Button, so it takes the
+                                // container's own contrast colour rather than a fixed white.
+                                color = MaterialTheme.colorScheme.onPrimary,
+                            )
                             Spacer(modifier = Modifier.width(8.dp))
                         }
                         Text("Backfill Missing Thumbnails")

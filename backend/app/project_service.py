@@ -614,6 +614,7 @@ class ProjectService:
             headers=headers,
             body=body,
             secret=self.settings.webhook_secret.get_secret_value(),
+            tolerance_seconds=self.settings.webhook_tolerance_seconds,
         )
 
         job_id = payload.get("job_id") or payload.get("provider_job_id")

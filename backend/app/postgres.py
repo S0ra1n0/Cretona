@@ -12,6 +12,7 @@ from psycopg.types.json import Json
 from psycopg_pool import ConnectionPool
 
 from app.repository import (
+    AuditEntry,
     UsernameTakenError,
     build_stats,
     decode_cursor,
@@ -27,13 +28,16 @@ TABLE = "public.video_projects"
 SERVICE_TO_DB = {"owner_id": "user_id"}
 DB_TO_SERVICE = {value: key for key, value in SERVICE_TO_DB.items()}
 
-SELECTED_COLUMNS = (
+# Split by the migration that introduced them so a startup failure can name the
+# file to apply. Rows come back through `dict_row`, so the order is cosmetic.
+BASELINE_COLUMNS = (
     "id, user_id, title, prompt, image_path, provider, status, provider_job_id, "
     "error_code, error_message, duration_seconds, aspect_ratio, video_path, "
     "thumbnail_path, poll_count, attempt_count, idempotency_key, started_at, "
-    "progress_percent, step_message, "
     "lease_owner, lease_expires_at, created_at, updated_at, completed_at"
 )
+PROGRESS_COLUMNS = "progress_percent, step_message"
+SELECTED_COLUMNS = f"{BASELINE_COLUMNS}, {PROGRESS_COLUMNS}"
 
 
 class SchemaMismatchError(RuntimeError):
@@ -67,7 +71,7 @@ class PostgresDatabase:
         # request with an opaque one.
         try:
             with self.pool.connection() as connection:
-                connection.execute(f"SELECT {SELECTED_COLUMNS} FROM {TABLE} LIMIT 0")
+                connection.execute(f"SELECT {BASELINE_COLUMNS} FROM {TABLE} LIMIT 0")
         except psycopg.errors.UndefinedTable as exc:
             raise SchemaMismatchError(
                 f"{TABLE} is missing. Apply supabase/bootstrap.sql first."
@@ -80,6 +84,35 @@ class PostgresDatabase:
                 "supabase/004_add_started_at.sql, and "
                 "supabase/005_add_poll_lease.sql."
             ) from exc
+
+        # 009 in two halves, because it changed two things and the columns can
+        # be present while the constraint is not: a database that took the
+        # `add column if not exists` but kept the old `chk_error_code` accepts
+        # every progress update and rejects every cancellation.
+        try:
+            with self.pool.connection() as connection:
+                connection.execute(f"SELECT {PROGRESS_COLUMNS} FROM {TABLE} LIMIT 0")
+        except psycopg.errors.UndefinedColumn as exc:
+            raise SchemaMismatchError(
+                f"{TABLE} is missing progress tracking columns. Apply "
+                "supabase/009_add_progress_tracking.sql."
+            ) from exc
+
+        with self.pool.connection() as connection:
+            row = connection.execute(
+                "SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint "
+                "WHERE conrelid = %s::regclass AND conname = 'chk_error_code'",
+                (TABLE,),
+            ).fetchone()
+        # No constraint at all means nothing rejects the value. Only a
+        # constraint that exists and omits 'cancelled' is a mismatch.
+        if row is not None and "cancelled" not in row["definition"]:
+            raise SchemaMismatchError(
+                f"chk_error_code on {TABLE} rejects the 'cancelled' error code "
+                "that cancellation writes. Apply "
+                "supabase/009_add_progress_tracking.sql."
+            )
+
         try:
             with self.pool.connection() as connection:
                 connection.execute(
@@ -253,6 +286,7 @@ class PostgresDatabase:
         *,
         role: str | None = None,
         is_disabled: bool | None = None,
+        audit: AuditEntry | None = None,
     ) -> dict[str, Any] | None:
         if not _is_uuid(user_id):
             return None
@@ -271,11 +305,16 @@ class PostgresDatabase:
             return self.get_user(user_id)
 
         parameters.append(user_id)
-        with self.pool.connection() as connection:
+        with self.pool.connection() as connection, connection.transaction():
+            # One transaction, so a privilege change cannot commit without its
+            # audit row and an unwritable audit table cannot let one through
+            # unrecorded (T2-5).
             changed = connection.execute(
                 f"UPDATE public.users SET {', '.join(assignments)} WHERE id = %s",
                 tuple(parameters),
             ).rowcount
+            if changed and audit is not None:
+                self._insert_audit_log(connection, audit)
         return self.get_user(user_id) if changed else None
 
     def count_enabled_admins(self) -> int:
@@ -598,6 +637,30 @@ class PostgresDatabase:
             )
         return cursor.rowcount > 0
 
+    @staticmethod
+    def _insert_audit_log(connection: psycopg.Connection[Any], entry: AuditEntry) -> None:
+        """The INSERT alone, on a caller-supplied connection.
+
+        Kept separate so a mutation can enlist it in its own transaction rather
+        than taking a second connection that commits independently.
+        """
+        connection.execute(
+            "INSERT INTO public.admin_audit_logs ("
+            "id, actor_id, action, target_type, target_id, details, created_at"
+            ") VALUES (%s, %s, %s, %s, %s, %s, %s::timestamptz)",
+            (
+                entry.id,
+                entry.actor_id,
+                entry.action,
+                entry.target_type,
+                entry.target_id,
+                # Json, not json.dumps: the column is jsonb, and sending a
+                # string would either be rejected or stored as JSON text.
+                Json(entry.details) if entry.details is not None else None,
+                entry.created_at,
+            ),
+        )
+
     def insert_audit_log(
         self,
         *,
@@ -610,20 +673,16 @@ class PostgresDatabase:
         created_at: str,
     ) -> dict[str, Any]:
         with self.pool.connection() as connection:
-            connection.execute(
-                "INSERT INTO public.admin_audit_logs ("
-                "id, actor_id, action, target_type, target_id, details, created_at"
-                ") VALUES (%s, %s, %s, %s, %s, %s, %s::timestamptz)",
-                (
-                    id,
-                    actor_id,
-                    action,
-                    target_type,
-                    target_id,
-                    # Json, not json.dumps: the column is jsonb, and sending a
-                    # string would either be rejected or stored as JSON text.
-                    Json(details) if details is not None else None,
-                    created_at,
+            self._insert_audit_log(
+                connection,
+                AuditEntry(
+                    id=id,
+                    actor_id=actor_id,
+                    action=action,
+                    target_type=target_type,
+                    target_id=target_id,
+                    details=details,
+                    created_at=created_at,
                 ),
             )
         return {

@@ -38,7 +38,8 @@ credentials it needs.
 | `SUPABASE_UPLOADS_BUCKET` / `SUPABASE_VIDEOS_BUCKET` | `uploads` / `videos` | |
 | `SIGNED_URL_TTL_SECONDS` | `3600` | Bounded to 60…604800, so a signed URL cannot be minted permanent |
 | `MEDIA_DIR` | `assets` | Local storage root |
-| `DEFAULT_VIDEO_PROVIDER` | `fake` | `fake` is the only accepted value; see ADR-009 |
+| `DEFAULT_VIDEO_PROVIDER` | `mock` | Accepts `mock`/`fake`, `cloud`/`real`, `local`/`wan21`. None of them runs a video model — `cloud` and `local` fetch a still from `IMAGE_ENDPOINT` and pan across it, `mock` serves the bundled clip. A real video provider is still gated by ADR-009 and EXP-005 |
+| `IMAGE_ENDPOINT` | `https://image.pollinations.ai` | Hosted text-to-image endpoint used by the `cloud` and `local` tiers. **User prompts are sent to it.** Set empty to stop that egress; the tiers then fall back to the bundled clip. The response is rejected unless it is `image/jpeg`, `image/png`, or `image/webp` under 16 MB, because it is written to `MEDIA_DIR` and served as user media |
 | `MAX_GENERATION_ATTEMPTS` | `3` | Submissions per project before a retry is refused |
 | `GENERATION_QUOTA_LIMIT` | `10` | Per user per window. This is the spend control (ADR-007) |
 | `GENERATION_QUOTA_WINDOW_HOURS` | `24` | |
@@ -47,7 +48,8 @@ credentials it needs.
 | `RATE_LIMIT_GENERATION_PER_MIN` | `10` | Tighter bucket for writes that cost money |
 | `POLLER_ENABLED` | `true` | Advances jobs without waiting for a client read |
 | `POLL_INTERVAL_SECONDS` / `POLL_BATCH_SIZE` | `5` / `20` | |
-| **`WEBHOOK_SECRET`** | — | **Secret.** HMAC-SHA256 over the raw webhook body. Empty rejects every webhook; the route is public, so this is its only gate |
+| **`WEBHOOK_SECRET`** | — | **Secret.** HMAC-SHA256 over `<timestamp>.<raw body>`, sent as `X-Cretona-Signature` alongside `X-Cretona-Timestamp` (unix seconds). Empty rejects every webhook; the route is public, so this is its only gate |
+| `WEBHOOK_TOLERANCE_SECONDS` | `300` | How far the signed timestamp may sit from our clock, in either direction. Bounded to 30…3600. The timestamp is inside the MAC, so a captured delivery cannot be re-dated — but a replay *within* the window is still accepted, which is what closing this properly would need a stored nonce for |
 | `POLL_LEASE_SECONDS` | `120` | Durable claim on a batch. Must exceed batch duration, or another instance re-claims rows still being worked |
 | `GENERATION_LOG_RETENTION_ENABLED` | `true` | Runs one cleanup batch at startup and then on the configured interval |
 | `GENERATION_LOG_RETENTION_DAYS` | `180` | Raw provider audit lifetime; rows exactly at the cutoff are retained |

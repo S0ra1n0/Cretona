@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.errors import AppError
+from app.repository import AuditEntry
 from app.schemas import (
     AdminAuditLog,
     AdminAuditLogPage,
@@ -81,27 +82,29 @@ class AdminService:
                 "This is the last enabled admin. Promote another admin first.",
             )
 
+        # Privilege changes are the actions most worth reconstructing later, so
+        # the trail is written with the change rather than after it: if the
+        # audit row cannot be written, the change does not happen (T2-5).
         row = self.database.update_user_flags(
             target_id,
             role=payload.role,
             is_disabled=payload.is_disabled,
+            audit=self._entry(
+                actor_id=acting_admin_id,
+                action="user_updated",
+                target_type="user",
+                target_id=target_id,
+                details={
+                    "roleFrom": current.get("role"),
+                    "roleTo": payload.role,
+                    "disabledFrom": bool(current.get("is_disabled")),
+                    "disabledTo": payload.is_disabled,
+                },
+            ),
         )
         if row is None:
             raise AppError(404, "NOT_FOUND", "User not found.")
 
-        # Privilege changes are the actions most worth reconstructing later.
-        self._audit(
-            actor_id=acting_admin_id,
-            action="user_updated",
-            target_type="user",
-            target_id=target_id,
-            details={
-                "roleFrom": current.get("role"),
-                "roleTo": payload.role,
-                "disabledFrom": bool(current.get("is_disabled")),
-                "disabledTo": payload.is_disabled,
-            },
-        )
         logger.info(
             "admin_user_updated",
             extra={
@@ -215,6 +218,26 @@ class AdminService:
 
         return BackfillResponse(backfilled=backfilled, processed=len(rows))
 
+    @staticmethod
+    def _entry(
+        *,
+        actor_id: str,
+        action: str,
+        target_type: str,
+        details: dict[str, Any],
+        target_id: str | None = None,
+    ) -> AuditEntry:
+        """An audit row for a mutation to write alongside itself."""
+        return AuditEntry(
+            id=str(uuid.uuid4()),
+            actor_id=actor_id,
+            action=action,
+            target_type=target_type,
+            target_id=target_id,
+            details=details,
+            created_at=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        )
+
     def _audit(
         self,
         *,
@@ -224,27 +247,37 @@ class AdminService:
         details: dict[str, Any],
         target_id: str | None = None,
     ) -> None:
-        """Record an administrative action, without letting it undo one.
+        """Record an action that has already committed, without undoing it.
 
-        The mutation this describes has already committed in its own
-        transaction. Raising here would return 500 for a change that actually
-        succeeded, and an admin who retries on that basis is acting on a false
-        picture -- a worse outcome than a missing audit row.
+        Only for actions with no single transaction to join. The thumbnail
+        backfill is the case: it commits one project at a time, so there is no
+        moment at which the summary row could be atomic with "the mutation".
+        Raising here would return 500 for work that actually happened, and an
+        admin who retries on that basis is acting on a false picture.
+
+        Single-row mutations do not use this. They pass an `AuditEntry` into
+        the write itself, where the trail and the change share a transaction
+        and the trade-off disappears (T2-5).
 
         The failure is logged at error level rather than swallowed quietly,
-        because a gap in an audit trail is itself worth investigating. Writing
-        the row in the same transaction as the mutation would remove the
-        trade-off entirely; that needs a repository that can share one.
+        because a gap in an audit trail is itself worth investigating.
         """
+        entry = self._entry(
+            actor_id=actor_id,
+            action=action,
+            target_type=target_type,
+            target_id=target_id,
+            details=details,
+        )
         try:
             self.database.insert_audit_log(
-                id=str(uuid.uuid4()),
-                actor_id=actor_id,
-                action=action,
-                target_type=target_type,
-                target_id=target_id,
-                details=details,
-                created_at=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+                id=entry.id,
+                actor_id=entry.actor_id,
+                action=entry.action,
+                target_type=entry.target_type,
+                target_id=entry.target_id,
+                details=entry.details,
+                created_at=entry.created_at,
             )
         except Exception:
             logger.error(

@@ -3,25 +3,44 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
+import httpx
+import pytest
 from fastapi.testclient import TestClient
 
+from app.providers import (
+    StillFetchError,
+    _fetch_ai_still_typed,
+    _render_kenburns_from_ai_still,
+)
+from app.webhook_verification import signing_payload
 from tests.conftest import USER_A, WEBHOOK_SECRET
 
 USER_HEADERS = {"X-Debug-User-Id": USER_A}
 
 
-def sign(payload: dict[str, Any], secret: str = WEBHOOK_SECRET) -> tuple[bytes, dict[str, str]]:
+def sign(
+    payload: dict[str, Any],
+    secret: str = WEBHOOK_SECRET,
+    timestamp: str | None = None,
+) -> tuple[bytes, dict[str, str]]:
     """Sign the exact bytes that will be sent.
 
     The server verifies the raw body, so the test must post `content=` rather
     than `json=`; re-serializing would change the bytes the signature covers.
+    The timestamp is inside the MAC, so it is signed here too (T2-4).
     """
     body = json.dumps(payload).encode("utf-8")
-    digest = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+    sent_at = timestamp or str(int(datetime.now(UTC).timestamp()))
+    digest = hmac.new(
+        secret.encode("utf-8"), signing_payload(sent_at, body), hashlib.sha256
+    ).hexdigest()
     return body, {
         "X-Cretona-Signature": f"sha256={digest}",
+        "X-Cretona-Timestamp": sent_at,
         "Content-Type": "application/json",
     }
 
@@ -185,3 +204,86 @@ def test_3_tier_provider_architecture(client: TestClient) -> None:
     local_id = r_local.json()["id"]
     p_local = client.get(f"/api/v1/projects/{local_id}", headers=USER_HEADERS).json()
     assert p_local["status"] in ("pending", "generating", "completed")
+
+
+# --- T2-2: what comes back from the third-party image endpoint --------------
+
+
+def fetch_with(handler: Any, endpoint: str = "https://images.example") -> tuple[bytes, str]:
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    try:
+        return _fetch_ai_still_typed("a lantern", endpoint, client)
+    finally:
+        client.close()
+
+
+def test_a_still_is_accepted_when_it_is_actually_an_image() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        # The prompt is the thing leaving the machine, so assert where it goes.
+        assert request.url.raw_path.startswith(b"/prompt/a%20lantern")
+        assert request.url.params["model"] == "turbo"
+        # No spoofed browser identity.
+        assert "Mozilla" not in request.headers.get("user-agent", "")
+        return httpx.Response(
+            200,
+            content=b"\xff\xd8jpegdata",
+            headers={"content-type": "image/jpeg"},
+        )
+
+    data, content_type = fetch_with(handler)
+
+    assert data == b"\xff\xd8jpegdata"
+    assert content_type == "image/jpeg"
+
+
+def test_an_html_error_page_is_not_treated_as_a_still() -> None:
+    """These bytes get written to MEDIA_DIR and served back as user media."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=b"<html>rate limited</html>",
+            headers={"content-type": "text/html"},
+        )
+
+    with pytest.raises(StillFetchError):
+        fetch_with(handler)
+
+
+def test_an_oversized_response_is_refused() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=b"x" * (16 * 1024 * 1024 + 1),
+            headers={"content-type": "image/png"},
+        )
+
+    with pytest.raises(StillFetchError):
+        fetch_with(handler)
+
+
+def test_an_empty_endpoint_sends_no_prompt_anywhere() -> None:
+    """The opt-out: no configured endpoint means no egress and no request."""
+
+    def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover
+        raise AssertionError("a request was made with no endpoint configured")
+
+    with pytest.raises(StillFetchError):
+        fetch_with(handler, endpoint="")
+
+
+def test_a_refused_still_falls_back_rather_than_failing(tmp_path: Path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    try:
+        result = _render_kenburns_from_ai_still(
+            "a lantern", "job.mp4", tmp_path, "ffmpeg", "https://images.example", client
+        )
+    finally:
+        client.close()
+
+    assert result is None
+    # And nothing half-written was left in the directory served as user media.
+    assert list(tmp_path.iterdir()) == []

@@ -12,6 +12,7 @@ import hashlib
 import hmac
 import json
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,7 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
+from app.webhook_verification import signing_payload
 from tests.conftest import USER_A, WEBHOOK_SECRET
 from tests.test_webhooks_and_providers import post_webhook, sign
 
@@ -188,7 +190,61 @@ def test_a_correctly_signed_webhook_is_accepted(client: TestClient) -> None:
 def test_a_bare_hex_signature_is_accepted(client: TestClient) -> None:
     # Providers differ on whether they prefix the digest.
     project_id = make_project(client)
+    sent_at = str(int(datetime.now(UTC).timestamp()))
     body = json.dumps({"project_id": project_id, "status": "failed"}).encode()
+    digest = hmac.new(
+        WEBHOOK_SECRET.encode(), signing_payload(sent_at, body), hashlib.sha256
+    ).hexdigest()
+
+    response = client.post(
+        "/api/v1/webhooks/fake",
+        content=body,
+        headers={
+            "X-Cretona-Signature": digest,
+            "X-Cretona-Timestamp": sent_at,
+            "Content-Type": "application/json",
+        },
+    )
+
+    assert response.status_code == 200
+
+
+# --- T2-4: freshness --------------------------------------------------------
+
+
+def test_a_replayed_delivery_is_refused_once_it_is_stale(client: TestClient) -> None:
+    """The vulnerability this fixes.
+
+    HMAC proves who sent the bytes, never when. A capture of one valid
+    delivery used to stay valid forever, so anyone who saw a webhook once
+    could resend it and drive the project again.
+    """
+    project_id = make_project(client)
+    captured_at = str(int(datetime.now(UTC).timestamp()) - 3600)
+    body, headers = sign({"project_id": project_id, "status": "succeeded"}, timestamp=captured_at)
+
+    response = client.post("/api/v1/webhooks/fake", content=body, headers=headers)
+
+    assert_refused(response)
+    assert (
+        client.get(f"/api/v1/projects/{project_id}", headers=USER_HEADERS).json()["status"]
+        != "completed"
+    )
+
+
+def test_a_future_dated_delivery_is_refused(client: TestClient) -> None:
+    """A sender with a fast clock would otherwise mint long-lived requests."""
+    project_id = make_project(client)
+    ahead = str(int(datetime.now(UTC).timestamp()) + 3600)
+    body, headers = sign({"project_id": project_id, "status": "succeeded"}, timestamp=ahead)
+
+    assert_refused(client.post("/api/v1/webhooks/fake", content=body, headers=headers))
+
+
+def test_a_delivery_with_no_timestamp_is_refused(client: TestClient) -> None:
+    """The pre-T2-4 signing scheme is no longer accepted."""
+    project_id = make_project(client)
+    body = json.dumps({"project_id": project_id, "status": "succeeded"}).encode()
     digest = hmac.new(WEBHOOK_SECRET.encode(), body, hashlib.sha256).hexdigest()
 
     response = client.post(
@@ -197,4 +253,23 @@ def test_a_bare_hex_signature_is_accepted(client: TestClient) -> None:
         headers={"X-Cretona-Signature": digest, "Content-Type": "application/json"},
     )
 
-    assert response.status_code == 200
+    assert_refused(response)
+
+
+def test_the_timestamp_cannot_be_refreshed_without_the_secret(client: TestClient) -> None:
+    """The timestamp is inside the MAC, so editing it breaks the signature."""
+    project_id = make_project(client)
+    captured_at = str(int(datetime.now(UTC).timestamp()) - 3600)
+    body, headers = sign({"project_id": project_id, "status": "succeeded"}, timestamp=captured_at)
+
+    headers["X-Cretona-Timestamp"] = str(int(datetime.now(UTC).timestamp()))
+    assert_refused(client.post("/api/v1/webhooks/fake", content=body, headers=headers))
+
+
+@pytest.mark.parametrize("value", ["", "   ", "not-a-number", "1.5e9"])
+def test_malformed_timestamps_are_refused(client: TestClient, value: str) -> None:
+    project_id = make_project(client)
+    body, headers = sign({"project_id": project_id, "status": "succeeded"})
+    headers["X-Cretona-Timestamp"] = value
+
+    assert_refused(client.post("/api/v1/webhooks/fake", content=body, headers=headers))

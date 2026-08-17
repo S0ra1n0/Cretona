@@ -173,6 +173,55 @@ def test_deleting_a_project_removes_its_stored_video(
     assert client.get(video).status_code == 404
 
 
+# --- T2-1: the provider's scratch output ------------------------------------
+
+
+def test_rehosting_removes_the_providers_per_job_output(tmp_path: Path) -> None:
+    """The copy left behind used to survive the project it belonged to."""
+    scratch = tmp_path / "real_job-42.mp4"
+    scratch.write_bytes(b"rendered")
+    storage = LocalStorage(tmp_path)
+
+    stored = storage.store_video(USER_A, "project-1", "/media/real_job-42.mp4")
+
+    assert (tmp_path / USER_A / "project-1" / "video.mp4").read_bytes() == b"rendered"
+    assert not scratch.exists()
+    assert stored == f"/media/{USER_A}/project-1/video.mp4"
+
+
+def test_rehosting_keeps_the_shared_demo_clip(tmp_path: Path) -> None:
+    """Every mock generation points at this one file; consuming it breaks them all."""
+    demo = tmp_path / "demo-output.mp4"
+    demo.write_bytes(b"bundled")
+    storage = LocalStorage(tmp_path, reserved_media_names=frozenset({"demo-output.mp4"}))
+
+    storage.store_video(USER_A, "project-1", "/media/demo-output.mp4")
+
+    assert demo.exists()
+
+
+def test_rehosting_never_reaches_outside_the_media_root(tmp_path: Path) -> None:
+    media = tmp_path / "media"
+    media.mkdir()
+    outsider = tmp_path / "important.txt"
+    outsider.write_text("do not delete", encoding="utf-8")
+
+    LocalStorage(media).store_video(USER_A, "project-1", "/media/../important.txt")
+
+    assert outsider.exists()
+
+
+def test_rehosting_leaves_owner_scoped_files_alone(tmp_path: Path) -> None:
+    """Only the media root holds scratch; a nested path is somebody's stored video."""
+    nested = tmp_path / USER_B / "project-9" / "video.mp4"
+    nested.parent.mkdir(parents=True)
+    nested.write_bytes(b"someone else's")
+
+    LocalStorage(tmp_path).store_video(USER_A, "project-1", f"/media/{USER_B}/project-9/video.mp4")
+
+    assert nested.exists()
+
+
 # --- supabase backend, against a mock transport -----------------------------
 
 
@@ -276,6 +325,53 @@ def test_rehosting_downloads_then_uploads_to_an_owned_key() -> None:
     assert stored == f"{USER_A}/p1/video.mp4"
     assert calls[0][0] == "GET"
     assert calls[1][1] == f"{PROJECT_URL}/storage/v1/object/videos/{USER_A}/p1/video.mp4"
+
+
+def test_bucket_rehosting_also_clears_the_local_scratch_file(tmp_path: Path) -> None:
+    """With a bucket backend the scratch file has no reader at all once uploaded."""
+    scratch = tmp_path / "real_job-7.mp4"
+    scratch.write_bytes(b"rendered")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"Key": "videos/x"})
+
+    storage = SupabaseStorage(
+        base_url=PROJECT_URL,
+        service_role_key=SERVICE_KEY,
+        uploads_bucket="uploads",
+        videos_bucket="videos",
+        signed_url_ttl_seconds=3600,
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        media_dir=tmp_path,
+    )
+
+    storage.store_video(USER_A, "p1", "/media/real_job-7.mp4")
+
+    assert not scratch.exists()
+
+
+def test_a_failed_upload_keeps_the_scratch_file(tmp_path: Path) -> None:
+    """Discarding before the bytes are safe would lose the generation."""
+    scratch = tmp_path / "real_job-8.mp4"
+    scratch.write_bytes(b"rendered")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, text="bucket exploded")
+
+    storage = SupabaseStorage(
+        base_url=PROJECT_URL,
+        service_role_key=SERVICE_KEY,
+        uploads_bucket="uploads",
+        videos_bucket="videos",
+        signed_url_ttl_seconds=3600,
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        media_dir=tmp_path,
+    )
+
+    with pytest.raises(AppError):
+        storage.store_video(USER_A, "p1", "/media/real_job-8.mp4")
+
+    assert scratch.exists()
 
 
 def test_store_thumbnail_uploads_to_uploads_bucket() -> None:

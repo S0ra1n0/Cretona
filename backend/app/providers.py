@@ -4,13 +4,14 @@ import logging
 import re
 import subprocess
 import urllib.parse
-import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar, Literal, Protocol
 from uuid import uuid4
 
-from app.webhook_verification import verify_hmac_webhook
+import httpx
+
+from app.webhook_verification import DEFAULT_TOLERANCE_SECONDS, verify_hmac_webhook
 
 logger = logging.getLogger("cretona.providers")
 
@@ -48,11 +49,71 @@ class VideoProvider(Protocol):
     def poll(self, *, job_id: str, prompt: str | None, poll_count: int) -> PollResult: ...
 
     def verify_webhook(
-        self, *, headers: dict[str, str], body: bytes, secret: str = ""
+        self,
+        *,
+        headers: dict[str, str],
+        body: bytes,
+        secret: str = "",
+        tolerance_seconds: int = DEFAULT_TOLERANCE_SECONDS,
     ) -> dict[str, Any]: ...
+
+
 # Hosted text-to-image endpoint. Free and keyless, which is why it satisfies
 # the zero-spend gate, but it is a third party that receives user prompts.
+# Configurable as CRETONA_IMAGE_ENDPOINT; setting it empty disables the call
+# and falls the providers back to the bundled clip (T2-2, CONFIGURATION.md).
 DEFAULT_IMAGE_ENDPOINT = "https://image.pollinations.ai"
+
+# The response is written to disk and later served as user media, so what comes
+# back has to actually be an image. A generous cap: a 1280x720 still that needs
+# more than this is not a still.
+ALLOWED_STILL_TYPES = ("image/jpeg", "image/png", "image/webp")
+MAX_STILL_BYTES = 16 * 1024 * 1024
+STILL_EXTENSION = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
+
+
+class StillFetchError(RuntimeError):
+    """The hosted endpoint did not return a usable image."""
+
+
+def _fetch_ai_still_typed(
+    prompt: str, image_endpoint: str, client: httpx.Client | None
+) -> tuple[bytes, str]:
+    """Fetch one still for `prompt`, returning its bytes and content type.
+
+    The user's prompt leaves this machine here, which is the whole reason the
+    endpoint is configurable: a deployment that cannot send prompts to a third
+    party sets CRETONA_IMAGE_ENDPOINT empty and gets the bundled clip instead.
+    """
+    if not image_endpoint:
+        raise StillFetchError("No image endpoint is configured.")
+
+    encoded = urllib.parse.quote(prompt, safe="")
+    url = f"{image_endpoint.rstrip('/')}/prompt/{encoded}"
+    params = {"width": "1280", "height": "720", "model": "turbo", "nologo": "true"}
+
+    owned = client is None
+    active = client or httpx.Client(timeout=20, follow_redirects=True)
+    try:
+        response = active.get(url, params=params, headers={"Accept": "image/*"})
+        if response.status_code >= 400:
+            raise StillFetchError(f"Endpoint returned {response.status_code}.")
+        # A hosted endpoint that starts returning HTML error pages must not have
+        # them written into the media directory and served as user media.
+        content_type = response.headers.get("content-type", "").split(";")[0].strip().lower()
+        if content_type not in ALLOWED_STILL_TYPES:
+            raise StillFetchError(f"Endpoint returned {content_type or 'no'} content type.")
+        data = response.content
+        if not data:
+            raise StillFetchError("Endpoint returned an empty body.")
+        if len(data) > MAX_STILL_BYTES:
+            raise StillFetchError(f"Endpoint returned {len(data)} bytes.")
+        return data, content_type
+    except httpx.HTTPError as exc:
+        raise StillFetchError(str(exc)) from exc
+    finally:
+        if owned:
+            active.close()
 
 
 def _clean_prompt_for_diffusion(raw_prompt: str) -> str:
@@ -90,6 +151,7 @@ def _render_kenburns_from_ai_still(
     media_dir: Path | None,
     ffmpeg_bin: str = "ffmpeg",
     image_endpoint: str = DEFAULT_IMAGE_ENDPOINT,
+    client: httpx.Client | None = None,
 ) -> str | None:
     """Fetch one AI-generated still and pan across it for five seconds.
 
@@ -115,38 +177,34 @@ def _render_kenburns_from_ai_still(
             return f"/media/{output_filename}"
 
         clean_prompt = _clean_prompt_for_diffusion(prompt)
-        encoded = urllib.parse.quote(clean_prompt)
-        # The user's prompt leaves this machine here. The endpoint is
-        # configurable so a deployment can point it elsewhere or disable it;
-        # see CRETONA_IMAGE_ENDPOINT in docs/CONFIGURATION.md.
-        query = "width=1280&height=720&model=turbo&nologo=true"
-        url = f"{image_endpoint.rstrip('/')}/prompt/{encoded}?{query}"
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        temp_img = media_dir / f"temp_{target_mp4.stem}.jpg"
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            data = resp.read()
+        data, content_type = _fetch_ai_still_typed(clean_prompt, image_endpoint, client)
+        temp_img = media_dir / f"temp_{target_mp4.stem}.{STILL_EXTENSION[content_type]}"
         temp_img.write_bytes(data)
 
-        # Synthesize 5-second cinematic video with smooth pan/zoom motion using FFmpeg
-        cmd = [
-            ffmpeg_bin,
-            "-loop",
-            "1",
-            "-i",
-            str(temp_img),
-            "-vf",
-            "zoompan=z='min(zoom+0.0015,1.5)':d=150:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720:fps=30",
-            "-t",
-            "5",
-            "-c:v",
-            "libx264",
-            "-pix_fmt",
-            "yuv420p",
-            str(target_mp4),
-            "-y",
-        ]
-        res = subprocess.run(cmd, capture_output=True, timeout=20)
-        temp_img.unlink(missing_ok=True)
+        try:
+            # Synthesize 5-second cinematic video with smooth pan/zoom motion using FFmpeg
+            cmd = [
+                ffmpeg_bin,
+                "-loop",
+                "1",
+                "-i",
+                str(temp_img),
+                "-vf",
+                "zoompan=z='min(zoom+0.0015,1.5)':d=150:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720:fps=30",
+                "-t",
+                "5",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                str(target_mp4),
+                "-y",
+            ]
+            res = subprocess.run(cmd, capture_output=True, timeout=20)
+        finally:
+            # An ffmpeg timeout used to leave the still behind in the directory
+            # that is served as user media.
+            temp_img.unlink(missing_ok=True)
         if res.returncode == 0 and target_mp4.exists() and target_mp4.stat().st_size > 1024:
             return f"/media/{output_filename}"
     except Exception as ex:
@@ -213,9 +271,19 @@ class MockVideoProvider:
         )
 
     def verify_webhook(
-        self, *, headers: dict[str, str], body: bytes, secret: str = ""
+        self,
+        *,
+        headers: dict[str, str],
+        body: bytes,
+        secret: str = "",
+        tolerance_seconds: int = DEFAULT_TOLERANCE_SECONDS,
     ) -> dict[str, Any]:
-        return verify_hmac_webhook(headers=headers, body=body, secret=secret)
+        return verify_hmac_webhook(
+            headers=headers,
+            body=body,
+            secret=secret,
+            tolerance_seconds=tolerance_seconds,
+        )
 
 
 # Alias for backward compatibility with earlier tests
@@ -287,9 +355,19 @@ class CloudAiVideoProvider:
         )
 
     def verify_webhook(
-        self, *, headers: dict[str, str], body: bytes, secret: str = ""
+        self,
+        *,
+        headers: dict[str, str],
+        body: bytes,
+        secret: str = "",
+        tolerance_seconds: int = DEFAULT_TOLERANCE_SECONDS,
     ) -> dict[str, Any]:
-        return verify_hmac_webhook(headers=headers, body=body, secret=secret)
+        return verify_hmac_webhook(
+            headers=headers,
+            body=body,
+            secret=secret,
+            tolerance_seconds=tolerance_seconds,
+        )
 
 
 # Aliases for backward compatibility
@@ -362,9 +440,19 @@ class LocalModelVideoProvider:
         )
 
     def verify_webhook(
-        self, *, headers: dict[str, str], body: bytes, secret: str = ""
+        self,
+        *,
+        headers: dict[str, str],
+        body: bytes,
+        secret: str = "",
+        tolerance_seconds: int = DEFAULT_TOLERANCE_SECONDS,
     ) -> dict[str, Any]:
-        return verify_hmac_webhook(headers=headers, body=body, secret=secret)
+        return verify_hmac_webhook(
+            headers=headers,
+            body=body,
+            secret=secret,
+            tolerance_seconds=tolerance_seconds,
+        )
 
 
 class ProviderRegistry:

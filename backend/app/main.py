@@ -57,6 +57,9 @@ def build_storage(settings: Settings) -> LocalStorage | SupabaseStorage:
     Android is unaffected either way: it consumes whatever URL the response
     carries and never learns where the bytes live.
     """
+    # The bundled demo clip is a fixture every mock generation points at, not
+    # a per-job output, so re-hosting must never consume it (T2-1).
+    reserved_media_names = frozenset({settings.fake_video_filename})
     if settings.storage_backend == "supabase":
         return SupabaseStorage(
             base_url=settings.supabase_url,
@@ -65,8 +68,12 @@ def build_storage(settings: Settings) -> LocalStorage | SupabaseStorage:
             videos_bucket=settings.supabase_videos_bucket,
             signed_url_ttl_seconds=settings.signed_url_ttl_seconds,
             media_dir=settings.resolved_media_dir(),
+            reserved_media_names=reserved_media_names,
         )
-    return LocalStorage(settings.resolved_media_dir())
+    return LocalStorage(
+        settings.resolved_media_dir(),
+        reserved_media_names=reserved_media_names,
+    )
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -82,12 +89,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         api_key=active_settings.cloud_ai_api_key.get_secret_value()
         or active_settings.real_ai_api_key.get_secret_value(),
         endpoint=active_settings.cloud_ai_endpoint or active_settings.real_ai_endpoint,
+        image_endpoint=active_settings.image_endpoint,
         video_filename=active_settings.fake_video_filename,
         media_dir=active_settings.resolved_media_dir(),
         ffmpeg_path=active_settings.ffmpeg_path,
     )
     local_provider = LocalModelVideoProvider(
         endpoint=active_settings.local_model_endpoint,
+        image_endpoint=active_settings.image_endpoint,
         video_filename=active_settings.fake_video_filename,
         media_dir=active_settings.resolved_media_dir(),
         ffmpeg_path=active_settings.ffmpeg_path,

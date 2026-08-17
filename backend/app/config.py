@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     # Shared secret for provider webhook signatures. Empty means the public
     # webhook route rejects everything, which is the safe default.
     webhook_secret: SecretStr = SecretStr("")
+    # How far a webhook's signed timestamp may sit from our clock. Bounded
+    # below so the replay window cannot be widened to uselessness, and above so
+    # it cannot be tightened past ordinary clock skew (T2-4).
+    webhook_tolerance_seconds: int = Field(default=300, ge=30, le=3600)
     thumbnails_enabled: bool = True
     # External binary, not a Python dependency. Absent means no thumbnail, not
     # a failed generation.
@@ -100,6 +104,12 @@ class Settings(BaseSettings):
 
     fake_polls_before_complete: int = Field(default=1, ge=1, le=20)
     fake_video_filename: str = "demo-output.mp4"
+
+    # The hosted text-to-image endpoint the Cloud AI and Local tiers fetch a
+    # still from. User prompts are sent to it, so a deployment that cannot
+    # egress prompts to a third party sets this empty; the providers then fall
+    # back to the bundled clip (T2-2).
+    image_endpoint: str = "https://image.pollinations.ai"
 
     @model_validator(mode="after")
     def reject_development_auth_in_production(self) -> Settings:

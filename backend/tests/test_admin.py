@@ -309,3 +309,48 @@ def test_admin_can_list_audit_logs(seeded: TestClient) -> None:
     )
     forbidden = seeded.get("/api/v1/admin/audit-logs", headers=USER_HEADERS)
     assert forbidden.status_code == 403
+
+
+# --- T2-5: the audit row and the change it describes ------------------------
+
+
+def test_an_unwritable_audit_row_rolls_back_the_privilege_change(
+    seeded: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The gap this closes.
+
+    The audit write used to happen after the mutation had already committed,
+    so a failing insert left a promoted admin with no record of who promoted
+    them. Sharing one transaction means the promotion fails too.
+    """
+    database = seeded.app.state.database
+
+    def refuse(connection: Any, entry: Any) -> None:
+        raise RuntimeError("audit table is unavailable")
+
+    monkeypatch.setattr(type(database), "_insert_audit_log", staticmethod(refuse))
+
+    response = seeded.patch(
+        f"/api/v1/admin/users/{USER_A}",
+        headers=ADMIN_HEADERS,
+        json={"role": "admin"},
+    )
+
+    assert response.status_code == 500
+    # The change was refused, not silently kept.
+    assert database.get_user(USER_A)["role"] == "user"
+
+
+def test_a_successful_change_is_recorded_with_it(seeded: TestClient) -> None:
+    database = seeded.app.state.database
+
+    seeded.patch(
+        f"/api/v1/admin/users/{USER_A}",
+        headers=ADMIN_HEADERS,
+        json={"role": "admin"},
+    )
+
+    rows, _ = database.list_audit_logs(limit=50, cursor=None, action="user_updated", actor_id=None)
+    assert [row["target_id"] for row in rows] == [USER_A]
+    assert database.get_user(USER_A)["role"] == "admin"

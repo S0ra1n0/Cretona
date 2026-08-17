@@ -2,7 +2,27 @@ from __future__ import annotations
 
 import base64
 import json
+from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
+
+
+@dataclass(frozen=True)
+class AuditEntry:
+    """An audit row to be written with the mutation it describes.
+
+    Passed into a mutation rather than written after it, so the two either both
+    land or neither does. Logging a failed audit write and carrying on meant an
+    admin action could succeed with no trail at all (T2-5).
+    """
+
+    id: str
+    actor_id: str
+    action: str
+    target_type: str
+    target_id: str | None
+    details: Any
+    created_at: str
+
 
 # Row dictionaries are the stable currency between an adapter and the service
 # layer. Adapters translate their own column names onto these keys, so the

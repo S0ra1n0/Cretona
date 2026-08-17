@@ -1,4 +1,4 @@
-"""Guarded preflight, apply, and verification for Cretona migrations 006-008.
+"""Guarded preflight, apply, and verification for Cretona migrations 006-009.
 
 Run this script only with the repository's pinned FastAPI virtual environment.
 It reads the ignored root ``env`` file, validates that SUPABASE_URL and
@@ -33,6 +33,10 @@ MIGRATIONS = {
     "008": (
         ROOT / "supabase" / "008_add_admin_audit_logs.sql",
         "8568cbe123eb2403752be5d82ee626585fe83a38416b19a00f5d2af4fd369ee7",
+    ),
+    "009": (
+        ROOT / "supabase" / "009_add_progress_tracking.sql",
+        "a70a474ed33cf4fb19914a06d3ffebb90c3f886de27ef982e924ef56bc26fa57",
     ),
 }
 DATA_API_ROLES = ("anon", "authenticated", "service_role")
@@ -114,7 +118,8 @@ def collect_state(cursor: psycopg.Cursor[Any]) -> dict[str, Any]:
         where table_schema = 'public'
           and (
             (table_name = 'video_projects' and column_name in
-              ('started_at', 'lease_owner', 'lease_expires_at'))
+              ('started_at', 'lease_owner', 'lease_expires_at',
+               'progress_percent', 'step_message'))
             or table_name in ('rate_limit_hits', 'admin_audit_logs')
           )
         order by table_name, ordinal_position
@@ -157,6 +162,29 @@ def collect_state(cursor: psycopg.Cursor[Any]) -> dict[str, Any]:
           to_regclass('supabase_migrations.schema_migrations') is not null as cli_history
         """,
     )
+    # MIG-009 changes a constraint as well as adding columns, and the enum
+    # branch only fires where project_status is an enum type. Read all three so
+    # a half-applied 009 is visible rather than inferred from the columns.
+    error_code_constraint = cursor.execute(
+        """
+        select pg_get_constraintdef(oid) as definition
+        from pg_constraint
+        where conrelid = 'public.video_projects'::regclass
+          and conname = 'chk_error_code'
+        """
+    ).fetchone()
+    status_enum_labels = [
+        row["label"]
+        for row in cursor.execute(
+            """
+            select e.enumlabel as label
+            from pg_type t
+            join pg_enum e on e.enumtypid = t.oid
+            where t.typname = 'project_status'
+            order by e.enumsortorder
+            """
+        ).fetchall()
+    ]
     return {
         "server": server,
         "columns": columns,
@@ -165,6 +193,10 @@ def collect_state(cursor: psycopg.Cursor[Any]) -> dict[str, Any]:
         "rate_limit_table": table_state["rate_limit_table"],
         "audit_table": table_state["audit_table"],
         "cli_history": table_state["cli_history"],
+        "error_code_constraint": (
+            error_code_constraint["definition"] if error_code_constraint else None
+        ),
+        "status_enum_labels": status_enum_labels,
     }
 
 
@@ -264,6 +296,70 @@ def assert_008(state: dict[str, Any], *, present: bool) -> None:
         raise GateError("admin_audit_logs.target_id must be nullable for system-wide actions.")
     if audit_columns["details"]["udt_name"] != "jsonb":
         raise GateError("admin_audit_logs.details must be jsonb, not text.")
+
+
+# progress_percent holds 0-100. The migration declares smallint, but any wider
+# integer stores those values exactly, so demanding int2 would fail a database
+# that is functionally correct. Live is int4 — the column pre-dated 009 there,
+# so `add column if not exists` left the existing width alone.
+PROGRESS_INT_TYPES = ("int2", "int4", "int8")
+
+
+def state_009(state: dict[str, Any]) -> dict[str, Any]:
+    """What 009 changed, read back in the three places it changed them."""
+    observed = {
+        (row["table_name"], row["column_name"]): row["udt_name"] for row in state["columns"]
+    }
+    progress = observed.get(("video_projects", "progress_percent"))
+    step_message = observed.get(("video_projects", "step_message"))
+    definition = state["error_code_constraint"]
+    labels = state["status_enum_labels"]
+    return {
+        "columns_present": progress in PROGRESS_INT_TYPES and step_message == "text",
+        # Reported rather than asserted, so a genuine type surprise is still
+        # visible instead of being hidden by the tolerance above.
+        "progress_percent_type": progress,
+        "step_message_type": step_message,
+        "progress_percent_matches_migration": progress == "int2",
+        "constraint_present": definition is not None,
+        "constraint_allows_cancelled": bool(definition) and "cancelled" in definition,
+        "constraint_definition": definition,
+        # No enum means the column is text and the branch was a no-op, which is
+        # a pass rather than a gap.
+        "status_enum_present": bool(labels),
+        "status_enum_allows_cancelled": (not labels) or ("cancelled" in labels),
+        "status_enum_labels": labels,
+    }
+
+
+def assert_009(state: dict[str, Any], *, present: bool) -> None:
+    """009 is applied only when every half of it is.
+
+    A database can hold the columns and still reject a cancellation: the
+    `add column if not exists` half succeeds independently of the constraint
+    swap. Treating "columns exist" as "009 applied" is how a cancel path passes
+    a schema check and then fails on the first real user.
+    """
+    facts = state_009(state)
+    applied = (
+        facts["columns_present"]
+        and facts["constraint_allows_cancelled"]
+        and facts["status_enum_allows_cancelled"]
+    )
+    if present and not applied:
+        missing = []
+        if not facts["columns_present"]:
+            missing.append(
+                "progress_percent/step_message "
+                f"(observed {facts['progress_percent_type']}/{facts['step_message_type']})"
+            )
+        if not facts["constraint_allows_cancelled"]:
+            missing.append("chk_error_code allowing 'cancelled'")
+        if not facts["status_enum_allows_cancelled"]:
+            missing.append("project_status enum value 'cancelled'")
+        raise GateError(f"MIG-009 is incomplete; missing: {', '.join(missing)}.")
+    if not present and applied:
+        raise GateError("MIG-009 is already fully applied; refusing an unplanned re-apply.")
 
 
 def collect_007_verification(cursor: psycopg.Cursor[Any]) -> dict[str, Any]:
@@ -413,6 +509,34 @@ def run_preflight(connection: psycopg.Connection[Any]) -> dict[str, Any]:
     return state
 
 
+def run_status(connection: psycopg.Connection[Any]) -> dict[str, Any]:
+    """Report what is applied without asserting anything.
+
+    `preflight` and `verify-*` answer "is this the state I expected"; they exit
+    non-zero when it is not, which is the wrong shape for the question "is 009
+    applied at all". This answers that one.
+    """
+    state = read_only_state(connection)
+    indexes = index_by_name(state)
+    facts = state_009(state)
+    return {
+        "transaction_read_only": state["transaction_read_only"],
+        "server_version": state["server"]["version"],
+        "migrations": {
+            "006": "idx_logs_retention" in indexes,
+            "007": bool(state["rate_limit_table"]),
+            "008": bool(state["audit_table"]),
+            "009": (
+                facts["columns_present"]
+                and facts["constraint_allows_cancelled"]
+                and facts["status_enum_allows_cancelled"]
+            ),
+        },
+        "migration_009": facts,
+        "invalid_indexes": state["invalid_indexes"],
+    }
+
+
 def run_apply(connection: psycopg.Connection[Any], number: str) -> dict[str, Any]:
     state = read_only_state(connection)
     assert_004_005(state)
@@ -424,12 +548,18 @@ def run_apply(connection: psycopg.Connection[Any], number: str) -> dict[str, Any
         assert_006(state, present=True)
         assert_007_absent(state)
         assert_008(state, present=False)
-    else:
-        # 008 comes last, so everything before it must already be in place.
+    elif number == "008":
         assert_006(state, present=True)
         if not state["rate_limit_table"]:
             raise GateError("public.rate_limit_hits is absent; apply 007 before 008.")
         assert_008(state, present=False)
+    else:
+        # 009 comes last, so everything before it must already be in place.
+        assert_006(state, present=True)
+        if not state["rate_limit_table"]:
+            raise GateError("public.rate_limit_hits is absent; apply 007 before 009.")
+        assert_008(state, present=True)
+        assert_009(state, present=False)
     if state["invalid_indexes"]:
         raise GateError("The public schema contains an invalid, unready, or non-live index.")
 
@@ -472,6 +602,17 @@ def run_verify(connection: psycopg.Connection[Any], number: str) -> dict[str, An
                     "The public schema contains an invalid, unready, or non-live index."
                 )
             result = {"state": state}
+        elif number == "009":
+            state = collect_state(cursor)
+            assert_004_005(state)
+            assert_006(state, present=True)
+            assert_008(state, present=True)
+            assert_009(state, present=True)
+            if state["invalid_indexes"]:
+                raise GateError(
+                    "The public schema contains an invalid, unready, or non-live index."
+                )
+            result = {"state": state, "migration_009": state_009(state)}
         else:
             result = collect_007_verification(cursor)
             assert_004_005(result["state"])
@@ -498,12 +639,15 @@ def main() -> int:
         "action",
         choices=(
             "preflight",
+            "status",
             "apply-006",
             "verify-006",
             "apply-007",
             "verify-007",
             "apply-008",
             "verify-008",
+            "apply-009",
+            "verify-009",
         ),
     )
     parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE)
@@ -526,6 +670,8 @@ def main() -> int:
         ) as connection:
             if args.action == "preflight":
                 result = run_preflight(connection)
+            elif args.action == "status":
+                result = run_status(connection)
             elif args.action.startswith("apply-"):
                 result = run_apply(connection, args.action.removeprefix("apply-"))
             else:

@@ -9,6 +9,7 @@ from threading import Lock
 from typing import Any
 
 from app.repository import (
+    AuditEntry,
     UsernameTakenError,
     build_stats,
     decode_cursor,
@@ -282,6 +283,7 @@ class Database:
         *,
         role: str | None = None,
         is_disabled: bool | None = None,
+        audit: AuditEntry | None = None,
     ) -> dict[str, Any] | None:
         assignments: list[str] = []
         parameters: list[Any] = []
@@ -296,12 +298,17 @@ class Database:
 
         parameters.append(user_id)
         with self.connect() as connection:
+            # One transaction, so a privilege change cannot commit without its
+            # audit row and an unwritable audit table cannot let one through
+            # unrecorded (T2-5).
             cursor = connection.execute(
                 f"UPDATE users SET {', '.join(assignments)} WHERE id = ?",
                 tuple(parameters),
             )
             if cursor.rowcount == 0:
                 return None
+            if audit is not None:
+                self._insert_audit_log(connection, audit)
         return self.get_user(user_id)
 
     def count_enabled_admins(self) -> int:
@@ -622,6 +629,28 @@ class Database:
             )
         return cursor.rowcount > 0
 
+    @staticmethod
+    def _insert_audit_log(connection: sqlite3.Connection, entry: AuditEntry) -> None:
+        """The INSERT alone, on a caller-supplied connection.
+
+        Kept separate so a mutation can enlist it in its own transaction rather
+        than opening a second one that commits independently.
+        """
+        connection.execute(
+            "INSERT INTO admin_audit_logs ("
+            "id, actor_id, action, target_type, target_id, details, created_at"
+            ") VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                entry.id,
+                entry.actor_id,
+                entry.action,
+                entry.target_type,
+                entry.target_id,
+                _as_json(entry.details) if entry.details is not None else None,
+                entry.created_at,
+            ),
+        )
+
     def insert_audit_log(
         self,
         *,
@@ -634,18 +663,16 @@ class Database:
         created_at: str,
     ) -> dict[str, Any]:
         with self.connect() as connection:
-            connection.execute(
-                "INSERT INTO admin_audit_logs ("
-                "id, actor_id, action, target_type, target_id, details, created_at"
-                ") VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (
-                    id,
-                    actor_id,
-                    action,
-                    target_type,
-                    target_id,
-                    _as_json(details) if details is not None else None,
-                    created_at,
+            self._insert_audit_log(
+                connection,
+                AuditEntry(
+                    id=id,
+                    actor_id=actor_id,
+                    action=action,
+                    target_type=target_type,
+                    target_id=target_id,
+                    details=details,
+                    created_at=created_at,
                 ),
             )
         return {
