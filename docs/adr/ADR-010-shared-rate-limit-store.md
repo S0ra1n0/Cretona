@@ -92,16 +92,24 @@ far away.
 - Measured directly against live afterward: **~750-800ms average per call**,
   down from an estimated ~1.4-1.5s — real, but a smaller win than the naive
   "6 trips to 2 trips should mean ~3x faster" arithmetic predicted.
-- Splitting the two round trips apart to see why surfaced something separate
-  and unexplained: back-to-back statements on the same connection showed an
-  alternating ~180ms / ~360ms pattern rather than two uniform ~190ms trips —
-  consistent with a Nagle's-algorithm/delayed-ACK interaction somewhere on the
-  path to the transaction pooler, though this was not confirmed. This is not
-  specific to rate limiting; it plausibly also explains an earlier, separately
-  logged finding of ~1.4s for a single-row project fetch (~7 round trips'
-  worth of latency for work that should need one or two). Left as an open
-  question rather than chased further here — out of scope for what this
-  addendum measures, and worth its own investigation if it matters later.
+- Splitting the two round trips apart on a 6-sample test initially looked like
+  an alternating ~180ms/~360ms pattern, floated at the time as a possible
+  Nagle's-algorithm/delayed-ACK interaction. **Checked properly afterward and
+  that theory was wrong.** `TCP_NODELAY` is confirmed on for these connections
+  (read directly off the socket), which rules Nagle out outright. A cleaner
+  25-sample test of identical statements (no alternation between statement
+  types) on both the session pooler (5432) and transaction pooler (6543)
+  showed the same shape on both: one faster trip right after the connection
+  opens (~190-200ms), then a stable ~370-400ms plateau for every call after
+  that — not alternating, a one-time warm-up discount that doesn't repeat. 2
+  round trips at that steady-state rate is ~760-800ms, matching the measured
+  number above almost exactly; no separate mystery remains. The direct-to-
+  primary host (bypassing the pooler entirely) resolves IPv6-only and this
+  network has no IPv6 route, so the pooler's floor cannot be tested against a
+  true baseline from here — but per `DEC-006`, the real deployment is a team
+  laptop, not co-located cloud infrastructure, so that floor is the actual
+  deployment's floor, not a test artifact. Full trace in
+  `docs/ROADMAP-NEXT.md` T3-5.
 
 **The decision stands.** Postgres remains the shared rate-limit store; no new
 service was added. `test_rate_limit_is_atomic_across_postgres_instances` (the

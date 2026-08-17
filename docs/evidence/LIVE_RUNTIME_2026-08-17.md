@@ -250,17 +250,50 @@ lock-only:      [178, 357, 358, 357, 358, 617]  avg=371ms
 combined stmt:  [420, 176, 177, 182, 179, 401]  avg=256ms
 ```
 
-Notice the alternation: whichever statement runs second in a pair tends to be
-fast (~180ms, matching the plain `SELECT 1` baseline from this morning),
-whichever runs first tends to be slow (~360-420ms). That pattern — not two
-uniform round trips, but one fast and one slow depending on position — is
-consistent with a Nagle's-algorithm/delayed-ACK interaction on the path to the
-pooler, though the actual socket options were not inspected and this is
-unconfirmed. Logged as T3-5. It was not chased further: it's a different,
-deeper question than what T3-3 set out to fix, and it plausibly explains this
+At the time this looked like alternation — fast when a statement ran second in
+a pair, slow when it ran first — floated as a possible Nagle's-algorithm/
+delayed-ACK interaction and logged as T3-5. **Investigated properly afterward;
+that theory was wrong**, and 6 samples turned out to be too few to trust:
+
+```
+=== TCP_NODELAY on a fresh connection ===
+TCP_NODELAY = 1  (Nagle disabled)
+
+=== 25 identical SELECT 1 calls, no alternation between statement types ===
+Session pooler (5432, app's real path):
+  [202, 402, 400, 436, 632, 419, 419, 418, 395, 409, 419, 466, 400, 422,
+   399, 396, 399, 399, 397, 399, 403, 406, 397, 399, 402]
+  min=202  median=402  stdev=64
+
+Transaction pooler (6543, pgbouncer):
+  [187, 375, 368, 373, 554, 374, 375, 375, 372, 372, 368, 374, 371, 375,
+   374, 373, 373, 373, 373, 371, 372, 371, 373, 375, 379]
+  min=187  median=373  stdev=53
+```
+
+`TCP_NODELAY` is confirmed on, read directly off the connection's own socket —
+Nagle is ruled out outright. The real shape, visible once statement-type
+alternation stopped confounding the measurement: **one faster trip right after
+the connection opens (~190-200ms), then a stable plateau (~370-400ms) for
+every subsequent call**, on both poolers. Not alternating — a one-time warm-up
+discount that doesn't repeat. 2 round trips at that steady-state rate is
+~760-800ms, matching the `consume_rate_limit` measurement above almost
+exactly; no separate mystery remains.
+
+Whether the pooler itself adds to that floor, or it's purely network RTT to
+`ap-south-1`, couldn't be tested: `db.fisnwdzhyuiiursljblw.supabase.co` (the
+direct-to-primary host, bypassing Supavisor entirely) resolves IPv6-only, and
+a raw TCP connect from this machine timed out — no IPv6 route exists here.
+Consistent with Supabase's documented IPv4-add-on requirement for direct
+connections. Per `DEC-006` the real deployment is a team laptop, not
+co-located cloud infrastructure, so whichever machine ends up running this
+will hit the same constraint — the pooler's floor is the deployment's floor,
+not an artifact of testing from here.
+
+This also retroactively explains itself: it plausibly accounts for the
 morning's separately-logged "~1.4s for one project fetch, ~7 round trips"
-finding as well — a project fetch and a rate-limit check share the same
-connection-to-pooler path.
+finding too — a project fetch and a rate-limit check share the same
+connection-to-pooler path and the same steady-state cost per trip.
 
 **What was proven, not just measured.** Correctness was checked against a
 disposable local Postgres 17 container (`docker run postgres:17`), not

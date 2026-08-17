@@ -34,9 +34,11 @@ confirmed by hand.
 
 Nothing in this project remains unverified against live at the level this file
 tracks. `backend-fastapi/` is deleted (T2-3). The rate limiter's round-trip
-cost is fixed and verified live (T3-3). What's left is one product-wording
-decision (T0-2), one open latency question worth a look but not urgent (T3-5),
-and the real video provider (T3-1).
+cost is fixed and verified live (T3-3), and the latency floor behind it is now
+fully characterized rather than merely observed (T3-5). The demo/report
+wording is agreed and the docs that contradicted it are corrected (T0-2). The
+only thing left in this file is the real video provider (T3-1), gated on a
+spend or hardware decision that isn't code.
 
 ---
 
@@ -362,47 +364,62 @@ concurrency test (20 concurrent requests, limit 5, exactly 5 succeed) was run
 **~750-800ms average**, down from an estimated ~1.4-1.5s — real, roughly
 45-50% faster, smaller than the ~3x naive round-trip arithmetic predicted.
 
-**Why smaller than predicted, and a new open question.** Splitting the two
-round trips apart to see where the gap went showed an alternating ~180ms /
-~360ms pattern on back-to-back statements over the same connection, not two
-uniform ~190ms trips. Consistent with a Nagle's-algorithm/delayed-ACK
-interaction somewhere on the path to the pooler, unconfirmed. This isn't
-specific to rate limiting — it plausibly explains the *previously* unattributed
-~1.4s / ~7-round-trip cost of a single project fetch, logged separately below.
-Not chased further here; out of scope for this fix.
+**Why smaller than predicted.** Splitting the two round trips apart on a
+6-sample test initially looked like alternation, floated at the time as
+possibly Nagle's-algorithm/delayed-ACK. **Investigated properly under T3-5
+below; that theory was wrong.** `TCP_NODELAY` is confirmed on. The real shape
+is a one-time warm-up discount on the first trip after a connection opens,
+then a stable ~370-400ms plateau — not alternation. 2 trips at that steady
+rate is ~760-800ms, matching this measurement almost exactly.
 
 Full write-up as an addendum to `docs/adr/ADR-010-shared-rate-limit-store.md`
 (appended, not edited — the original decision stands) and in
 `docs/evidence/LIVE_RUNTIME_2026-08-17.md`. **M**
 
-### T3-5 — Possible Nagle/delayed-ACK pattern on the Supabase connection 🆕
-Surfaced while verifying T3-3's fix. Two back-to-back statements over the same
-live connection showed alternating ~180ms / ~360ms timings rather than two
-uniform round trips — the kind of pattern a Nagle's-algorithm/delayed-ACK
-interaction produces, though this was not confirmed against the actual socket
-options or the pooler's behavior. If real, it would compound with every
-sequential-round-trip code path in the backend, not just rate limiting, and
-would plausibly explain T3-2's separately-logged "~1.4s for one project fetch,
-~7 round trips' worth" finding. Needs someone to actually check `TCP_NODELAY`
-on the connection and compare direct-vs-pooled connection strings before it's
-worth acting on. **S** to investigate, unknown to fix.
+### T3-5 — Round-trip latency floor against the live Supabase connection ✅ investigated 2026-08-17
+Surfaced while verifying T3-3's fix, and initially misdiagnosed. Two
+back-to-back statements over the same live connection showed an ~180ms /
+~360ms split, and the working theory at the time was Nagle's-algorithm /
+delayed-ACK interaction. **That theory was wrong**, and checking it properly
+found something more mundane and more useful:
+
+- **`TCP_NODELAY` is already on** for a fresh psycopg connection (checked
+  directly against the connection's own socket). Nagle is ruled out outright.
+- A cleaner test — 25 identical `SELECT 1` calls, no alternation between
+  statement types, on both the session pooler (port 5432, what the app
+  actually uses) and the transaction pooler (port 6543) — showed the same
+  shape on both: **one faster trip right after the connection opens (~190-200ms),
+  then a stable plateau (~400ms session pooler, ~373ms transaction pooler,
+  stdev 50-65ms) that holds for every subsequent call.** Not alternating; a
+  one-time warm-up discount that doesn't repeat. The earlier 6-sample
+  "alternating" read was small-sample noise.
+- **The steady-state floor cleanly explains T3-3's own measurement**: 2 round
+  trips × ~380ms ≈ 760ms, matching the ~750-800ms `consume_rate_limit` measured
+  live almost exactly. No separate mystery needed.
+- **There is no way to bypass the pooler and measure a true floor from this
+  machine.** `db.<ref>.supabase.co` (the direct-to-primary host) resolves
+  IPv6-only, and this machine has no working IPv6 route — a raw TCP connect
+  attempt timed out. Supabase's direct connections are IPv6-only unless you
+  pay for their IPv4 add-on. Given `DEC-006` already commits the real
+  deployment to a team laptop rather than cloud infrastructure, this isn't a
+  test artifact to work around — it's the actual, permanent shape of the only
+  path this project's deployment will ever have to the database.
+
+**Conclusion: not a bug, not fixable in code, and now fully characterized.**
+The ~370-400ms per-round-trip floor is inherent to this deployment topology.
+The only lever that was ever going to help is the one T3-3 already pulled:
+issue fewer round trips. Nothing further to do here.
 
 ---
 
 ## Suggested order
 
-Rewritten 2026-08-17, after T1-1, T1-2, T1-3, Tier 2, T2-3, T3-2, and T3-3 all
-closed the same day.
+Rewritten 2026-08-17, after T1-1, T1-2, T1-3, Tier 2, T2-3, T3-2, T3-3, T0-2,
+and T3-5 all closed the same day.
 
-1. **T0-2** — the wording. Costs nothing, and everything downstream inherits
-   it.
-2. **T3-5**, if it's ever worth an hour — check `TCP_NODELAY` and a
-   direct-vs-pooled connection string before assuming it's real.
-3. **T3-1** — the real feature, once the gates are settled.
-
-~~Delete the `backend-fastapi/` leftover~~ — done. Nothing here is a
-correctness blocker. What's left is a siting decision, one product-wording
-decision, and the genuinely large item.
+Everything in this file is done except **T3-1** — the real video provider,
+gated on a spend or hardware decision that isn't code. Nothing else is
+pending.
 
 ## The rule this project keeps relearning
 
