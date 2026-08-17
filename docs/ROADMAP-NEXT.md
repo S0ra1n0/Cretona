@@ -105,12 +105,14 @@ docstrings and comments rather than rewritten from assumption.
 
 Ordered by how much they can still invalidate finished work.
 
-### T1-1 — Supabase Storage
+### T1-1 — Supabase Storage ✅ done 2026-08-17
 
-The last adapter that has never met a real bucket. Confirm `uploads` and
-`videos` exist, set `CRETONA_STORAGE_BACKEND=supabase`, then sign an upload,
-PUT an object, read it through a signed URL, delete it. Expect trouble around
-bucket existence, service-role permissions, and the signed-URL response shape.
+The last adapter that had never met a real bucket. Read-only check
+(`scripts/verify-live-storage.py`) confirmed `uploads` and `videos` both exist
+and the service-role key has access. The user then ran the write round trip
+(`--round-trip`: upload, sign, fetch, delete) directly and confirmed it passed
+with no problem. All three storage-backed adapters — Postgres, Storage, and
+now this — have run against live.
 
 ### T1-2 — First live project create ✅ already done, confirmed 2026-08-17
 

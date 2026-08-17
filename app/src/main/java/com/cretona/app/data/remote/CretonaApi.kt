@@ -19,6 +19,9 @@ interface CretonaApi {
     @GET("me")
     suspend fun getCurrentUser(): MeDto
 
+    @retrofit2.http.PATCH("me")
+    suspend fun updateProfile(@Body request: MeUpdateRequest): MeDto
+
     @POST("prompts/enhance")
     suspend fun enhancePrompt(@Body request: PromptEnhanceRequest): PromptEnhanceResponse
 
@@ -105,10 +108,19 @@ data class PromptEnhanceResponse(
 )
 
 @Serializable
+data class MeUpdateRequest(
+    val username: String?,
+    // Storage object key from POST /uploads, never a URL. Omitted entirely
+    // when unchanged: sending an explicit null clears the existing avatar.
+    val avatarPath: String? = null,
+)
+
+@Serializable
 data class MeDto(
     val id: String,
     val email: String? = null,
     val username: String? = null,
+    val avatarUrl: String? = null,
     val role: String,
     val isDisabled: Boolean,
     val createdAt: String,

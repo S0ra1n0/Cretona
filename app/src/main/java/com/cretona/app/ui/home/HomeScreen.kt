@@ -15,10 +15,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -77,6 +79,8 @@ import com.cretona.app.domain.model.GenerationQuota
 import com.cretona.app.domain.model.ProjectStatus
 import com.cretona.app.domain.model.UserProfile
 import com.cretona.app.domain.model.VideoProject
+import com.cretona.app.ui.components.ProjectStatusText
+import com.cretona.app.ui.components.verticalScrollbar
 import com.cretona.app.ui.theme.CretonaTheme
 import java.time.Instant
 import java.time.ZoneId
@@ -86,7 +90,7 @@ import java.time.format.FormatStyle
 @Composable
 fun HomeScreen(
     modifier: Modifier = Modifier,
-    onNavigateToAdmin: () -> Unit = {},
+    contentPadding: PaddingValues = PaddingValues(0.dp),
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -138,7 +142,7 @@ fun HomeScreen(
         onDeleteProject = viewModel::deleteProject,
         onRefreshAccount = viewModel::refreshAccount,
         onRefresh = viewModel::refreshHistory,
-        onNavigateToAdmin = onNavigateToAdmin,
+        contentPadding = contentPadding,
         modifier = modifier,
     )
 }
@@ -163,32 +167,28 @@ private fun HomeContent(
     onDeleteProject: (String) -> Unit,
     onRefreshAccount: () -> Unit,
     onRefresh: () -> Unit,
-    onNavigateToAdmin: () -> Unit,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
     modifier: Modifier = Modifier,
 ) {
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
-        topBar = {
-            TopAppBar(
-                title = { Text("Cretona") },
-                actions = {
-                    if (state.account?.role == "admin") {
-                        Button(
-                            onClick = onNavigateToAdmin,
-                            modifier = Modifier.padding(end = 8.dp),
-                        ) {
-                            Text("Admin Panel")
-                        }
-                    }
-                },
-            )
-        },
-    ) { innerPadding ->
+    // The app bar and bottom navigation live in MainScreen, which hosts this
+    // tab; duplicating a Scaffold here would nest two of each.
+    val listState = rememberLazyListState()
+    Box(modifier = modifier.fillMaxSize()) {
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .verticalScrollbar(
+                    state = listState,
+                    color = MaterialTheme.colorScheme.primary,
+                )
                 .padding(horizontal = 20.dp),
+            // Breathing room under the app bar and above the navigation bar,
+            // added to the Scaffold's insets rather than replacing them.
+            contentPadding = PaddingValues(
+                top = contentPadding.calculateTopPadding() + 20.dp,
+                bottom = contentPadding.calculateBottomPadding() + 20.dp,
+            ),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             item {
@@ -462,28 +462,8 @@ private fun HomeContent(
                 }
             }
 
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text("Recent projects", style = MaterialTheme.typography.titleLarge)
-                    OutlinedButton(onClick = onRefresh) { Text("Refresh") }
-                }
-            }
-
-            if (state.projects.isEmpty()) {
-                item { Text("No projects yet. Your first generation will appear here.") }
-            } else {
-                items(state.projects, key = VideoProject::id) { project ->
-                    HistoryCard(
-                        project = project,
-                        onRemix = { onRemixProject(project) },
-                        onDelete = { onDeleteProject(project.id) },
-                    )
-                }
-            }
+            // Past projects now live on the History tab; keeping a second copy
+            // here would mean two lists to keep in sync for no added reach.
         }
     }
 }
@@ -588,7 +568,7 @@ private fun CurrentProjectCard(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(project.title, style = MaterialTheme.typography.titleLarge)
-            StatusText(project)
+            ProjectStatusText(project)
 
             if (project.status == ProjectStatus.PENDING || project.status == ProjectStatus.GENERATING) {
                 val progressFraction = (project.progressPercent.coerceIn(0, 100)) / 100f
@@ -696,133 +676,6 @@ private fun CurrentProjectCard(
 }
 
 @Composable
-private fun HistoryCard(
-    project: VideoProject,
-    onRemix: () -> Unit,
-    onDelete: () -> Unit,
-) {
-    val context = LocalContext.current
-    val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
-    var showDeleteDialog by remember { mutableStateOf(false) }
-
-    if (showDeleteDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Delete project?") },
-            text = {
-                Text(
-                    "\"${project.title}\" will be permanently removed. This cannot be undone.",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showDeleteDialog = false
-                        onDelete()
-                    },
-                ) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) {
-                    Text("Cancel")
-                }
-            },
-        )
-    }
-
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column {
-            if (project.status == ProjectStatus.COMPLETED) {
-                ProjectThumbnail(
-                    thumbnailUrl = project.thumbnailUrl,
-                    title = project.title,
-                    aspectRatio = project.thumbnailAspectRatio,
-                )
-            }
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(14.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Text(project.title, style = MaterialTheme.typography.titleMedium)
-                    StatusText(project)
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        val providerLabel = when (project.provider) {
-                            "real" -> "🤖 Model AI (Real)"
-                            "wan21" -> "⚡ Wan 2.1"
-                            else -> "🎭 Fake Demo"
-                        }
-                        Text(
-                            providerLabel,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = if (project.provider in listOf("real", "wan21")) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outline,
-                        )
-                        if (project.imageUrl != null) {
-                            Text(
-                                "📷 Image-to-Video",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                        }
-                    }
-                }
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    OutlinedButton(
-                        onClick = onRemix,
-                    ) {
-                        Text("✨ Remix", style = MaterialTheme.typography.labelSmall)
-                    }
-
-                    if (project.status == ProjectStatus.COMPLETED && project.videoUrl != null) {
-                        IconButton(
-                            onClick = {
-                                coroutineScope.launch {
-                                    com.cretona.app.core.util.MediaDownloader.shareVideo(
-                                        context,
-                                        project.videoUrl,
-                                        project.title,
-                                    )
-                                }
-                            },
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Share,
-                                contentDescription = "Share video",
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
-                        }
-                    }
-
-                    IconButton(onClick = { showDeleteDialog = true }) {
-                        Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = "Delete project",
-                            tint = MaterialTheme.colorScheme.outline,
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun ImageReferencePicker(
     selectedImageUri: android.net.Uri?,
     onPickImage: () -> Unit,
@@ -889,72 +742,6 @@ private fun ImageReferencePicker(
             Text("Attach Reference Image (Image-to-Video)")
         }
     }
-}
-
-@Composable
-private fun ProjectThumbnail(
-    thumbnailUrl: String?,
-    title: String,
-    aspectRatio: Float,
-) {
-    var loadState by remember(thumbnailUrl) {
-        mutableStateOf(
-            if (thumbnailUrl == null) ThumbnailLoadState.Unavailable
-            else ThumbnailLoadState.Loading,
-        )
-    }
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(aspectRatio)
-            .background(MaterialTheme.colorScheme.surfaceVariant),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (thumbnailUrl != null) {
-            AsyncImage(
-                model = thumbnailUrl,
-                contentDescription = "Preview for $title",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-                onLoading = { loadState = ThumbnailLoadState.Loading },
-                onSuccess = { loadState = ThumbnailLoadState.Loaded },
-                onError = { loadState = ThumbnailLoadState.Unavailable },
-            )
-        }
-        when (loadState) {
-            ThumbnailLoadState.Loading -> CircularProgressIndicator(
-                modifier = Modifier.size(28.dp),
-                strokeWidth = 2.dp,
-            )
-
-            ThumbnailLoadState.Unavailable -> Text(
-                "Preview unavailable",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-
-            ThumbnailLoadState.Loaded -> Unit
-        }
-    }
-}
-
-private enum class ThumbnailLoadState {
-    Loading,
-    Loaded,
-    Unavailable,
-}
-
-@Composable
-private fun StatusText(project: VideoProject) {
-    val color = when (project.status) {
-        ProjectStatus.COMPLETED -> MaterialTheme.colorScheme.primary
-        ProjectStatus.FAILED -> MaterialTheme.colorScheme.error
-        ProjectStatus.PENDING, ProjectStatus.GENERATING -> MaterialTheme.colorScheme.tertiary
-    }
-    Text(
-        text = project.status.name.lowercase().replaceFirstChar(Char::uppercase),
-        color = color,
-        style = MaterialTheme.typography.labelLarge,
-    )
 }
 
 @AndroidxOptIn(UnstableApi::class)
@@ -1108,7 +895,6 @@ private fun HomeScreenPreview() {
             onDeleteProject = {},
             onRefreshAccount = {},
             onRefresh = {},
-            onNavigateToAdmin = {},
         )
     }
 }

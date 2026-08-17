@@ -1,6 +1,8 @@
 package com.cretona.app.di
 
+import com.cretona.app.data.AuthRepositoryImpl
 import com.cretona.app.data.CretonaRepositoryImpl
+import com.cretona.app.domain.repository.AuthRepository
 import com.cretona.app.domain.repository.CretonaRepository
 import dagger.Binds
 import dagger.Module
@@ -14,4 +16,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindCretonaRepository(implementation: CretonaRepositoryImpl): CretonaRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindAuthRepository(implementation: AuthRepositoryImpl): AuthRepository
 }

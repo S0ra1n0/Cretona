@@ -83,19 +83,30 @@ async def enhance_prompt(
 
 @router.get("/me", response_model=MeResponse)
 def get_me(
+    request: Request,
     user_id: UserId,
     service: Annotated[UsersService, Depends(users_service)],
 ) -> MeResponse:
-    return service.get_me(user_id)
+    return service.get_me(user_id, request_base_url(request))
 
 
 @router.patch("/me", response_model=MeResponse)
 def update_me(
     payload: MeUpdate,
+    request: Request,
     user_id: UserId,
     service: Annotated[UsersService, Depends(users_service)],
 ) -> MeResponse:
-    return service.update_me(user_id, payload.username)
+    # An omitted avatarPath must leave the existing picture alone, while an
+    # explicit null clears it. Both arrive as None, so the caller's intent is
+    # only recoverable from which fields were actually sent.
+    return service.update_me(
+        user_id,
+        payload.username,
+        avatar_path=payload.avatar_path,
+        set_avatar="avatar_path" in payload.model_fields_set,
+        base_url=request_base_url(request),
+    )
 
 
 @router.get("/admin/users", response_model=AdminUserPage)

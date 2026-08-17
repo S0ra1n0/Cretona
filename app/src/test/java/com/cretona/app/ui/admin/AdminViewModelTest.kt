@@ -1,5 +1,6 @@
 package com.cretona.app.ui.admin
 
+import com.cretona.app.core.result.AppError
 import com.cretona.app.core.result.AppResult
 import com.cretona.app.data.remote.HealthResponse
 import com.cretona.app.domain.model.AdminAuditLog
@@ -139,6 +140,11 @@ private class FakeAdminRepository : CretonaRepository {
             projectCount = 2,
         ),
     )
+
+    override suspend fun updateProfile(
+        username: String,
+        avatarPath: String?,
+    ): AppResult<UserProfile> = AppResult.Failure(AppError.Unknown("not used in this test"))
 
     override suspend fun getCurrentUser(): AppResult<UserProfile> = throw NotImplementedError()
     override suspend fun enhancePrompt(prompt: String): AppResult<EnhancedPrompt> = throw NotImplementedError()

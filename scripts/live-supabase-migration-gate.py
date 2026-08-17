@@ -1,4 +1,4 @@
-"""Guarded preflight, apply, and verification for Cretona migrations 006-009.
+"""Guarded preflight, apply, and verification for Cretona migrations 006-010.
 
 Run this script only with the repository's pinned FastAPI virtual environment.
 It reads the ignored root ``env`` file, validates that SUPABASE_URL and
@@ -37,6 +37,10 @@ MIGRATIONS = {
     "009": (
         ROOT / "supabase" / "009_add_progress_tracking.sql",
         "a70a474ed33cf4fb19914a06d3ffebb90c3f886de27ef982e924ef56bc26fa57",
+    ),
+    "010": (
+        ROOT / "supabase" / "010_add_user_avatar.sql",
+        "6cfdbcac48db577f4646862b5bd121354118ff72813b5d20021dbc211c32d198",
     ),
 }
 DATA_API_ROLES = ("anon", "authenticated", "service_role")
@@ -173,6 +177,14 @@ def collect_state(cursor: psycopg.Cursor[Any]) -> dict[str, Any]:
           and conname = 'chk_error_code'
         """
     ).fetchone()
+    avatar_column = cursor.execute(
+        """
+        select data_type, udt_name
+        from information_schema.columns
+        where table_schema = 'public' and table_name = 'users'
+          and column_name = 'avatar_path'
+        """
+    ).fetchone()
     status_enum_labels = [
         row["label"]
         for row in cursor.execute(
@@ -197,6 +209,7 @@ def collect_state(cursor: psycopg.Cursor[Any]) -> dict[str, Any]:
             error_code_constraint["definition"] if error_code_constraint else None
         ),
         "status_enum_labels": status_enum_labels,
+        "avatar_column": avatar_column["udt_name"] if avatar_column else None,
     }
 
 
@@ -360,6 +373,18 @@ def assert_009(state: dict[str, Any], *, present: bool) -> None:
         raise GateError(f"MIG-009 is incomplete; missing: {', '.join(missing)}.")
     if not present and applied:
         raise GateError("MIG-009 is already fully applied; refusing an unplanned re-apply.")
+
+
+def assert_010(state: dict[str, Any], *, present: bool) -> None:
+    """public.users.avatar_path, added by MIG-010."""
+    observed = state["avatar_column"]
+    if present and observed != "text":
+        raise GateError(
+            "public.users.avatar_path is "
+            f"{'missing' if observed is None else f'the wrong type ({observed})'}."
+        )
+    if not present and observed is not None:
+        raise GateError("MIG-010 is already applied; refusing an unplanned re-apply.")
 
 
 def collect_007_verification(cursor: psycopg.Cursor[Any]) -> dict[str, Any]:
@@ -526,6 +551,7 @@ def run_status(connection: psycopg.Connection[Any]) -> dict[str, Any]:
             "006": "idx_logs_retention" in indexes,
             "007": bool(state["rate_limit_table"]),
             "008": bool(state["audit_table"]),
+            "010": state["avatar_column"] == "text",
             "009": (
                 facts["columns_present"]
                 and facts["constraint_allows_cancelled"]
@@ -553,13 +579,18 @@ def run_apply(connection: psycopg.Connection[Any], number: str) -> dict[str, Any
         if not state["rate_limit_table"]:
             raise GateError("public.rate_limit_hits is absent; apply 007 before 008.")
         assert_008(state, present=False)
-    else:
-        # 009 comes last, so everything before it must already be in place.
+    elif number == "009":
         assert_006(state, present=True)
         if not state["rate_limit_table"]:
             raise GateError("public.rate_limit_hits is absent; apply 007 before 009.")
         assert_008(state, present=True)
         assert_009(state, present=False)
+    else:
+        # 010 comes last, so everything before it must already be in place.
+        assert_006(state, present=True)
+        assert_008(state, present=True)
+        assert_009(state, present=True)
+        assert_010(state, present=False)
     if state["invalid_indexes"]:
         raise GateError("The public schema contains an invalid, unready, or non-live index.")
 
@@ -613,6 +644,16 @@ def run_verify(connection: psycopg.Connection[Any], number: str) -> dict[str, An
                     "The public schema contains an invalid, unready, or non-live index."
                 )
             result = {"state": state, "migration_009": state_009(state)}
+        elif number == "010":
+            state = collect_state(cursor)
+            assert_004_005(state)
+            assert_009(state, present=True)
+            assert_010(state, present=True)
+            if state["invalid_indexes"]:
+                raise GateError(
+                    "The public schema contains an invalid, unready, or non-live index."
+                )
+            result = {"state": state, "avatar_column": state["avatar_column"]}
         else:
             result = collect_007_verification(cursor)
             assert_004_005(result["state"])
@@ -648,6 +689,8 @@ def main() -> int:
             "verify-008",
             "apply-009",
             "verify-009",
+            "apply-010",
+            "verify-010",
         ),
     )
     parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE)

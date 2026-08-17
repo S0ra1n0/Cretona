@@ -326,6 +326,11 @@ private class FakeRepository(
     var lastStylePreset: String? = null
     var lastCameraMotion: String? = null
 
+    override suspend fun updateProfile(
+        username: String,
+        avatarPath: String?,
+    ): AppResult<UserProfile> = AppResult.Failure(AppError.Unknown("not used in this test"))
+
     override suspend fun getCurrentUser(): AppResult<UserProfile> {
         accountCalls += 1
         if (accountFailure) return AppResult.Failure(AppError.Network("Cannot load quota."))

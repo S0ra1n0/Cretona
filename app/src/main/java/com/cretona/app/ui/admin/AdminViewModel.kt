@@ -2,6 +2,7 @@ package com.cretona.app.ui.admin
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cretona.app.core.result.AppError
 import com.cretona.app.core.result.AppResult
 import com.cretona.app.domain.model.AdminUser
 import com.cretona.app.domain.repository.CretonaRepository
@@ -39,6 +40,16 @@ class AdminViewModel @Inject constructor(
         }
     }
 
+    /**
+     * A 403 from any admin endpoint is authoritative: the backend decided this
+     * caller is not an admin, so the screen stops presenting itself as one.
+     */
+    private fun AppError.markIfForbidden() {
+        if (this is AppError.Forbidden) {
+            _state.update { it.copy(isForbidden = true) }
+        }
+    }
+
     fun loadStats(days: Int = 30) {
         viewModelScope.launch {
             _state.update { it.copy(isLoadingStats = true, statsError = null) }
@@ -53,6 +64,7 @@ class AdminViewModel @Inject constructor(
                     }
                 }
                 is AppResult.Failure -> {
+                    result.error.markIfForbidden()
                     _state.update {
                         it.copy(
                             isLoadingStats = false,
@@ -91,6 +103,7 @@ class AdminViewModel @Inject constructor(
                 }
             }
             is AppResult.Failure -> {
+                    result.error.markIfForbidden()
                 _state.update {
                     it.copy(
                         isLoadingUsers = false,
@@ -137,6 +150,7 @@ class AdminViewModel @Inject constructor(
                     }
                 }
                 is AppResult.Failure -> {
+                    result.error.markIfForbidden()
                     _state.update {
                         it.copy(
                             updatingUserId = null,
@@ -163,6 +177,7 @@ class AdminViewModel @Inject constructor(
                     }
                 }
                 is AppResult.Failure -> {
+                    result.error.markIfForbidden()
                     _state.update {
                         it.copy(
                             updatingUserId = null,
@@ -188,6 +203,7 @@ class AdminViewModel @Inject constructor(
                     }
                 }
                 is AppResult.Failure -> {
+                    result.error.markIfForbidden()
                     _state.update {
                         it.copy(
                             isLoadingLogs = false,
@@ -217,6 +233,7 @@ class AdminViewModel @Inject constructor(
                     }
                 }
                 is AppResult.Failure -> {
+                    result.error.markIfForbidden()
                     _state.update {
                         it.copy(
                             isBackfilling = false,
@@ -248,6 +265,7 @@ class AdminViewModel @Inject constructor(
                     }
                 }
                 is AppResult.Failure -> {
+                    result.error.markIfForbidden()
                     _state.update {
                         it.copy(
                             isCheckingHealth = false,

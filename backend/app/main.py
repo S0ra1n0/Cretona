@@ -139,7 +139,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     api.state.admin_service = AdminService(database)
     api.state.quota_service = QuotaService(database, active_settings)
-    api.state.users_service = UsersService(database, api.state.quota_service)
+    api.state.users_service = UsersService(database, api.state.quota_service, storage)
     api.state.generation_log = GenerationLogService(database)
     api.state.generation_log_retention = GenerationLogRetentionWorker(
         api.state.generation_log, active_settings

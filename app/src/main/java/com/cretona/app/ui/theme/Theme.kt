@@ -14,7 +14,7 @@ private val LightColors = lightColorScheme(
     primary = CretonaPurple,
     onPrimary = androidx.compose.ui.graphics.Color.White,
     primaryContainer = CretonaPurpleLight,
-    secondary = CretonaTeal,
+    secondary = CretonaBlue,
     error = CretonaError,
 )
 
@@ -22,7 +22,7 @@ private val DarkColors = darkColorScheme(
     primary = CretonaPurpleLight,
     onPrimary = CretonaInk,
     primaryContainer = CretonaPurpleDark,
-    secondary = CretonaTeal,
+    secondary = CretonaBlue,
     background = CretonaInk,
     surface = CretonaSurfaceDark,
     error = CretonaError,

@@ -103,6 +103,37 @@ fun AdminScreen(
                 }
             }
 
+            if (state.isForbidden) {
+                // Defence in depth. The button that opens this screen is
+                // already gated on role, and every endpoint behind it is gated
+                // server-side -- this is the third layer, so a non-admin who
+                // arrives here by any future route gets a plain refusal
+                // instead of four tabs of confusing permission errors.
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            "Admin access required",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "This account does not have administrator permissions.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(onClick = onNavigateBack) { Text("Go back") }
+                    }
+                }
+                return@Column
+            }
+
             when (state.selectedTab) {
                 AdminTab.STATS -> StatsTabContent(
                     state = state,

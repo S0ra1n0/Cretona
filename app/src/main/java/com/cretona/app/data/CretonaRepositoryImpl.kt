@@ -4,6 +4,7 @@ import com.cretona.app.core.result.AppError
 import com.cretona.app.core.result.AppResult
 import com.cretona.app.data.remote.CretonaApi
 import com.cretona.app.data.remote.MeDto
+import com.cretona.app.data.remote.MeUpdateRequest
 import com.cretona.app.data.remote.ProjectCreateRequest
 import com.cretona.app.data.remote.ProjectDto
 import com.cretona.app.data.remote.PromptEnhanceRequest
@@ -40,6 +41,15 @@ class CretonaRepositoryImpl @Inject constructor(
 ) : CretonaRepository {
     override suspend fun getCurrentUser(): AppResult<UserProfile> = apiCall {
         api.getCurrentUser().toDomain()
+    }
+
+    override suspend fun updateProfile(
+        username: String,
+        avatarPath: String?,
+    ): AppResult<UserProfile> = apiCall {
+        api.updateProfile(
+            MeUpdateRequest(username = username, avatarPath = avatarPath),
+        ).toDomain()
     }
 
     override suspend fun enhancePrompt(prompt: String): AppResult<EnhancedPrompt> = apiCall {
@@ -203,6 +213,7 @@ internal fun MeDto.toDomain(): UserProfile = UserProfile(
     id = id,
     email = email,
     username = username,
+    avatarUrl = avatarUrl,
     role = role,
     isDisabled = isDisabled,
     createdAt = createdAt,

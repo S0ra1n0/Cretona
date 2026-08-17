@@ -9,7 +9,18 @@ import kotlinx.serialization.Serializable
 sealed interface CretonaRoute {
 
     @Serializable
-    data object Home : CretonaRoute
+    data object Auth : CretonaRoute
+
+    /**
+     * Avatar and username. [isEdit] distinguishes first-run setup, which has
+     * no way back, from editing an existing profile, which can be cancelled.
+     */
+    @Serializable
+    data class ProfileSetup(val isEdit: Boolean = false) : CretonaRoute
+
+    /** The signed-in shell: Home, History and Profile behind one bottom bar. */
+    @Serializable
+    data object Main : CretonaRoute
 
     @Serializable
     data object Admin : CretonaRoute

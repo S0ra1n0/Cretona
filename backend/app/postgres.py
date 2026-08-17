@@ -21,7 +21,9 @@ from app.repository import (
     reject_immutable_columns,
 )
 
-USER_COLUMNS = "u.id, u.email, u.username, u.is_disabled, u.created_at, r.name AS role"
+USER_COLUMNS = (
+    "u.id, u.email, u.username, u.avatar_path, u.is_disabled, u.created_at, r.name AS role"
+)
 
 # The Supabase table spells the owner `user_id` and lives under a different
 # name. Adapters own this translation so ProjectService never learns it.
@@ -138,6 +140,16 @@ class PostgresDatabase:
             raise SchemaMismatchError(
                 "public.admin_audit_logs is missing or incompatible. Apply "
                 "supabase/008_add_admin_audit_logs.sql."
+            ) from exc
+
+        # Named separately so a missing avatar column reports the migration that
+        # adds it, rather than surfacing as a confusing failure on /me.
+        try:
+            with self.pool.connection() as connection:
+                connection.execute("SELECT avatar_path FROM public.users LIMIT 0")
+        except psycopg.errors.UndefinedColumn as exc:
+            raise SchemaMismatchError(
+                "public.users is missing avatar_path. Apply supabase/010_add_user_avatar.sql."
             ) from exc
 
     def close(self) -> None:
@@ -258,13 +270,37 @@ class PostgresDatabase:
         return _to_user(row)
 
     def set_username(self, user_id: str, username: str | None) -> dict[str, Any] | None:
+        return self.update_profile(user_id, username=username)
+
+    def update_profile(
+        self,
+        user_id: str,
+        *,
+        username: str | None = None,
+        avatar_path: str | None = None,
+        set_avatar: bool = False,
+    ) -> dict[str, Any] | None:
+        """Write the profile fields in one statement.
+
+        `set_avatar` distinguishes "leave the avatar alone" from "clear it":
+        both arrive as `avatar_path=None`, and without the flag a rename would
+        silently wipe the picture.
+        """
         if not _is_uuid(user_id):
             return None
+
+        assignments = ["username = %s"]
+        parameters: list[Any] = [username]
+        if set_avatar:
+            assignments.append("avatar_path = %s")
+            parameters.append(avatar_path)
+        parameters.append(user_id)
+
         try:
             with self.pool.connection() as connection:
                 changed = connection.execute(
-                    "UPDATE public.users SET username = %s WHERE id = %s",
-                    (username, user_id),
+                    f"UPDATE public.users SET {', '.join(assignments)} WHERE id = %s",
+                    tuple(parameters),
                 ).rowcount
         except pg_errors.UniqueViolation as exc:
             raise UsernameTakenError(username) from exc

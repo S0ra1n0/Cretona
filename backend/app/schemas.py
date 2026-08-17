@@ -107,6 +107,9 @@ class MeResponse(ApiModel):
     id: str
     email: str | None
     username: str | None
+    # Signed per response and never persisted, for the same reason videoUrl is:
+    # a stored signed URL is a broken image once it expires.
+    avatar_url: str | None = Field(default=None, alias="avatarUrl")
     role: str
     is_disabled: bool = Field(alias="isDisabled")
     created_at: str = Field(alias="createdAt")
@@ -120,6 +123,9 @@ class MeUpdate(ApiModel):
         str | None,
         Field(min_length=3, max_length=30, pattern=r"^[A-Za-z0-9_]+$"),
     ]
+    # Storage object key from POST /uploads, not a URL. Absent means "leave the
+    # avatar as it is"; explicit null means "remove it".
+    avatar_path: str | None = Field(default=None, alias="avatarPath")
 
 
 class AdminUser(ApiModel):

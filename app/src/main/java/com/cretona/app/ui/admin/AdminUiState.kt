@@ -15,6 +15,10 @@ enum class AdminTab(val title: String) {
 
 data class AdminUiState(
     val selectedTab: AdminTab = AdminTab.STATS,
+    // Set when the backend answers any admin call with 403. Hiding the entry
+    // button is presentation, not authorization -- this is what makes the
+    // screen itself refuse a non-admin who reaches it by some other route.
+    val isForbidden: Boolean = false,
     // Stats Tab
     val stats: AdminStats? = null,
     val isLoadingStats: Boolean = false,

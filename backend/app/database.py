@@ -115,6 +115,9 @@ ADDED_COLUMNS = {
     "users": {
         "username": "TEXT",
         "created_at": "TEXT NOT NULL DEFAULT '1970-01-01T00:00:00Z'",
+        # Storage object key for the profile avatar, never a signed URL
+        # (supabase/010_add_user_avatar.sql).
+        "avatar_path": "TEXT",
     },
 }
 
@@ -209,7 +212,8 @@ class Database:
     def get_user(self, user_id: str) -> dict[str, Any] | None:
         with self.connect() as connection:
             row = connection.execute(
-                "SELECT id, email, username, role, is_disabled, created_at FROM users WHERE id = ?",
+                "SELECT id, email, username, avatar_path, role, is_disabled, created_at "
+                "FROM users WHERE id = ?",
                 (user_id,),
             ).fetchone()
         return self._user_row(row)
@@ -220,11 +224,34 @@ class Database:
         Checking availability before writing would still race; translating the
         violation is the only correct version.
         """
+        return self.update_profile(user_id, username=username)
+
+    def update_profile(
+        self,
+        user_id: str,
+        *,
+        username: str | None = None,
+        avatar_path: str | None = None,
+        set_avatar: bool = False,
+    ) -> dict[str, Any] | None:
+        """Write the profile fields in one statement.
+
+        `set_avatar` distinguishes "leave the avatar alone" from "clear it":
+        both arrive as `avatar_path=None`, and without the flag a rename would
+        silently wipe the picture.
+        """
+        assignments = ["username = ?"]
+        parameters: list[Any] = [username]
+        if set_avatar:
+            assignments.append("avatar_path = ?")
+            parameters.append(avatar_path)
+        parameters.append(user_id)
+
         try:
             with self.connect() as connection:
                 cursor = connection.execute(
-                    "UPDATE users SET username = ? WHERE id = ?",
-                    (username, user_id),
+                    f"UPDATE users SET {', '.join(assignments)} WHERE id = ?",
+                    tuple(parameters),
                 )
                 if cursor.rowcount == 0:
                     return None

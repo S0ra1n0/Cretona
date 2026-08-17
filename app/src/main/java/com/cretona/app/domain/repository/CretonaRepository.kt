@@ -13,6 +13,15 @@ import com.cretona.app.domain.model.VideoProject
 interface CretonaRepository {
     suspend fun getCurrentUser(): AppResult<UserProfile>
 
+    /**
+     * Completes or edits the profile. [avatarPath] is the storage key returned
+     * by [uploadImage]; null leaves the existing avatar untouched.
+     */
+    suspend fun updateProfile(
+        username: String,
+        avatarPath: String? = null,
+    ): AppResult<UserProfile>
+
     suspend fun enhancePrompt(prompt: String): AppResult<EnhancedPrompt>
 
     suspend fun uploadImage(
