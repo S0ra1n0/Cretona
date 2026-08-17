@@ -50,6 +50,11 @@ class VideoProvider(Protocol):
     def verify_webhook(
         self, *, headers: dict[str, str], body: bytes, secret: str = ""
     ) -> dict[str, Any]: ...
+# Hosted text-to-image endpoint. Free and keyless, which is why it satisfies
+# the zero-spend gate, but it is a third party that receives user prompts.
+DEFAULT_IMAGE_ENDPOINT = "https://image.pollinations.ai"
+
+
 def _clean_prompt_for_diffusion(raw_prompt: str) -> str:
     """Clean emojis, non-ASCII characters, and normalize keywords to maximize
 
@@ -79,14 +84,27 @@ def _clean_prompt_for_diffusion(raw_prompt: str) -> str:
     return cleaned
 
 
-def _synthesize_live_ai_video(
+def _render_kenburns_from_ai_still(
     prompt: str | None,
     output_filename: str,
     media_dir: Path | None,
     ffmpeg_bin: str = "ffmpeg",
+    image_endpoint: str = DEFAULT_IMAGE_ENDPOINT,
 ) -> str | None:
-    """Generate genuine AI video from the user's prompt using live AI diffusion
-    imagery and cinematic motion interpolation.
+    """Fetch one AI-generated still and pan across it for five seconds.
+
+    This is NOT video generation. A text-to-image model produces a single
+    frame; ffmpeg's `zoompan` then applies a Ken Burns move to it. There is no
+    temporal model, no motion synthesis, and no frame-to-frame coherence — the
+    subject cannot move, because only one image exists.
+
+    It is a legitimate zero-spend placeholder that looks better than a static
+    demo clip. It is not evidence that a video model runs, and EXP-005 remains
+    the gate for that (ADR-009). Do not describe its output as AI-generated
+    video.
+
+    Returns the media path, or None if the still could not be fetched or
+    ffmpeg is unavailable — callers fall back to the bundled demo clip.
     """
     if not media_dir or not prompt:
         return None
@@ -98,7 +116,11 @@ def _synthesize_live_ai_video(
 
         clean_prompt = _clean_prompt_for_diffusion(prompt)
         encoded = urllib.parse.quote(clean_prompt)
-        url = f"https://image.pollinations.ai/prompt/{encoded}?width=1280&height=720&model=turbo&nologo=true"
+        # The user's prompt leaves this machine here. The endpoint is
+        # configurable so a deployment can point it elsewhere or disable it;
+        # see CRETONA_IMAGE_ENDPOINT in docs/CONFIGURATION.md.
+        query = "width=1280&height=720&model=turbo&nologo=true"
+        url = f"{image_endpoint.rstrip('/')}/prompt/{encoded}?{query}"
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         temp_img = media_dir / f"temp_{target_mp4.stem}.jpg"
         with urllib.request.urlopen(req, timeout=20) as resp:
@@ -201,10 +223,16 @@ FakeVideoProvider = MockVideoProvider
 
 
 class CloudAiVideoProvider:
-    """Tier 2: Cloud AI API Video Provider (Wan 2.1 / LTX-Video / Pollinations / Fal.ai).
+    """Tier 2: hosted still image, rendered as a pan.
 
-    Calls real live cloud AI video generation endpoints. Supports external API keys
-    (Fal.ai / Replicate) or live open AI video generation pipelines with dynamic progress.
+    Calls a hosted text-to-image endpoint and applies a Ken Burns move, via
+    `_render_kenburns_from_ai_still`. No cloud *video* model is called, and no
+    API key is used; `api_key` and `endpoint` are placeholders for a real
+    adapter that has not been written.
+
+    Naming it "Cloud AI" describes where the image comes from, not what it
+    generates. Wiring a genuine video API (Fal.ai, Replicate, Wan 2.1) is
+    future work behind EXP-005.
     """
 
     name = "real"
@@ -214,12 +242,14 @@ class CloudAiVideoProvider:
         *,
         api_key: str = "",
         endpoint: str = "",
+        image_endpoint: str = DEFAULT_IMAGE_ENDPOINT,
         video_filename: str = "demo-output.mp4",
         media_dir: Path | None = None,
         ffmpeg_path: str = "ffmpeg",
     ) -> None:
         self.api_key = api_key
         self.endpoint = endpoint or "https://text.pollinations.ai"
+        self.image_endpoint = image_endpoint
         self.video_filename = video_filename
         self.media_dir = media_dir
         self.ffmpeg_path = ffmpeg_path
@@ -240,12 +270,12 @@ class CloudAiVideoProvider:
             return PollResult(
                 status="running",
                 progress_percent=pct,
-                step_message="Cloud diffusion model denoising latent video frames...",
+                step_message="Generating image, then rendering camera move...",
             )
 
         # Synthesize or retrieve the real AI video asset for this prompt
-        live_video = _synthesize_live_ai_video(
-            prompt, f"{job_id}.mp4", self.media_dir, self.ffmpeg_path
+        live_video = _render_kenburns_from_ai_still(
+            prompt, f"{job_id}.mp4", self.media_dir, self.ffmpeg_path, self.image_endpoint
         )
 
         return PollResult(
@@ -268,10 +298,16 @@ Wan21VideoProvider = CloudAiVideoProvider
 
 
 class LocalModelVideoProvider:
-    """Tier 3: Local AI Model Video Provider (LTX-Video / FramePack / Ollama).
+    """Tier 3: reserved for a local model. Nothing local runs yet.
 
-    Executes inference via local GPU/Ollama worker on the machine with memory preflight
-    checks and real diffusion denoising progress steps.
+    This tier is a placeholder. `endpoint` defaults to the Ollama port but is
+    never contacted, no GPU or memory preflight is performed, and no local
+    weights are loaded. It calls the same hosted-still renderer the other
+    tiers use, so its output is identical to theirs.
+
+    LTX-Video was rejected by the EXP-005 pre-screen and FramePack is blocked
+    before inference by the resource gate; until one of those clears, there is
+    nothing for this tier to execute.
     """
 
     name = "local"
@@ -280,11 +316,13 @@ class LocalModelVideoProvider:
         self,
         *,
         endpoint: str = "http://localhost:11434",
+        image_endpoint: str = DEFAULT_IMAGE_ENDPOINT,
         video_filename: str = "demo-output.mp4",
         media_dir: Path | None = None,
         ffmpeg_path: str = "ffmpeg",
     ) -> None:
         self.endpoint = endpoint
+        self.image_endpoint = image_endpoint
         self.video_filename = video_filename
         self.media_dir = media_dir
         self.ffmpeg_path = ffmpeg_path
@@ -305,11 +343,14 @@ class LocalModelVideoProvider:
             return PollResult(
                 status="running",
                 progress_percent=pct,
-                step_message="Local diffusion denoising latents (steps 1-10/20)...",
+                # Says what is happening, not what we wish were happening.
+                # "denoising latents (steps 1-10/20)" described inference that
+                # this tier never performs.
+                step_message="Generating image, then rendering camera move...",
             )
 
-        live_video = _synthesize_live_ai_video(
-            prompt, f"{job_id}.mp4", self.media_dir, self.ffmpeg_path
+        live_video = _render_kenburns_from_ai_still(
+            prompt, f"{job_id}.mp4", self.media_dir, self.ffmpeg_path, self.image_endpoint
         )
 
         return PollResult(
