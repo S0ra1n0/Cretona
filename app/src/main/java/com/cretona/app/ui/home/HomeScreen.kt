@@ -222,9 +222,11 @@ private fun HomeContent(
                         supportingText = {
                             Text(
                                 state.enhancementNote
-                                    ?: if (state.selectedProvider == "real") "Real AI video provider - model AI"
-                                    else if (state.selectedProvider == "wan21") "Wan 2.1 video provider"
-                                    else "Fake video provider - zero-spend demo",
+                                    ?: when (state.selectedProvider) {
+                                        "cloud", "real", "wan21" -> "AI image, then a 5s camera move"
+                                        "local" -> "Placeholder tier — behaves like AI image + motion"
+                                        else -> "Bundled demo clip — zero spend"
+                                    },
                             )
                         },
                     )
@@ -266,23 +268,29 @@ private fun HomeContent(
                         FilterChip(
                             selected = state.selectedProvider == "mock" || state.selectedProvider == "fake",
                             onClick = { onProviderSelected("mock") },
-                            label = { Text("🎭 Mock / Dev") },
+                            label = { Text("🎭 Demo") },
                         )
                         FilterChip(
                             selected = state.selectedProvider == "cloud" || state.selectedProvider == "real" || state.selectedProvider == "wan21",
                             onClick = { onProviderSelected("cloud") },
-                            label = { Text("☁️ Cloud AI (Wan 2.1 / LTX)") },
+                            label = { Text("🖼️ AI image + motion") },
                         )
                         FilterChip(
                             selected = state.selectedProvider == "local",
                             onClick = { onProviderSelected("local") },
-                            label = { Text("💻 Local Model (LTX-Video)") },
+                            label = { Text("💻 Local (not yet available)") },
                         )
                     }
+                    // These describe what each tier actually produces. No video
+                    // model has cleared EXP-005, so none of them generates
+                    // video: the AI tiers render one still image with a camera
+                    // move. Claiming a GPU cluster or local weights would be
+                    // untrue, and users judge the output against the claim.
                     val modelDesc = when (state.selectedProvider) {
-                        "mock", "fake" -> "⚡ Instant zero-cost simulation (best for UI testing & demo)"
-                        "cloud", "real", "wan21" -> "🌐 Live Cloud AI generation via GPU cluster"
-                        "local" -> "🖥️ Runs local model weights on PC (Ollama / LTX)"
+                        "mock", "fake" -> "⚡ Instant bundled sample clip — no generation, best for UI testing"
+                        "cloud", "real", "wan21" ->
+                            "🖼️ Generates an AI image from your prompt, then pans across it for 5s"
+                        "local" -> "🚧 Placeholder — no local model runs yet; output matches AI image + motion"
                         else -> ""
                     }
                     if (modelDesc.isNotEmpty()) {
