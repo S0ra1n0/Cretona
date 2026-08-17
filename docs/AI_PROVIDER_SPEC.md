@@ -7,10 +7,20 @@ Defines the boundary between Cretona and any third-party AI video API. Satisfies
 The TypeScript below is the original executable reference contract. The active
 Python equivalent lives in `backend/app/providers.py`; names differ by
 language, but capabilities, normalized states, and secret boundaries must stay
-behaviorally compatible. Adapters are organized into 3 clear operational tiers:
+behaviorally compatible. Adapters are organized into 3 clear operational tiers.
+
+**Corrected 2026-08-17 (T0-2):** the two lines below previously claimed a
+routed multi-backend video pipeline and a local-model adapter with memory
+preflight. Neither exists. Both `cloud` and `local` call the same
+`_render_kenburns_from_ai_still` helper: one hosted text-to-image still
+(Pollinations), panned with ffmpeg's `zoompan`. §7 below already stated this
+correctly — Wan2.1 and LTX-Video are listed there as unselected research
+candidates and a pre-screen rejection, respectively; the summary just
+disagreed with its own detail table.
+
 - **`mock`** (`MockVideoProvider`, alias `fake`): Deterministic instant mock generator for zero-cost testing and defense demo.
-- **`cloud`** (`CloudAiVideoProvider`, aliases `real`, `wan21`): Real Cloud AI video generation router (Wan 2.1 / LTX-Video / Pollinations / Fal.ai).
-- **`local`** (`LocalModelVideoProvider`): On-device/local machine model adapter (LTX-Video / Ollama / Diffusers) with memory preflight verification.
+- **`cloud`** (`CloudAiVideoProvider`, aliases `real`, `wan21`): Fetches one AI-generated still image from a hosted text-to-image endpoint (Pollinations) and pans across it for 5s with ffmpeg. No video model runs; Wan 2.1, LTX-Video, and Fal.ai are not wired in.
+- **`local`** (`LocalModelVideoProvider`): Reserved for a local model; nothing local runs yet. No GPU/memory preflight, no weights loaded — calls the identical hosted-still-plus-pan path as `cloud`, so its output is indistinguishable from it.
 
 ---
 

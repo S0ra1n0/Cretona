@@ -16,6 +16,7 @@ from typing import Any
 import psycopg
 import pytest
 from fastapi.testclient import TestClient
+from psycopg.rows import dict_row
 
 from app.postgres import SELECTED_COLUMNS, PostgresDatabase
 from tests.conftest import USER_A, USER_B
@@ -88,6 +89,147 @@ def test_rate_limit_is_atomic_across_postgres_instances(
 
     assert sum(allowed for allowed, _remaining in results) == 5
     assert sorted(remaining for allowed, remaining in results if allowed) == [0, 1, 2, 3, 4]
+
+
+# --- T3-3: consume_rate_limit collapsed from ~5-6 round trips to 2 -----------
+#
+# Measured against a live pooler at ~190ms/round trip, the original sequential
+# implementation (lock, clock, caller-scoped delete, count, insert, then an
+# unconditional global sweep) cost roughly a second per rate-limit check. These
+# tests pin the sliding-window semantics and the sweep's sampling directly, so
+# a future change to the SQL cannot silently widen the window or stop
+# reclaiming abandoned callers' rows while still passing the atomicity test
+# above (which only proves the limit cannot be exceeded, not that it stays
+# accurate once rows start expiring).
+
+
+def test_rate_limit_sliding_window_semantics_on_postgres(
+    postgres_client: TestClient,
+    postgres_url: str,
+) -> None:
+    """Exact boundary behaviour of the collapsed statement: N allowed, then
+    refused, with `remaining` counting down and expired hits excluded.
+    """
+    store = PostgresDatabase(postgres_url, min_size=1, max_size=2)
+    store.initialize()
+    try:
+        results = [store.consume_rate_limit("solo-caller", "default", 3, 60.0) for _ in range(4)]
+    finally:
+        store.close()
+
+    assert results == [(True, 2), (True, 1), (True, 0), (False, 0)]
+
+
+def test_expired_hits_do_not_count_against_the_window(
+    postgres_client: TestClient,
+    postgres_url: str,
+) -> None:
+    """A hit older than the window is pruned by the caller's own next call,
+    not just by the sampled global sweep -- this is what keeps a caller who
+    makes one request per window from ever being refused.
+    """
+    store = PostgresDatabase(postgres_url, min_size=1, max_size=2)
+    store.initialize()
+    try:
+        with psycopg.connect(postgres_url, autocommit=True) as connection:
+            connection.execute(
+                "INSERT INTO public.rate_limit_hits (caller_key, bucket, occurred_at) "
+                "VALUES ('stale-caller', 'default', clock_timestamp() - interval '2 minutes')"
+            )
+        allowed, remaining = store.consume_rate_limit("stale-caller", "default", 1, 60.0)
+    finally:
+        store.close()
+
+    assert (allowed, remaining) == (True, 0)
+
+
+def test_sweep_reclaims_another_callers_expired_rows_when_sampled(
+    postgres_client: TestClient,
+    postgres_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The sweep is sampled, not tied to any one caller's own prune -- this is
+    what still bounds the table for a caller who never calls again.
+    """
+    store = PostgresDatabase(postgres_url, min_size=1, max_size=2)
+    store.initialize()
+    try:
+        with psycopg.connect(postgres_url, autocommit=True) as connection:
+            connection.execute(
+                "INSERT INTO public.rate_limit_hits (caller_key, bucket, occurred_at) "
+                "VALUES ('abandoned-caller', 'default', clock_timestamp() - interval '2 minutes')"
+            )
+        monkeypatch.setattr("random.random", lambda: 0.0)  # forces the sample
+        store.consume_rate_limit("someone-else", "default", 5, 60.0)
+
+        with psycopg.connect(postgres_url, autocommit=True, row_factory=dict_row) as connection:
+            remaining = connection.execute(
+                "SELECT count(*) AS n FROM public.rate_limit_hits WHERE caller_key = %s",
+                ("abandoned-caller",),
+            ).fetchone()["n"]
+    finally:
+        store.close()
+
+    assert remaining == 0
+
+
+def test_sweep_does_not_run_on_every_call(
+    postgres_client: TestClient,
+    postgres_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The other side of sampling: most calls must NOT pay the sweep's round
+    trip, or nothing was gained over the unconditional version.
+    """
+    store = PostgresDatabase(postgres_url, min_size=1, max_size=2)
+    store.initialize()
+    try:
+        with psycopg.connect(postgres_url, autocommit=True) as connection:
+            connection.execute(
+                "INSERT INTO public.rate_limit_hits (caller_key, bucket, occurred_at) "
+                "VALUES ('still-abandoned', 'default', clock_timestamp() - interval '2 minutes')"
+            )
+        monkeypatch.setattr("random.random", lambda: 0.99)  # forces skipping the sample
+        store.consume_rate_limit("someone-else-again", "default", 5, 60.0)
+
+        with psycopg.connect(postgres_url, autocommit=True, row_factory=dict_row) as connection:
+            remaining = connection.execute(
+                "SELECT count(*) AS n FROM public.rate_limit_hits WHERE caller_key = %s",
+                ("still-abandoned",),
+            ).fetchone()["n"]
+    finally:
+        store.close()
+
+    assert remaining == 1
+
+
+def test_consume_rate_limit_issues_two_round_trips_in_the_common_case(
+    postgres_client: TestClient,
+    postgres_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pins the round-trip count directly, so the T3-3 rewrite's actual point
+    -- fewer trips, not just equivalent behaviour -- cannot silently regress.
+    """
+    store = PostgresDatabase(postgres_url, min_size=1, max_size=2)
+    store.initialize()
+    try:
+        monkeypatch.setattr("random.random", lambda: 0.99)  # exclude the sampled sweep trip
+
+        calls = 0
+        original = psycopg.Connection.execute
+
+        def counting_execute(self: psycopg.Connection[Any], *args: Any, **kwargs: Any) -> Any:
+            nonlocal calls
+            calls += 1
+            return original(self, *args, **kwargs)
+
+        monkeypatch.setattr(psycopg.Connection, "execute", counting_execute)
+        store.consume_rate_limit("counted-caller", "default", 5, 60.0)
+    finally:
+        store.close()
+
+    assert calls == 2
 
 
 def test_lifecycle_reaches_a_playable_video(

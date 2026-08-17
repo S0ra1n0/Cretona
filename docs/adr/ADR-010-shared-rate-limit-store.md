@@ -56,3 +56,57 @@ Apply migration 007 before deploying the B-3 backend. Older backends ignore
 the additive table, so mixed-version rollout is compatible. Rollback the app
 first; the unused table may remain safely and can be dropped in a later,
 explicit migration because it contains no business records.
+
+---
+
+## Addendum, 2026-08-17: the measurement this ADR asked for
+
+Appended rather than edited, per this repo's ADR convention — the decision
+below is unchanged and reaffirmed, not reversed. If it had been reversed this
+would be a new ADR instead.
+
+The Consequences section above flagged "one small transaction per limited
+request... should be measured before high traffic," and named the exit
+condition: "Redis becomes worth reconsidering only if rate-limit transactions
+become a measurable database bottleneck." Both have now been checked against
+the live project (T3-3, `docs/ROADMAP-NEXT.md`), with a real deployment
+context that wasn't available in 2026-08-13: `DEC-006` places the actual
+target as a team laptop over ordinary internet, not a server co-located with
+Supabase, so the ~190ms/round-trip pooler latency measured from a dev machine
+is a reasonable proxy for the real deployment, not an artifact of testing from
+far away.
+
+**What was measured, and what it means:**
+
+- The original `consume_rate_limit` issued 5-6 sequential round trips per
+  call. Disabling the limiter for an A/B against live cut `GET /projects`
+  from 2979ms to 1468ms — roughly 1.5s attributable to rate limiting alone.
+- The bottleneck was round-trip count, not Postgres throughput or the store
+  choice — Redis would pay the same per-trip tax for the same access pattern.
+  So the fix was to reduce trips, not to replace the store: `consume_rate_limit`
+  was rewritten to 2 round trips (a lock, then one statement combining the
+  clock read, this caller's prune, the count, and a conditional insert via
+  CTEs), with the unconditional global cleanup sweep now sampled
+  (`RATE_LIMIT_SWEEP_SAMPLE_RATE = 0.02`) instead of run on every call, since
+  it has no per-request correctness role.
+- Measured directly against live afterward: **~750-800ms average per call**,
+  down from an estimated ~1.4-1.5s — real, but a smaller win than the naive
+  "6 trips to 2 trips should mean ~3x faster" arithmetic predicted.
+- Splitting the two round trips apart to see why surfaced something separate
+  and unexplained: back-to-back statements on the same connection showed an
+  alternating ~180ms / ~360ms pattern rather than two uniform ~190ms trips —
+  consistent with a Nagle's-algorithm/delayed-ACK interaction somewhere on the
+  path to the transaction pooler, though this was not confirmed. This is not
+  specific to rate limiting; it plausibly also explains an earlier, separately
+  logged finding of ~1.4s for a single-row project fetch (~7 round trips'
+  worth of latency for work that should need one or two). Left as an open
+  question rather than chased further here — out of scope for what this
+  addendum measures, and worth its own investigation if it matters later.
+
+**The decision stands.** Postgres remains the shared rate-limit store; no new
+service was added. `test_rate_limit_is_atomic_across_postgres_instances` (the
+load-bearing correctness test — 20 concurrent requests across 2 store
+instances, limit 5, asserting exactly 5 succeed) passed against the rewrite,
+run 8 times back-to-back with no flakiness, plus new tests pinning the sliding
+window's exact boundary behaviour, expiry, the sweep's sampling in both
+directions, and the round-trip count itself (`backend/tests/test_postgres_parity.py`).

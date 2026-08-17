@@ -22,7 +22,7 @@ and 007 were applied and verified.
 | B-12 | Bucket-backed thumbnails | **Done** — `SupabaseStorage` resolves video frame extraction and uploads frame stills to Supabase Storage bucket; 244 tests passed |
 | B-13 | Thumbnail backfill | **Done** — `POST /admin/thumbnails/backfill` scans completed projects with missing thumbnails and extracts/uploads frame stills |
 | B-14 | Quota cost weighting | **Done** — duration and provider cost weighting (standard 1 unit, Real AI / Wan2.1 / >5s 2 units) with SQL weighted sum and balance assertions |
-| B-16 | Second provider adapter | **Done** — `Wan21VideoProvider` adapter implemented and registered; multi-provider selector chips in Android UI |
+| B-16 | Second provider adapter | **Done, corrected 2026-08-17 (T0-2)** — `LocalModelVideoProvider` (alias `wan21`) registered as a third tier; multi-provider selector chips in Android UI. It is a placeholder, not a Wan 2.1 integration: no local model runs, and its output is identical to the cloud tier's hosted-still-plus-pan |
 
 The numbered migration sequence is now observed applied on live Supabase:
 
@@ -122,7 +122,7 @@ These need a human decision, not just implementation time.
 | ID | Item | Why | Effort | Mark |
 |---|---|---|---|---|
 | B-15 | ADR-008 folder rename | Its "Revisit when" triggers once FastAPI has parity and Android E2E is recorded. Android evidence and live schema evidence exist, but FastAPI runtime parity is still **unverified against live Supabase**. Renaming `backend-fastapi/` to `backend/` and archiving Express remains a large, reviewable commit | L | R |
-| ~~B-16~~ | ~~Second provider~~ | **Done.** `Wan21VideoProvider` adapter implemented and registered; multi-provider selector chips in Android UI | L | R |
+| ~~B-16~~ | ~~Second provider~~ | **Done, corrected 2026-08-17.** `LocalModelVideoProvider` (alias `wan21`) registered as a third tier — a placeholder, not a Wan 2.1 integration; see the entry above | L | R |
 
 ---
 

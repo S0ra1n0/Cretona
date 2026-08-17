@@ -106,7 +106,9 @@ All error responses adhere to the standard JSON envelope:
     }
     ```
   - **Available Options**:
-    - `provider`: `"fake"`, `"real"`, `"wan21"` (defaults to server default).
+    - `provider`: `"mock"`, `"cloud"`, `"local"`, plus the aliases `"fake"`, `"real"`, `"wan21"`
+      (defaults to server default). `mock`↔`fake`, `cloud`/`wan21`↔`real`, `local`↔`local`; the
+      stored and returned value is always the canonical `fake`/`real`/`local`.
     - `aspectRatio`: `"9:16"`, `"16:9"`, `"1:1"`.
     - `stylePreset`: `"anime"`, `"cyberpunk"`, `"3d_pixar"`, `"vintage_film"`, `"photorealistic"`.
     - `cameraMotion`: `"pan_left"`, `"pan_right"`, `"zoom_in"`, `"zoom_out"`, `"dolly_zoom"`, `"orbit"`.
@@ -119,20 +121,28 @@ All error responses adhere to the standard JSON envelope:
 
 - **`GET /projects/{id}/events`**: **Real-time Server-Sent Events (SSE)** stream delivering live progress updates.
   - **Response Headers**: `Content-Type: text/event-stream`
-  - **Event Data**:
+  - **Event Data** (`event: project_update`; keyed `id`, not `projectId` — verified against
+    `stream_project_events` in `routes.py`):
     ```json
     {
-      "projectId": "3c9a1b2d-…",
+      "id": "3c9a1b2d-…",
       "status": "generating",
       "progressPercent": 65,
       "stepMessage": "Rendering diffusion latent frames...",
       "videoUrl": null,
-      "errorCode": null
+      "thumbnailUrl": null,
+      "errorMessage": null
     }
     ```
+    Ends after one `completed` or `failed` event, or after 60 ticks (~90s) at a 1.5s poll
+    interval, whichever comes first.
 
 - **`POST /projects/{id}/cancel`**: Cancels an in-flight generation job.
-  - **Response (200)**: Project Object with `status: "cancelled"`.
+  - **Response (200)**: not a Project Object — `{"cancelled": true, "projectId": "...",
+    "quotaRefunded": true}` (`ProjectCancelResponse` in `schemas.py`). The underlying project's
+    `status` becomes `"failed"` with `errorMessage: "Generation was cancelled by the user."`;
+    `"cancelled"` is never a value of the API's `status` field (`ProjectStatus` only has
+    pending/generating/completed/failed). Fetch the project afterward for its state.
 
 - **`POST /projects/{id}/retry`**: Re-queues a failed project.
 
@@ -148,6 +158,13 @@ All error responses adhere to the standard JSON envelope:
 ## 3. Schemas
 
 ### 3.1 Project Schema
+
+Verified against `ProjectResponse` in `schemas.py` and how `to_response()` in `project_service.py`
+actually populates it — not against the request-time `options` shape, which is a different object
+(§2.4). Corrected 2026-08-17: the previous version of this section showed `errorCode` and a nested
+`options` object with `stylePreset`/`cameraMotion` that the API has never returned; a live
+`GET /projects/{id}` response was diffed against this block to confirm.
+
 ```json
 {
   "id": "3c9a1b2d-4b5e-6f70-8192-a3b4c5d6e7f8",
@@ -157,22 +174,23 @@ All error responses adhere to the standard JSON envelope:
   "videoUrl": "https://storage.example.com/videos/3c9a1b2d.mp4?token=...",
   "thumbnailUrl": "https://storage.example.com/videos/3c9a1b2d_thumb.jpg?token=...",
   "status": "completed",
+  "provider": "real",
+  "errorMessage": null,
   "progressPercent": 100,
   "stepMessage": "Completed",
-  "provider": "real",
-  "options": {
-    "durationSeconds": 5,
-    "aspectRatio": "16:9",
-    "stylePreset": "cyberpunk",
-    "cameraMotion": "pan_left"
-  },
-  "errorMessage": null,
-  "errorCode": null,
+  "durationSeconds": 5,
+  "aspectRatio": "16:9",
   "createdAt": "2026-08-16T09:14:22Z",
   "updatedAt": "2026-08-16T09:16:48Z",
   "completedAt": "2026-08-16T09:16:48Z"
 }
 ```
+
+`stylePreset` and `cameraMotion` are accepted at creation (§2.4) but not echoed back on the
+Project Object — they are folded into the stored `prompt` and otherwise not persisted as their
+own columns. There is no `errorCode`; `errorMessage` is the only failure signal the API exposes,
+and it is the same string regardless of cause (see `FAILURE_MESSAGES` in `project_service.py`) —
+a client cannot currently distinguish *why* a project failed from the API response alone.
 
 ### 3.2 Status Progression Flow
 ```mermaid

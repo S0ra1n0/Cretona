@@ -109,6 +109,8 @@ Project lifecycle transitions are governed strictly by `backend/app/transitions.
 - Leased worker polling ensures at-most-once processing and prevents race conditions under scale.
 
 ### 4.2 Multi-Provider Adapters
-- `FakeVideoProvider`: Zero-spend mock provider for lightning-fast testing and offline demonstrations.
-- `RealAiVideoProvider`: Cloud AI router adapter for production APIs.
-- `Wan21VideoProvider`: Adapter for Alibaba's Wan 2.1 open diffusion model.
+Class names corrected 2026-08-17 (T0-2) to match `backend/app/providers.py`; see
+`docs/AI_PROVIDER_SPEC.md` for what each tier's output actually is.
+- `MockVideoProvider` (alias `fake`): Zero-spend mock provider for lightning-fast testing and offline demonstrations.
+- `CloudAiVideoProvider` (aliases `real`, `wan21`): Fetches one AI-generated still and pans across it with ffmpeg. No video model runs.
+- `LocalModelVideoProvider` (alias `local`): Reserved for a local model; nothing local runs yet. No Wan 2.1 or other model is integrated — it calls the identical still-plus-pan path as the cloud tier.

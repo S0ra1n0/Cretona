@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import random
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -144,6 +145,63 @@ class PostgresDatabase:
 
     # --- rate limiting -------------------------------------------------------
 
+    # T3-3: the read/prune/count/insert cycle used to be four sequential round
+    # trips after the lock, plus an unconditional fifth for the global sweep --
+    # measured against a live pooler at ~190ms/trip, that is most of a second
+    # spent on one rate-limit check. The sweep exists to bound the table for
+    # callers who never come back and make their own prune moot; it has no
+    # per-request correctness role, so it does not need to run on every
+    # request to do its job -- only often enough, in aggregate, across all
+    # traffic. Sampling it here is the same trade the retention sweep and the
+    # request-log sampler already make elsewhere in this codebase.
+    RATE_LIMIT_SWEEP_SAMPLE_RATE = 0.02
+
+    _CONSUME_SQL = """
+        WITH now_ts AS MATERIALIZED (
+            SELECT clock_timestamp() AS now
+        ),
+        pruned AS (
+            -- This caller's own expired hits. Bounded by construction: a
+            -- caller can never hold more than `limit` rows for one bucket,
+            -- because the insert below only happens when count < limit.
+            DELETE FROM public.rate_limit_hits
+            WHERE caller_key = %(key)s AND bucket = %(bucket)s
+              AND occurred_at <= (SELECT now FROM now_ts)
+                                  - (%(window_seconds)s * interval '1 second')
+            RETURNING id
+        ),
+        remaining AS MATERIALIZED (
+            -- Sibling CTEs share one MVCC snapshot, so this SELECT cannot see
+            -- `pruned`'s DELETE directly -- excluding its returned ids by hand
+            -- is what makes the count reflect the post-prune state within a
+            -- single statement, rather than re-reading after a second trip.
+            SELECT count(*) AS used
+            FROM public.rate_limit_hits h
+            WHERE h.caller_key = %(key)s AND h.bucket = %(bucket)s
+              AND NOT EXISTS (SELECT 1 FROM pruned p WHERE p.id = h.id)
+        ),
+        inserted AS (
+            INSERT INTO public.rate_limit_hits (caller_key, bucket, occurred_at)
+            SELECT %(key)s, %(bucket)s, (SELECT now FROM now_ts)
+            WHERE (SELECT used FROM remaining) < %(limit)s
+            RETURNING 1
+        )
+        SELECT
+            (SELECT now FROM now_ts) AS now,
+            (SELECT used FROM remaining) AS used,
+            EXISTS (SELECT 1 FROM inserted) AS did_insert
+    """
+
+    _SWEEP_SQL = """
+        WITH expired AS (
+            SELECT id FROM public.rate_limit_hits
+            WHERE occurred_at <= %s::timestamptz - (%s * interval '1 second')
+            ORDER BY occurred_at ASC, id ASC LIMIT 1000
+            FOR UPDATE SKIP LOCKED
+        ) DELETE FROM public.rate_limit_hits hits
+        USING expired WHERE hits.id = expired.id
+    """
+
     def consume_rate_limit(
         self,
         key: str,
@@ -153,53 +211,36 @@ class PostgresDatabase:
     ) -> tuple[bool, int]:
         """Atomically consume one slot in a shared sliding window.
 
-        The transaction-scoped advisory lock serializes only this caller and
-        bucket across API instances. The database clock is authoritative, so
-        host clock skew cannot create extra allowance. Old rows are deleted in
-        a bounded, SKIP LOCKED batch to keep abandoned callers from growing the
-        table forever.
+        Two round trips in the common case: the advisory lock, then one
+        statement that reads the clock, prunes this caller's expired hits,
+        counts what remains, and inserts if there is room. A third, sampled
+        trip occasionally sweeps other callers' expired rows.
+
+        The lock is acquired on its own, before anything else, exactly as
+        before -- this is transaction-scoped and serializes only this caller
+        and bucket across API instances, and that guarantee must not become
+        entangled with assumptions about CTE evaluation order. Everything
+        after it runs already holding the lock, so no ordering question
+        remains for the combined statement: no concurrent transaction for this
+        caller and bucket can be interleaved with it.
         """
         with self.pool.connection() as connection:
             connection.execute(
                 "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
                 (f"{key}\x1f{bucket}",),
             )
-            now_row = connection.execute("SELECT clock_timestamp() AS now").fetchone()
-            if now_row is None:  # pragma: no cover - SELECT always returns one row
-                raise RuntimeError("Database clock did not return a value.")
-            now = now_row["now"]
-
-            connection.execute(
-                "DELETE FROM public.rate_limit_hits "
-                "WHERE caller_key = %s AND bucket = %s "
-                "AND occurred_at <= %s::timestamptz - (%s * interval '1 second')",
-                (key, bucket, now, window_seconds),
-            )
-            count_row = connection.execute(
-                "SELECT COUNT(*) AS total FROM public.rate_limit_hits "
-                "WHERE caller_key = %s AND bucket = %s",
-                (key, bucket),
+            row = connection.execute(
+                self._CONSUME_SQL,
+                {"key": key, "bucket": bucket, "window_seconds": window_seconds, "limit": limit},
             ).fetchone()
-            used = int(count_row["total"] if count_row else 0)
-            allowed = used < limit
+            if row is None:  # pragma: no cover - SELECT always returns one row
+                raise RuntimeError("Rate limit statement returned no row.")
+            now, used, allowed = row["now"], int(row["used"]), bool(row["did_insert"])
             if allowed:
-                connection.execute(
-                    "INSERT INTO public.rate_limit_hits (caller_key, bucket, occurred_at) "
-                    "VALUES (%s, %s, %s)",
-                    (key, bucket, now),
-                )
                 used += 1
 
-            connection.execute(
-                "WITH expired AS ("
-                "  SELECT id FROM public.rate_limit_hits "
-                "  WHERE occurred_at <= %s::timestamptz - (%s * interval '1 second') "
-                "  ORDER BY occurred_at ASC, id ASC LIMIT 1000 "
-                "  FOR UPDATE SKIP LOCKED"
-                ") DELETE FROM public.rate_limit_hits hits "
-                "USING expired WHERE hits.id = expired.id",
-                (now, window_seconds),
-            )
+            if random.random() < self.RATE_LIMIT_SWEEP_SAMPLE_RATE:
+                connection.execute(self._SWEEP_SQL, (now, window_seconds))
 
         return allowed, max(0, limit - used)
 

@@ -8,6 +8,10 @@ local.properties
 !**/local.properties.example
 *.keystore
 *.jks
+# Access token for scripts/verify-live-runtime.py. Short-lived, but a bearer
+# credential all the same — it belongs in a file rather than shell history.
+.token
+**/.token
 
 # Android / Gradle
 *.iml
