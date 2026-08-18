@@ -257,6 +257,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @api.get("/healthz", tags=["health"])
     @api.get("/health", tags=["health"])
     def root_health() -> dict[str, str]:
+        db = api.state.database
+        try:
+            if hasattr(db, "connect"):
+                with db.connect() as conn:
+                    conn.execute("SELECT 1").fetchone()
+            elif hasattr(db, "pool"):
+                with db.pool.connection() as conn:
+                    conn.execute("SELECT 1").fetchone()
+        except Exception as ex:
+            raise AppError(
+                503, "SERVICE_UNAVAILABLE", f"Database connectivity check failed: {ex}"
+            ) from ex
         return {"status": "ok", "version": APP_VERSION}
 
     api.include_router(router, prefix="/api/v1")

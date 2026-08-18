@@ -59,10 +59,11 @@ class JwksCache:
             if fresh and kid in self._keys:
                 return self._keys[kid]
 
-            # Either the cache is stale, or it is fresh but lacks this kid --
-            # which is what a rotation looks like from here.
+            # Either the cache is stale/uninitialized, or it is fresh but lacks
+            # this kid. Throttle all network fetch attempts by MIN_REFETCH_INTERVAL_SECONDS
+            # to bound request floods against the auth server on repeated failures.
             may_retry = moment - self._last_attempt >= MIN_REFETCH_INTERVAL_SECONDS
-            if not fresh or may_retry:
+            if may_retry:
                 self._refresh(moment)
 
             key = self._keys.get(kid)

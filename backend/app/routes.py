@@ -69,6 +69,20 @@ def request_base_url(request: Request) -> str:
 
 @router.get("/health", response_model=HealthResponse)
 def health(request: Request) -> HealthResponse:
+    # Verify underlying database connectivity (P3-Health)
+    db = request.app.state.database
+    try:
+        if hasattr(db, "connect"):
+            with db.connect() as conn:
+                conn.execute("SELECT 1").fetchone()
+        elif hasattr(db, "pool"):
+            with db.pool.connection() as conn:
+                conn.execute("SELECT 1").fetchone()
+    except Exception as ex:
+        raise AppError(
+            503, "SERVICE_UNAVAILABLE", f"Database connectivity check failed: {ex}"
+        ) from ex
+
     return HealthResponse(version=request.app.state.settings_version)
 
 
