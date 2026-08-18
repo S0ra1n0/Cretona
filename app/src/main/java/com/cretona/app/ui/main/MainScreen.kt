@@ -6,8 +6,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -44,7 +44,7 @@ import com.cretona.app.ui.theme.GalaxyViolet
 
 enum class MainTab(val label: String, val icon: ImageVector) {
     HOME("Home", Icons.Default.Home),
-    HISTORY("History", Icons.Default.List),
+    HISTORY("History", Icons.AutoMirrored.Filled.List),
     PROFILE("Profile", Icons.Default.Person),
 }
 
@@ -102,7 +102,7 @@ fun MainScreen(
                             fontWeight = FontWeight.Bold,
                         )
                     },
-                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = Color.Transparent,
                         titleContentColor = Color.White,
                     ),

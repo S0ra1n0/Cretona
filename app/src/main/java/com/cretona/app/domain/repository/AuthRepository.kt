@@ -9,4 +9,5 @@ import com.cretona.app.core.result.AppResult
  */
 interface AuthRepository {
     suspend fun signIn(email: String, password: String): AppResult<Unit>
+    suspend fun signUp(email: String, password: String): AppResult<Unit>
 }

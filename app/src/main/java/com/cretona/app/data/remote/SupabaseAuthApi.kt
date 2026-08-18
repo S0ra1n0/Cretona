@@ -21,6 +21,13 @@ interface SupabaseAuthApi {
         @Header("Authorization") authorization: String,
         @Body request: SupabaseSignInRequest,
     ): SupabaseSignInResponse
+
+    @POST("auth/v1/signup")
+    suspend fun signUpWithPassword(
+        @Header("apikey") apiKey: String,
+        @Header("Authorization") authorization: String,
+        @Body request: SupabaseSignUpRequest,
+    ): SupabaseSignUpResponse
 }
 
 @Serializable
@@ -35,6 +42,22 @@ data class SupabaseSignInResponse(
     @SerialName("token_type") val tokenType: String? = null,
     @SerialName("expires_in") val expiresIn: Long? = null,
     @SerialName("refresh_token") val refreshToken: String? = null,
+)
+
+@Serializable
+data class SupabaseSignUpRequest(
+    val email: String,
+    val password: String,
+)
+
+@Serializable
+data class SupabaseSignUpResponse(
+    val id: String? = null,
+    @SerialName("access_token") val accessToken: String? = null,
+    @SerialName("token_type") val tokenType: String? = null,
+    @SerialName("expires_in") val expiresIn: Long? = null,
+    @SerialName("refresh_token") val refreshToken: String? = null,
+    val email: String? = null,
 )
 
 /**

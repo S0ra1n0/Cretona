@@ -21,6 +21,9 @@ backend/.devdata/
 # owner-scoped copies under backend/assets/<user-id>/. The bundled demo clip
 # is a committed fixture and stays tracked.
 backend/assets/*/
+backend/assets/*.mp4
+backend/assets/*.jpg
+!backend/assets/demo-output.mp4
 
 # Android / Gradle
 *.iml

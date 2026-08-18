@@ -1,5 +1,8 @@
 package com.cretona.app.ui.auth
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -11,7 +14,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -69,14 +75,12 @@ fun AuthScreen(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 32.dp),
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 32.dp, vertical = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            // White against the dark galaxy gradient; the wordmark carries the
-            // theme color instead so the two lines read as two different weights
-            // of the same statement rather than competing for attention.
             Text(
-                text = "Welcome to",
+                text = if (state.isSignUpMode) "Create Account" else "Welcome to",
                 color = Color.White,
                 style = MaterialTheme.typography.headlineSmall,
             )
@@ -87,7 +91,7 @@ fun AuthScreen(
                 fontWeight = FontWeight.Bold,
             )
 
-            Spacer(modifier = Modifier.height(48.dp))
+            Spacer(modifier = Modifier.height(36.dp))
 
             OutlinedTextField(
                 value = state.email,
@@ -107,16 +111,47 @@ fun AuthScreen(
             OutlinedTextField(
                 value = state.password,
                 onValueChange = viewModel::onPasswordChanged,
-                label = { Text("Password") },
+                label = { Text(if (state.isSignUpMode) "Password (min. 6 chars)" else "Password") },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Password,
-                    imeAction = ImeAction.Done,
+                    imeAction = if (state.isSignUpMode) ImeAction.Next else ImeAction.Done,
+                ),
+                keyboardActions = KeyboardActions(
+                    onDone = {
+                        if (!state.isSignUpMode) viewModel.submit()
+                    },
                 ),
                 modifier = Modifier.fillMaxWidth(),
                 colors = authFieldColors(),
             )
+
+            AnimatedVisibility(
+                visible = state.isSignUpMode,
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = state.confirmPassword,
+                        onValueChange = viewModel::onConfirmPasswordChanged,
+                        label = { Text("Confirm Password") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Password,
+                            imeAction = ImeAction.Done,
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onDone = { viewModel.submit() },
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = authFieldColors(),
+                    )
+                }
+            }
 
             if (state.errorMessage != null) {
                 Spacer(modifier = Modifier.height(12.dp))
@@ -127,10 +162,20 @@ fun AuthScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            if (state.successNotice != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = state.successNotice.orEmpty(),
+                    color = GalaxyBrightAccent,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
 
             Button(
-                onClick = viewModel::login,
+                onClick = viewModel::submit,
                 enabled = state.canSubmit,
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = GalaxyBrightAccent),
@@ -142,21 +187,25 @@ fun AuthScreen(
                         strokeWidth = 2.dp,
                     )
                 } else {
-                    Text("Login")
+                    Text(if (state.isSignUpMode) "Create Account" else "Login")
                 }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
             OutlinedButton(
-                // Account creation is not implemented yet -- intentionally a
-                // no-op rather than a dead-end screen or a misleading toast.
-                onClick = {},
+                onClick = viewModel::toggleMode,
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
                 border = BorderStroke(1.dp, Color.White.copy(alpha = 0.6f)),
             ) {
-                Text("Create an account")
+                Text(
+                    if (state.isSignUpMode) {
+                        "Already have an account? Sign In"
+                    } else {
+                        "Don't have an account? Create an account"
+                    },
+                )
             }
         }
     }

@@ -7,6 +7,7 @@ import com.cretona.app.core.result.AppResult
 import com.cretona.app.data.remote.SupabaseAuthApi
 import com.cretona.app.data.remote.SupabaseErrorResponse
 import com.cretona.app.data.remote.SupabaseSignInRequest
+import com.cretona.app.data.remote.SupabaseSignUpRequest
 import com.cretona.app.domain.repository.AuthRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
@@ -42,6 +43,26 @@ class AuthRepositoryImpl @Inject constructor(
         AppResult.Failure(AppError.Unknown())
     }
 
+    override suspend fun signUp(email: String, password: String): AppResult<Unit> = try {
+        val response = api.signUpWithPassword(
+            apiKey = BuildConfig.SUPABASE_ANON_KEY,
+            authorization = "Bearer ${BuildConfig.SUPABASE_ANON_KEY}",
+            request = SupabaseSignUpRequest(email = email.trim(), password = password),
+        )
+        if (!response.accessToken.isNullOrBlank()) {
+            session.setSession(response.accessToken)
+        }
+        AppResult.Success(Unit)
+    } catch (cancellation: CancellationException) {
+        throw cancellation
+    } catch (error: HttpException) {
+        AppResult.Failure(error.toAuthError(json))
+    } catch (_: IOException) {
+        AppResult.Failure(AppError.Network("Cannot reach the authentication server."))
+    } catch (_: Exception) {
+        AppResult.Failure(AppError.Unknown())
+    }
+
     private fun HttpException.toAuthError(json: Json): AppError {
         val parsed = response()?.errorBody()?.string()?.let { body ->
             runCatching { json.decodeFromString(SupabaseErrorResponse.serializer(), body) }.getOrNull()
@@ -50,10 +71,10 @@ class AuthRepositoryImpl @Inject constructor(
 
         return when {
             // GoTrue answers wrong credentials with 400, not 401.
-            code() == 400 || code() == 401 -> AppError.Unauthorized(detail ?: "Incorrect email or password.")
+            code() == 400 || code() == 401 -> AppError.Unauthorized(detail ?: "Authentication failed. Check your input.")
             code() in 500..599 ->
                 AppError.Server(code(), "The authentication service had a problem. Try again.")
-            else -> AppError.Server(code(), detail ?: "Sign-in failed.")
+            else -> AppError.Server(code(), detail ?: "Authentication failed.")
         }
     }
 }
