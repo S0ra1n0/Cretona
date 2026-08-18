@@ -1,5 +1,8 @@
 package com.cretona.app.domain.model
 
+import androidx.compose.runtime.Immutable
+
+@Immutable
 data class AdminStats(
     val totalUsers: Int,
     val activeUsers: Int,
@@ -10,6 +13,7 @@ data class AdminStats(
     val daily: List<DailyStats>,
 )
 
+@Immutable
 data class DailyStats(
     val date: String,
     val created: Int,
@@ -17,6 +21,7 @@ data class DailyStats(
     val failed: Int,
 )
 
+@Immutable
 data class AdminUser(
     val id: String,
     val email: String?,
@@ -27,6 +32,7 @@ data class AdminUser(
     val projectCount: Int,
 )
 
+@Immutable
 data class AdminAuditLog(
     val id: String,
     val actorId: String,
@@ -36,11 +42,13 @@ data class AdminAuditLog(
     val createdAt: String,
 )
 
+@Immutable
 data class BackfillResult(
     val backfilled: Int,
     val processed: Int,
 )
 
+@Immutable
 data class AdminMetrics(
     val uptimeSeconds: Float,
     val activeJobs: Int,

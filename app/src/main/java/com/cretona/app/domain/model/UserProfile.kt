@@ -1,5 +1,8 @@
 package com.cretona.app.domain.model
 
+import androidx.compose.runtime.Immutable
+
+@Immutable
 data class UserProfile(
     val id: String,
     val email: String?,
@@ -18,6 +21,7 @@ data class UserProfile(
         get() = username.isNullOrBlank()
 }
 
+@Immutable
 data class GenerationQuota(
     val limit: Int,
     val used: Int,

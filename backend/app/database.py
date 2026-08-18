@@ -95,6 +95,18 @@ CREATE TABLE IF NOT EXISTS admin_audit_logs (
 CREATE INDEX IF NOT EXISTS admin_audit_logs_created_idx
 ON admin_audit_logs(created_at DESC, id DESC);
 
+CREATE INDEX IF NOT EXISTS admin_audit_logs_action_created_idx
+ON admin_audit_logs(action, created_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS admin_audit_logs_actor_created_idx
+ON admin_audit_logs(actor_id, created_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS projects_provider_job_idx
+ON projects(provider, provider_job_id);
+
+CREATE INDEX IF NOT EXISTS projects_deleted_idx
+ON projects(deleted_at, owner_id);
+
 """
 
 # Columns added after the first release. SQLite has no `ADD COLUMN IF NOT

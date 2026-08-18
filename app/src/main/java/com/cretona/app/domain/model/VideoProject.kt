@@ -1,5 +1,7 @@
 package com.cretona.app.domain.model
 
+import androidx.compose.runtime.Immutable
+
 enum class ProjectStatus {
     PENDING,
     GENERATING,
@@ -7,6 +9,7 @@ enum class ProjectStatus {
     FAILED,
 }
 
+@Immutable
 data class VideoProject(
     val id: String,
     val title: String,
@@ -34,6 +37,7 @@ data class VideoProject(
         }
 }
 
+@Immutable
 data class EnhancedPrompt(
     val text: String,
     val provider: String,

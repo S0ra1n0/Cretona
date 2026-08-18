@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import json
 from typing import Annotated
 from uuid import UUID
 
@@ -251,7 +253,7 @@ async def upload_image(
     # Type first, so an unsupported upload is refused before a byte is read.
     validate_upload_request(content_type, 0)
     data = await read_bounded(file, MAX_IMAGE_BYTES)
-    storage_path = storage.store_image(user_id, content_type, data)
+    storage_path = await asyncio.to_thread(storage.store_image, user_id, content_type, data)
     image_url = storage.read_url(storage_path, request_base_url(request), video=False)
     return UploadResponse(storagePath=storage_path, imageUrl=image_url)
 
@@ -316,9 +318,6 @@ async def stream_project_events(
     user_id: UserId,
     service: Annotated[ProjectService, Depends(project_service)],
 ) -> StreamingResponse:
-    import asyncio
-    import json
-
     async def event_generator():
         base_url = request_base_url(request)
         for _ in range(60):

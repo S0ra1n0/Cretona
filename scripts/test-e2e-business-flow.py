@@ -48,11 +48,17 @@ def run_e2e_business_flow(mode: str = "dev", token: str | None = None):
     from app.main import create_app
 
     if mode == "dev":
+        e2e_db_path = dev_data_dir / "e2e_test.db"
+        for extra in (e2e_db_path, Path(f"{e2e_db_path}-wal"), Path(f"{e2e_db_path}-shm")):
+            with contextlib.suppress(OSError):
+                if extra.exists():
+                    extra.unlink()
+
         settings = Settings(
             environment="development",
             auth_mode="dev",
             database_backend="sqlite",
-            database_path=dev_data_dir / "e2e_test.db",
+            database_path=e2e_db_path,
             storage_backend="local",
             default_video_provider="mock",
             rate_limit_enabled=False,
