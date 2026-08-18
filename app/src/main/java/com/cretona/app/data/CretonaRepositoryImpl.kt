@@ -9,6 +9,7 @@ import com.cretona.app.data.remote.ProjectCreateRequest
 import com.cretona.app.data.remote.ProjectDto
 import com.cretona.app.data.remote.PromptEnhanceRequest
 import com.cretona.app.data.remote.AdminAuditLogDto
+import com.cretona.app.data.remote.AdminMetricsDto
 import com.cretona.app.data.remote.AdminStatsDto
 import com.cretona.app.data.remote.AdminUserDto
 import com.cretona.app.data.remote.AdminUserUpdateRequestDto
@@ -16,6 +17,7 @@ import com.cretona.app.data.remote.BackfillResponseDto
 import com.cretona.app.data.remote.DailyStatsDto
 import com.cretona.app.data.remote.HealthResponse
 import com.cretona.app.domain.model.AdminAuditLog
+import com.cretona.app.domain.model.AdminMetrics
 import com.cretona.app.domain.model.AdminStats
 import com.cretona.app.domain.model.AdminUser
 import com.cretona.app.domain.model.BackfillResult
@@ -169,6 +171,10 @@ class CretonaRepositoryImpl @Inject constructor(
         api.health()
     }
 
+    override suspend fun getAdminMetrics(): AppResult<AdminMetrics> = apiCall {
+        api.getAdminMetrics().toDomain()
+    }
+
     private suspend fun <T> apiCall(block: suspend () -> T): AppResult<T> = try {
         AppResult.Success(block())
     } catch (cancellation: CancellationException) {
@@ -259,6 +265,17 @@ internal fun AdminAuditLogDto.toDomain(): AdminAuditLog = AdminAuditLog(
     targetType = targetType,
     targetId = targetId,
     createdAt = createdAt,
+)
+
+internal fun AdminMetricsDto.toDomain(): AdminMetrics = AdminMetrics(
+    uptimeSeconds = uptimeSeconds,
+    activeJobs = activeJobs,
+    completedJobs = completedJobs,
+    failedJobs = failedJobs,
+    memoryRssMb = memoryRssMb,
+    databaseBackend = databaseBackend,
+    databaseStatus = databaseStatus,
+    storageBackend = storageBackend,
 )
 
 private val knownStatuses = setOf("pending", "generating", "completed", "failed")

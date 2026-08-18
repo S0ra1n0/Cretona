@@ -1,14 +1,24 @@
 package com.cretona.app.ui.main
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -26,6 +36,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -90,30 +101,59 @@ fun MainScreen(
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
-            // The gradient is painted by this Box rather than by the app bar so
-            // it also covers the status bar area behind it; the app bar itself
-            // stays transparent and keeps its own inset handling.
-            Box(modifier = Modifier.fillMaxWidth().background(headerGradient)) {
-                CenterAlignedTopAppBar(
-                    title = {
-                        Text(
-                            text = "Cretona",
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                        )
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color.Transparent,
-                        titleContentColor = Color.White,
-                    ),
-                    actions = {
-                        if (state.account?.role == "admin") {
-                            TextButton(onClick = onNavigateToAdmin) {
-                                Text("Admin", color = Color.White)
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Box(modifier = Modifier.fillMaxWidth().background(headerGradient)) {
+                    CenterAlignedTopAppBar(
+                        title = {
+                            Text(
+                                text = "Cretona",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = Color.Transparent,
+                            titleContentColor = Color.White,
+                        ),
+                        actions = {
+                            if (state.account?.role == "admin") {
+                                TextButton(onClick = onNavigateToAdmin) {
+                                    Text("Admin", color = Color.White)
+                                }
                             }
-                        }
-                    },
-                )
+                        },
+                    )
+                }
+
+                // Offline Notice Banner
+                AnimatedVisibility(
+                    visible = !state.isOnline,
+                    enter = expandVertically(),
+                    exit = shrinkVertically(),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.errorContainer)
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.WifiOff,
+                            contentDescription = "Offline",
+                            tint = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "No internet connection. Retrying automatically...",
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                }
             }
         },
         bottomBar = {

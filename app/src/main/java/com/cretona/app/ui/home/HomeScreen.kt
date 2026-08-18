@@ -81,6 +81,7 @@ import com.cretona.app.domain.model.GenerationQuota
 import com.cretona.app.domain.model.ProjectStatus
 import com.cretona.app.domain.model.UserProfile
 import com.cretona.app.domain.model.VideoProject
+import com.cretona.app.ui.components.FullscreenVideoDialog
 import com.cretona.app.ui.components.ProjectStatusText
 import com.cretona.app.ui.components.verticalScrollbar
 import com.cretona.app.ui.theme.CretonaTheme
@@ -621,11 +622,23 @@ private fun CurrentProjectCard(
 
             project.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             if (project.status == ProjectStatus.COMPLETED && project.videoUrl != null) {
+                var showFullscreen by remember { mutableStateOf(false) }
+
+                if (showFullscreen) {
+                    FullscreenVideoDialog(
+                        videoUrl = project.videoUrl,
+                        title = project.title,
+                        aspectRatioString = project.aspectRatio,
+                        onDismiss = { showFullscreen = false },
+                    )
+                }
+
                 VideoPlayer(project.videoUrl)
 
                 val context = LocalContext.current
                 val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
                 var isSaving by remember { mutableStateOf(false) }
+                var isSharing by remember { mutableStateOf(false) }
                 var saveFeedback by remember { mutableStateOf<String?>(null) }
 
                 Row(
@@ -634,41 +647,33 @@ private fun CurrentProjectCard(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Button(
-                        onClick = {
-                            coroutineScope.launch {
-                                isSaving = true
-                                val result = com.cretona.app.core.util.MediaDownloader.saveVideoToGallery(
-                                    context,
-                                    project.videoUrl,
-                                    project.title,
-                                )
-                                isSaving = false
-                                saveFeedback = if (result.isSuccess) "Saved to Gallery (Movies/Cretona)!" else "Failed to save video"
-                            }
-                        },
-                        enabled = !isSaving,
+                        onClick = { showFullscreen = true },
                         modifier = Modifier.weight(1f),
                     ) {
-                        if (isSaving) {
-                            CircularProgressIndicator(modifier = Modifier.padding(2.dp), color = MaterialTheme.colorScheme.onPrimary)
-                        } else {
-                            Text("📥 Save to Gallery")
-                        }
+                        Text("⛶ Fullscreen")
                     }
 
                     OutlinedButton(
                         onClick = {
-                            coroutineScope.launch {
-                                com.cretona.app.core.util.MediaDownloader.shareVideo(
-                                    context,
-                                    project.videoUrl,
-                                    project.title,
-                                )
+                            if (!isSharing) {
+                                isSharing = true
+                                coroutineScope.launch {
+                                    com.cretona.app.core.util.MediaDownloader.shareVideo(
+                                        context,
+                                        project.videoUrl,
+                                        project.title,
+                                    )
+                                    isSharing = false
+                                }
                             }
                         },
                         modifier = Modifier.weight(1f),
                     ) {
-                        Text("📤 Share")
+                        if (isSharing) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = MaterialTheme.colorScheme.primary, strokeWidth = 2.dp)
+                        } else {
+                            Text("📤 Share")
+                        }
                     }
                 }
 

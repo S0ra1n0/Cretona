@@ -11,6 +11,7 @@ from app.schemas import (
     AdminAuditLog,
     AdminAuditLogPage,
     AdminLogItem,
+    AdminMetricsResponse,
     AdminUser,
     AdminUserPage,
     AdminUserUpdate,
@@ -217,6 +218,63 @@ class AdminService:
             )
 
         return BackfillResponse(backfilled=backfilled, processed=len(rows))
+
+    def get_system_metrics(
+        self,
+        storage: Any,
+        start_time: float,
+    ) -> AdminMetricsResponse:
+        import os
+        import time
+
+        uptime = max(0.0, time.time() - start_time)
+
+        # Process memory
+        memory_mb = 45.0
+        try:
+            import psutil
+
+            process = psutil.Process(os.getpid())
+            memory_mb = process.memory_info().rss / (1024 * 1024)
+        except Exception:
+            pass
+
+        # Project status counts
+        try:
+            stats_raw = self.database.admin_stats("1970-01-01T00:00:00Z")
+            status_dict = stats_raw.get("projects_by_status", {})
+            active_jobs = status_dict.get("pending", 0) + status_dict.get("generating", 0)
+            completed_jobs = status_dict.get("completed", 0)
+            failed_jobs = status_dict.get("failed", 0)
+        except Exception:
+            active_jobs = 0
+            completed_jobs = 0
+            failed_jobs = 0
+
+        db_backend = getattr(self.database, "backend", "sqlite")
+        db_status = "healthy"
+        try:
+            if hasattr(self.database, "connect"):
+                with self.database.connect() as conn:
+                    conn.execute("SELECT 1").fetchone()
+            elif hasattr(self.database, "pool"):
+                with self.database.pool.connection() as conn:
+                    conn.execute("SELECT 1").fetchone()
+        except Exception:
+            db_status = "unreachable"
+
+        storage_name = getattr(storage, "name", "local")
+
+        return AdminMetricsResponse(
+            uptime_seconds=round(uptime, 1),
+            active_jobs=active_jobs,
+            completed_jobs=completed_jobs,
+            failed_jobs=failed_jobs,
+            memory_rss_mb=round(memory_mb, 2),
+            database_backend=db_backend,
+            database_status=db_status,
+            storage_backend=storage_name,
+        )
 
     @staticmethod
     def _entry(

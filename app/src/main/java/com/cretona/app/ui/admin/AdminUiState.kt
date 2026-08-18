@@ -6,6 +6,8 @@ import com.cretona.app.domain.model.AdminStats
 import com.cretona.app.domain.model.AdminUser
 import com.cretona.app.domain.model.BackfillResult
 
+import com.cretona.app.domain.model.AdminMetrics
+
 enum class AdminTab(val title: String) {
     STATS("Overview"),
     USERS("Users"),
@@ -42,5 +44,7 @@ data class AdminUiState(
     val backfillResult: BackfillResult? = null,
     val isCheckingHealth: Boolean = false,
     val healthResponse: HealthResponse? = null,
+    val isLoadingMetrics: Boolean = false,
+    val metrics: AdminMetrics? = null,
     val diagnosticsMessage: String? = null,
 )

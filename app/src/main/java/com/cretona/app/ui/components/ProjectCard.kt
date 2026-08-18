@@ -1,6 +1,7 @@
 package com.cretona.app.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,8 +11,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -20,8 +23,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,6 +61,17 @@ fun ProjectHistoryCard(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showFullscreenPlayer by remember { mutableStateOf(false) }
+    var isSharing by remember { mutableStateOf(false) }
+
+    if (showFullscreenPlayer && project.videoUrl != null) {
+        FullscreenVideoDialog(
+            videoUrl = project.videoUrl,
+            title = project.title,
+            aspectRatioString = project.aspectRatio,
+            onDismiss = { showFullscreenPlayer = false },
+        )
+    }
 
     if (showDeleteDialog) {
         AlertDialog(
@@ -88,11 +104,37 @@ fun ProjectHistoryCard(
     Card(modifier = modifier.fillMaxWidth()) {
         Column {
             if (project.status == ProjectStatus.COMPLETED) {
-                ProjectThumbnail(
-                    thumbnailUrl = project.thumbnailUrl,
-                    title = project.title,
-                    aspectRatio = project.thumbnailAspectRatio,
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = project.videoUrl != null) {
+                            showFullscreenPlayer = true
+                        },
+                ) {
+                    ProjectThumbnail(
+                        thumbnailUrl = project.thumbnailUrl,
+                        title = project.title,
+                        aspectRatio = project.thumbnailAspectRatio,
+                    )
+                    if (project.videoUrl != null) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color.Black.copy(alpha = 0.55f),
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .size(48.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = "Play Video",
+                                tint = Color.White,
+                                modifier = Modifier
+                                    .padding(8.dp)
+                                    .fillMaxSize(),
+                            )
+                        }
+                    }
+                }
             }
             Row(
                 modifier = Modifier
@@ -111,8 +153,6 @@ fun ProjectHistoryCard(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        // Matches the tier wording used on the create form; see
-                        // docs/AI_PROVIDER_SPEC.md for what each actually produces.
                         val providerLabel = when (project.provider) {
                             "real" -> "🖼️ AI image + motion"
                             "local" -> "💻 Local (placeholder)"
@@ -148,20 +188,32 @@ fun ProjectHistoryCard(
                     if (project.status == ProjectStatus.COMPLETED && project.videoUrl != null) {
                         IconButton(
                             onClick = {
-                                coroutineScope.launch {
-                                    MediaDownloader.shareVideo(
-                                        context,
-                                        project.videoUrl,
-                                        project.title,
-                                    )
+                                if (!isSharing) {
+                                    isSharing = true
+                                    coroutineScope.launch {
+                                        MediaDownloader.shareVideo(
+                                            context,
+                                            project.videoUrl,
+                                            project.title,
+                                        )
+                                        isSharing = false
+                                    }
                                 }
                             },
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Share,
-                                contentDescription = "Share video",
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
+                            if (isSharing) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.Share,
+                                    contentDescription = "Share video",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            }
                         }
                     }
 

@@ -85,6 +85,9 @@ interface CretonaApi {
 
     @POST("admin/thumbnails/backfill")
     suspend fun backfillThumbnails(): BackfillResponseDto
+
+    @GET("admin/metrics")
+    suspend fun getAdminMetrics(): AdminMetricsDto
 }
 
 @Serializable
@@ -277,5 +280,17 @@ data class AdminAuditLogPageDto(
 data class BackfillResponseDto(
     val backfilled: Int,
     val processed: Int,
+)
+
+@Serializable
+data class AdminMetricsDto(
+    val uptimeSeconds: Float,
+    val activeJobs: Int,
+    val completedJobs: Int,
+    val failedJobs: Int,
+    val memoryRssMb: Float,
+    val databaseBackend: String,
+    val databaseStatus: String,
+    val storageBackend: String,
 )
 

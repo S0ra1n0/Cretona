@@ -4,6 +4,7 @@ import com.cretona.app.core.result.AppError
 import com.cretona.app.core.result.AppResult
 import com.cretona.app.data.remote.HealthResponse
 import com.cretona.app.domain.model.AdminAuditLog
+import com.cretona.app.domain.model.AdminMetrics
 import com.cretona.app.domain.model.AdminStats
 import com.cretona.app.domain.model.AdminUser
 import com.cretona.app.domain.model.BackfillResult
@@ -117,6 +118,20 @@ class AdminViewModelTest {
         assertNotNull(state.healthResponse)
         assertEquals("healthy", state.healthResponse?.status)
     }
+
+    @Test
+    fun `load metrics populates telemetry in state`() = runTest(mainDispatcherRule.dispatcher) {
+        val repository = FakeAdminRepository()
+        val viewModel = AdminViewModel(repository)
+        viewModel.loadMetrics()
+        advanceUntilIdle()
+
+        val state = viewModel.state.value
+        assertFalse(state.isLoadingMetrics)
+        assertNotNull(state.metrics)
+        assertEquals(0, state.metrics?.activeJobs)
+        assertEquals("sqlite", state.metrics?.databaseBackend)
+    }
 }
 
 private class FakeAdminRepository : CretonaRepository {
@@ -223,4 +238,18 @@ private class FakeAdminRepository : CretonaRepository {
 
     override suspend fun checkHealth(): AppResult<HealthResponse> =
         AppResult.Success(HealthResponse(status = "healthy", version = "1.0.0"))
+
+    override suspend fun getAdminMetrics(): AppResult<AdminMetrics> =
+        AppResult.Success(
+            AdminMetrics(
+                uptimeSeconds = 120.5f,
+                activeJobs = 0,
+                completedJobs = 10,
+                failedJobs = 1,
+                memoryRssMb = 42.5f,
+                databaseBackend = "sqlite",
+                databaseStatus = "healthy",
+                storageBackend = "local",
+            ),
+        )
 }

@@ -184,6 +184,7 @@ fun AdminScreen(
                         state = state,
                         onBackfill = viewModel::triggerThumbnailBackfill,
                         onCheckHealth = viewModel::runHealthCheck,
+                        onLoadMetrics = viewModel::loadMetrics,
                     )
                 }
             }
@@ -750,6 +751,7 @@ private fun DiagnosticsTabContent(
     state: AdminUiState,
     onBackfill: () -> Unit,
     onCheckHealth: () -> Unit,
+    onLoadMetrics: () -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier
@@ -757,6 +759,126 @@ private fun DiagnosticsTabContent(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "📊 Backend Telemetry & Metrics",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        IconButton(
+                            onClick = onLoadMetrics,
+                            enabled = !state.isLoadingMetrics,
+                        ) {
+                            if (state.isLoadingMetrics) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = "Refresh Metrics",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    if (state.metrics != null) {
+                        val m = state.metrics
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text("Uptime:", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    text = formatUptime(m.uptimeSeconds),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text("Process Memory (RSS):", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    text = "${String.format("%.1f", m.memoryRssMb)} MB",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text("Active Jobs:", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    text = "${m.activeJobs} running",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (m.activeJobs > 0) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface,
+                                )
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text("Completed / Failed:", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    text = "${m.completedJobs} / ${m.failedJobs}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text("Database:", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    text = "${m.databaseBackend.uppercase()} (${m.databaseStatus})",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (m.databaseStatus == "healthy") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                                )
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text("Storage Backend:", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    text = m.storageBackend.uppercase(),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        }
+                    } else {
+                        Text(
+                            text = "Tap refresh to query real-time server telemetry.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -785,8 +907,6 @@ private fun DiagnosticsTabContent(
                         if (state.isCheckingHealth) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(16.dp),
-                                // The spinner sits on a filled Button, so it takes the
-                                // container's own contrast colour rather than a fixed white.
                                 color = MaterialTheme.colorScheme.onPrimary,
                             )
                             Spacer(modifier = Modifier.width(8.dp))
@@ -848,5 +968,17 @@ private fun DiagnosticsTabContent(
                 }
             }
         }
+    }
+}
+
+private fun formatUptime(seconds: Float): String {
+    val sec = seconds.toLong()
+    val hours = sec / 3600
+    val minutes = (sec % 3600) / 60
+    val remSec = sec % 60
+    return when {
+        hours > 0 -> "${hours}h ${minutes}m ${remSec}s"
+        minutes > 0 -> "${minutes}m ${remSec}s"
+        else -> String.format("%.1fs", seconds)
     }
 }

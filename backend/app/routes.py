@@ -14,6 +14,7 @@ from app.prompt_service import PromptEnhancer
 from app.schemas import (
     AdminAuditLogPage,
     AdminLogList,
+    AdminMetricsResponse,
     AdminUser,
     AdminUserPage,
     AdminUserUpdate,
@@ -159,6 +160,17 @@ def admin_stats(
     days: Annotated[int, Query(ge=1, le=90)] = 30,
 ) -> StatsResponse:
     return service.stats(days)
+
+
+@router.get("/admin/metrics", response_model=AdminMetricsResponse)
+def admin_system_metrics(
+    request: Request,
+    _admin_id: AdminId,
+    service: Annotated[AdminService, Depends(admin_service)],
+    storage: Annotated[StorageBackend, Depends(media_storage)],
+) -> AdminMetricsResponse:
+    start_time = getattr(request.app.state, "start_time", 0.0)
+    return service.get_system_metrics(storage, start_time)
 
 
 @router.get("/admin/projects/{project_id}/logs", response_model=AdminLogList)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from time import perf_counter
@@ -138,6 +139,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     api.state.settings = active_settings
     api.state.settings_version = APP_VERSION
+    api.state.start_time = time.time()
     api.state.database = database
     api.state.storage = storage
     api.state.jwks = (

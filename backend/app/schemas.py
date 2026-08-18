@@ -192,6 +192,17 @@ class HealthResponse(ApiModel):
     version: str
 
 
+class AdminMetricsResponse(ApiModel):
+    uptime_seconds: float = Field(alias="uptimeSeconds")
+    active_jobs: int = Field(alias="activeJobs")
+    completed_jobs: int = Field(alias="completedJobs")
+    failed_jobs: int = Field(alias="failedJobs")
+    memory_rss_mb: float = Field(alias="memoryRssMb")
+    database_backend: str = Field(alias="databaseBackend")
+    database_status: str = Field(alias="databaseStatus")
+    storage_backend: str = Field(alias="storageBackend")
+
+
 class AdminLogItem(ApiModel):
     id: str | int | None = None
     project_id: str = Field(alias="projectId")

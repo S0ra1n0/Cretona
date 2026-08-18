@@ -40,3 +40,14 @@ data class BackfillResult(
     val backfilled: Int,
     val processed: Int,
 )
+
+data class AdminMetrics(
+    val uptimeSeconds: Float,
+    val activeJobs: Int,
+    val completedJobs: Int,
+    val failedJobs: Int,
+    val memoryRssMb: Float,
+    val databaseBackend: String,
+    val databaseStatus: String,
+    val storageBackend: String,
+)

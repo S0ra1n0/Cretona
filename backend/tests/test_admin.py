@@ -354,3 +354,22 @@ def test_a_successful_change_is_recorded_with_it(seeded: TestClient) -> None:
     rows, _ = database.list_audit_logs(limit=50, cursor=None, action="user_updated", actor_id=None)
     assert [row["target_id"] for row in rows] == [USER_A]
     assert database.get_user(USER_A)["role"] == "admin"
+
+
+def test_admin_metrics_endpoint(seeded: TestClient) -> None:
+    res = seeded.get("/api/v1/admin/metrics", headers=ADMIN_HEADERS)
+    assert res.status_code == 200
+    data = res.json()
+    assert "uptimeSeconds" in data
+    assert "activeJobs" in data
+    assert "completedJobs" in data
+    assert "failedJobs" in data
+    assert "memoryRssMb" in data
+    assert data["databaseStatus"] == "healthy"
+    assert data["databaseBackend"] == "sqlite"
+    assert data["storageBackend"] == "local"
+
+
+def test_admin_metrics_forbidden_for_regular_user(seeded: TestClient) -> None:
+    res = seeded.get("/api/v1/admin/metrics", headers={"X-Debug-User-Id": USER_A})
+    assert res.status_code == 403

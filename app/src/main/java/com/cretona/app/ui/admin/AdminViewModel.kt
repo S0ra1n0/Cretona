@@ -36,7 +36,10 @@ class AdminViewModel @Inject constructor(
             AdminTab.STATS -> if (_state.value.stats == null) loadStats()
             AdminTab.USERS -> if (_state.value.users.isEmpty()) loadUsers()
             AdminTab.AUDIT_LOGS -> if (_state.value.auditLogs.isEmpty()) loadAuditLogs()
-            AdminTab.DIAGNOSTICS -> if (_state.value.healthResponse == null) runHealthCheck()
+            AdminTab.DIAGNOSTICS -> {
+                if (_state.value.healthResponse == null) runHealthCheck()
+                if (_state.value.metrics == null) loadMetrics()
+            }
         }
     }
 
@@ -271,6 +274,31 @@ class AdminViewModel @Inject constructor(
                             isCheckingHealth = false,
                             healthResponse = null,
                             diagnosticsMessage = "Health check failed: ${result.error.message}",
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun loadMetrics() {
+        viewModelScope.launch {
+            _state.update { it.copy(isLoadingMetrics = true) }
+            when (val result = repository.getAdminMetrics()) {
+                is AppResult.Success -> {
+                    _state.update {
+                        it.copy(
+                            isLoadingMetrics = false,
+                            metrics = result.data,
+                        )
+                    }
+                }
+                is AppResult.Failure -> {
+                    result.error.markIfForbidden()
+                    _state.update {
+                        it.copy(
+                            isLoadingMetrics = false,
+                            diagnosticsMessage = "Metrics query failed: ${result.error.message}",
                         )
                     }
                 }

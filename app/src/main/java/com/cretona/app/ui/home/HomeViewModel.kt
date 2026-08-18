@@ -21,10 +21,13 @@ import kotlinx.coroutines.withContext
 import java.util.UUID
 import javax.inject.Inject
 
+import com.cretona.app.core.network.NetworkMonitor
+
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val repository: CretonaRepository,
     @param:dagger.hilt.android.qualifiers.ApplicationContext private val applicationContext: android.content.Context? = null,
+    private val networkMonitor: NetworkMonitor? = null,
 ) : ViewModel() {
     var ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 
@@ -36,6 +39,20 @@ class HomeViewModel @Inject constructor(
     init {
         refreshAccount()
         refreshHistory()
+
+        networkMonitor?.let { monitor ->
+            viewModelScope.launch {
+                var wasOffline = false
+                monitor.isOnline.collect { online ->
+                    _state.update { it.copy(isOnline = online) }
+                    if (online && wasOffline) {
+                        refreshAccount()
+                        refreshHistory()
+                    }
+                    wasOffline = !online
+                }
+            }
+        }
     }
 
     fun refreshAccount() {

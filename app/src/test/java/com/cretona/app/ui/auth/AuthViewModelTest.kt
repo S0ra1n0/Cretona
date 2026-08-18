@@ -4,6 +4,7 @@ import com.cretona.app.core.result.AppError
 import com.cretona.app.core.result.AppResult
 import com.cretona.app.data.remote.HealthResponse
 import com.cretona.app.domain.model.AdminAuditLog
+import com.cretona.app.domain.model.AdminMetrics
 import com.cretona.app.domain.model.AdminStats
 import com.cretona.app.domain.model.AdminUser
 import com.cretona.app.domain.model.BackfillResult
@@ -177,4 +178,5 @@ private class FakeCretonaRepository : CretonaRepository {
     override suspend fun getAdminAuditLogs(limit: Int, cursor: String?, action: String?, actorId: String?): AppResult<List<AdminAuditLog>> = throw NotImplementedError()
     override suspend fun backfillThumbnails(): AppResult<BackfillResult> = throw NotImplementedError()
     override suspend fun checkHealth(): AppResult<HealthResponse> = throw NotImplementedError()
+    override suspend fun getAdminMetrics(): AppResult<AdminMetrics> = throw NotImplementedError()
 }

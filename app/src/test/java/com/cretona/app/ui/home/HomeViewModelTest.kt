@@ -461,6 +461,20 @@ private class FakeRepository(
     override suspend fun checkHealth(): AppResult<com.cretona.app.data.remote.HealthResponse> =
         AppResult.Success(com.cretona.app.data.remote.HealthResponse(status = "healthy", version = "1.0.0"))
 
+    override suspend fun getAdminMetrics(): AppResult<com.cretona.app.domain.model.AdminMetrics> =
+        AppResult.Success(
+            com.cretona.app.domain.model.AdminMetrics(
+                uptimeSeconds = 100f,
+                activeJobs = 0,
+                completedJobs = 5,
+                failedJobs = 0,
+                memoryRssMb = 30f,
+                databaseBackend = "sqlite",
+                databaseStatus = "healthy",
+                storageBackend = "local",
+            ),
+        )
+
 
     private companion object {
         fun project(

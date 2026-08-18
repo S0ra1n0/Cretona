@@ -3,6 +3,7 @@ package com.cretona.app.domain.repository
 import com.cretona.app.core.result.AppResult
 import com.cretona.app.data.remote.HealthResponse
 import com.cretona.app.domain.model.AdminAuditLog
+import com.cretona.app.domain.model.AdminMetrics
 import com.cretona.app.domain.model.AdminStats
 import com.cretona.app.domain.model.AdminUser
 import com.cretona.app.domain.model.BackfillResult
@@ -75,5 +76,7 @@ interface CretonaRepository {
     suspend fun backfillThumbnails(): AppResult<BackfillResult>
 
     suspend fun checkHealth(): AppResult<HealthResponse>
+
+    suspend fun getAdminMetrics(): AppResult<AdminMetrics>
 }
 
