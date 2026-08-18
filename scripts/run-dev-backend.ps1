@@ -7,7 +7,8 @@ param(
     # Still SQLite, so nothing is written to the live database -- only the
     # token is checked against Supabase, and the profile behind it is read
     # from the local seed.
-    [switch]$RealAuth
+    [switch]$RealAuth,
+    [switch]$SkipPreflight
 )
 
 <#
@@ -39,10 +40,21 @@ $projectRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $backendRoot = Join-Path $projectRoot 'backend'
 $python = Join-Path $backendRoot '.venv\Scripts\python.exe'
 $devDataDir = Join-Path $backendRoot '.devdata'
+$diagScript = Join-Path $projectRoot 'scripts\check-system-resources.py'
 
 if (-not (Test-Path -LiteralPath $python)) {
     throw 'FastAPI virtual environment is missing. Follow docs/SETUP.md first.'
 }
+
+# 1. MANDATORY PC HARDWARE & RESOURCE PREFLIGHT CHECK
+if (-not $SkipPreflight -and (Test-Path -LiteralPath $diagScript)) {
+    Write-Host "`n>>> Running PC Hardware & Resource Preflight Check... <<<" -ForegroundColor Cyan
+    & $python $diagScript
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[WARN] Preflight diagnostic reported non-zero status. Proceeding to startup..." -ForegroundColor Yellow
+    }
+}
+
 New-Item -ItemType Directory -Force -Path $devDataDir | Out-Null
 
 if ($RealAuth) {

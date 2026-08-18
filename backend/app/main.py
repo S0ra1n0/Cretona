@@ -110,6 +110,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         active_settings.resolved_media_dir().mkdir(parents=True, exist_ok=True)
         database.initialize()
+        logger.info(
+            "Cretona API booting: env=%s auth=%s db=%s storage=%s provider=%s",
+            active_settings.environment,
+            active_settings.auth_mode,
+            active_settings.database_backend,
+            active_settings.storage_backend,
+            active_settings.default_video_provider,
+        )
         api.state.generation_log_retention.start()
         api.state.poller.start()
         try:
