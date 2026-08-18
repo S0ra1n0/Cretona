@@ -31,6 +31,11 @@ packages = ["app"]
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-q --basetemp=.pytest_tmp -p no:cacheprovider"
+filterwarnings = [
+    "ignore::starlette.testclient.StarletteDeprecationWarning",
+    "ignore:.*InsecureKeyLengthWarning.*:UserWarning",
+    "ignore:.*The HMAC key is.*:UserWarning",
+]
 
 [tool.ruff]
 target-version = "py312"
