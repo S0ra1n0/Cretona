@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -33,9 +34,13 @@ import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -380,6 +385,11 @@ private fun MetricCard(
     }
 }
 
+private sealed interface AdminConfirmAction {
+    data class ToggleRole(val user: AdminUser) : AdminConfirmAction
+    data class ToggleDisabled(val user: AdminUser) : AdminConfirmAction
+}
+
 @Composable
 private fun UsersTabContent(
     state: AdminUiState,
@@ -389,6 +399,68 @@ private fun UsersTabContent(
     onToggleRole: (AdminUser) -> Unit,
     onToggleDisabled: (AdminUser) -> Unit,
 ) {
+    var confirmAction by remember { mutableStateOf<AdminConfirmAction?>(null) }
+
+    confirmAction?.let { action ->
+        when (action) {
+            is AdminConfirmAction.ToggleRole -> {
+                val nextRole = if (action.user.role == "admin") "standard user" else "administrator"
+                AlertDialog(
+                    onDismissRequest = { confirmAction = null },
+                    title = { Text("Confirm Role Change") },
+                    text = {
+                        Text(
+                            "Are you sure you want to change ${action.user.email ?: action.user.username ?: action.user.id}'s role to $nextRole?",
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                confirmAction = null
+                                onToggleRole(action.user)
+                            },
+                        ) {
+                            Text("Confirm")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { confirmAction = null }) {
+                            Text("Cancel")
+                        }
+                    },
+                )
+            }
+
+            is AdminConfirmAction.ToggleDisabled -> {
+                val actionVerb = if (action.user.isDisabled) "enable" else "disable"
+                AlertDialog(
+                    onDismissRequest = { confirmAction = null },
+                    title = { Text("Confirm Account Action") },
+                    text = {
+                        Text(
+                            "Are you sure you want to $actionVerb the account for ${action.user.email ?: action.user.username ?: action.user.id}?",
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                confirmAction = null
+                                onToggleDisabled(action.user)
+                            },
+                        ) {
+                            Text("Confirm")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { confirmAction = null }) {
+                            Text("Cancel")
+                        }
+                    },
+                )
+            }
+        }
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -462,8 +534,8 @@ private fun UsersTabContent(
                 UserCard(
                     user = user,
                     isUpdating = state.updatingUserId == user.id,
-                    onToggleRole = { onToggleRole(user) },
-                    onToggleDisabled = { onToggleDisabled(user) },
+                    onToggleRole = { confirmAction = AdminConfirmAction.ToggleRole(user) },
+                    onToggleDisabled = { confirmAction = AdminConfirmAction.ToggleDisabled(user) },
                 )
             }
         }
