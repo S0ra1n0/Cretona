@@ -28,6 +28,7 @@ def limited(tmp_path: Path) -> Iterator[TestClient]:
         media_dir=media,
         prompt_llm_provider="deterministic",
         fake_polls_before_complete=1,
+        rate_limit_enabled=True,
         rate_limit_default_per_min=3,
         rate_limit_generation_per_min=2,
         poller_enabled=False,

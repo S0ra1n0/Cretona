@@ -41,25 +41,27 @@ def run_e2e_business_flow(mode: str = "dev", token: str | None = None):
     dev_data_dir = backend_dir / ".devdata"
     dev_data_dir.mkdir(parents=True, exist_ok=True)
 
-    if mode == "dev":
-        os.environ["CRETONA_ENVIRONMENT"] = "development"
-        os.environ["CRETONA_AUTH_MODE"] = "dev"
-        os.environ["CRETONA_DATABASE_BACKEND"] = "sqlite"
-        os.environ["CRETONA_DATABASE_PATH"] = ".devdata/e2e_test.db"
-        os.environ["CRETONA_STORAGE_BACKEND"] = "local"
-        os.environ["CRETONA_DEFAULT_VIDEO_PROVIDER"] = "mock"
-        os.environ["CRETONA_RATE_LIMIT_ENABLED"] = "false"
-        os.environ["CRETONA_GENERATION_LOG_RETENTION_ENABLED"] = "false"
-
     from fastapi.testclient import TestClient
 
-    from app.config import get_settings
+    from app.config import Settings, get_settings
     from app.database import Database
     from app.main import create_app
 
-    # Clear cached settings so process env overrides take effect
-    get_settings.cache_clear()
-    settings = get_settings()
+    if mode == "dev":
+        settings = Settings(
+            environment="development",
+            auth_mode="dev",
+            database_backend="sqlite",
+            database_path=dev_data_dir / "e2e_test.db",
+            storage_backend="local",
+            default_video_provider="mock",
+            rate_limit_enabled=False,
+            generation_log_retention_enabled=False,
+            poller_enabled=False,
+        )
+    else:
+        get_settings.cache_clear()
+        settings = get_settings()
 
     # Pre-seed dev user if running with sqlite
     dev_user_id = "00000000-0000-4000-8000-000000000001"

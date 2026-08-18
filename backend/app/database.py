@@ -151,6 +151,10 @@ class Database:
                 return
             self.path.parent.mkdir(parents=True, exist_ok=True)
             with self.connect() as connection:
+                connection.execute("PRAGMA journal_mode = WAL")
+                connection.execute("PRAGMA synchronous = NORMAL")
+                connection.execute("PRAGMA cache_size = -64000")
+                connection.execute("PRAGMA mmap_size = 268435456")
                 connection.executescript(SCHEMA)
                 self._add_missing_columns(connection)
             self._initialized = True
@@ -171,6 +175,7 @@ class Database:
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute("PRAGMA busy_timeout = 10000")
+        connection.execute("PRAGMA synchronous = NORMAL")
         try:
             yield connection
             connection.commit()
