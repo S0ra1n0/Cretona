@@ -20,7 +20,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_ENV_FILE = ROOT / "env"
+DEFAULT_ENV_FILE = ROOT / ".env" if (ROOT / ".env").exists() else ROOT / "env"
 MIGRATIONS = {
     "006": (
         ROOT / "supabase" / "006_add_generation_log_retention_index.sql",
@@ -32,15 +32,15 @@ MIGRATIONS = {
     ),
     "008": (
         ROOT / "supabase" / "008_add_admin_audit_logs.sql",
-        "8568cbe123eb2403752be5d82ee626585fe83a38416b19a00f5d2af4fd369ee7",
+        "64ce17627642b55033791b31a5076329307e74fa05040886ec6fdb422985c1e1",
     ),
     "009": (
         ROOT / "supabase" / "009_add_progress_tracking.sql",
-        "a70a474ed33cf4fb19914a06d3ffebb90c3f886de27ef982e924ef56bc26fa57",
+        "dc423f5a00fc5887df61ae1200c52d2228b942d680329b55bdecd7529bcb7e11",
     ),
     "010": (
         ROOT / "supabase" / "010_add_user_avatar.sql",
-        "6cfdbcac48db577f4646862b5bd121354118ff72813b5d20021dbc211c32d198",
+        "62d9d57a8fbfb19a34232fd63ff442dc98cd688c8943f42eaf2b8c2263f72592",
     ),
 }
 DATA_API_ROLES = ("anon", "authenticated", "service_role")
