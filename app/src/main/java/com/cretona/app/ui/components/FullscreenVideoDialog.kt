@@ -88,12 +88,14 @@ fun FullscreenVideoDialog(
     var sliderPosition by remember { mutableFloatStateOf(0f) }
 
     val exoPlayer = remember(videoUrl) {
-        ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(videoUrl))
-            repeatMode = Player.REPEAT_MODE_ALL
-            playWhenReady = true
-            prepare()
-        }
+        ExoPlayer.Builder(context)
+            .setMediaSourceFactory(com.cretona.app.core.media.VideoCacheManager.createMediaSourceFactory(context))
+            .build().apply {
+                setMediaItem(MediaItem.fromUri(videoUrl))
+                repeatMode = Player.REPEAT_MODE_ALL
+                playWhenReady = true
+                prepare()
+            }
     }
 
     DisposableEffect(exoPlayer) {

@@ -762,7 +762,11 @@ private fun ImageReferencePicker(
 @Composable
 private fun VideoPlayer(videoUrl: String) {
     val context = LocalContext.current
-    val player = remember { ExoPlayer.Builder(context).build() }
+    val player = remember(videoUrl) {
+        ExoPlayer.Builder(context)
+            .setMediaSourceFactory(com.cretona.app.core.media.VideoCacheManager.createMediaSourceFactory(context))
+            .build()
+    }
     var isPlaying by remember { mutableStateOf(true) }
     var currentPositionMs by remember { mutableStateOf(0L) }
     var durationMs by remember { mutableStateOf(0L) }
