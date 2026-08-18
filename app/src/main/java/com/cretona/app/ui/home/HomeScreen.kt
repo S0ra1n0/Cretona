@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
@@ -173,11 +175,16 @@ private fun HomeContent(
     // The app bar and bottom navigation live in MainScreen, which hosts this
     // tab; duplicating a Scaffold here would nest two of each.
     val listState = rememberLazyListState()
-    Box(modifier = modifier.fillMaxSize()) {
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.TopCenter,
+    ) {
         LazyColumn(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
+                .wrapContentWidth(Alignment.CenterHorizontally)
+                .widthIn(max = 680.dp)
                 .verticalScrollbar(
                     state = listState,
                     color = MaterialTheme.colorScheme.primary,
@@ -240,10 +247,12 @@ private fun HomeContent(
                             "🎆 Fireworks celebration",
                         )
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
-                            ideas.take(3).forEach { idea ->
+                            ideas.forEach { idea ->
                                 FilterChip(
                                     selected = false,
                                     onClick = { onSelectPromptIdea(idea) },

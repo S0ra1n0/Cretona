@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -139,28 +141,51 @@ fun AdminScreen(
                 return@Column
             }
 
-            when (state.selectedTab) {
-                AdminTab.STATS -> StatsTabContent(
-                    state = state,
-                    onRefresh = viewModel::loadStats,
-                )
-                AdminTab.USERS -> UsersTabContent(
-                    state = state,
-                    onSearch = viewModel::onSearchQueryChanged,
-                    onRoleFilter = viewModel::onRoleFilterChanged,
-                    onStatusFilter = viewModel::onStatusFilterChanged,
-                    onToggleRole = viewModel::toggleUserRole,
-                    onToggleDisabled = viewModel::toggleUserDisabled,
-                )
-                AdminTab.AUDIT_LOGS -> AuditLogsTabContent(
-                    state = state,
-                    onActionFilter = viewModel::onLogActionFilterChanged,
-                )
-                AdminTab.DIAGNOSTICS -> DiagnosticsTabContent(
-                    state = state,
-                    onBackfill = viewModel::triggerThumbnailBackfill,
-                    onCheckHealth = viewModel::runHealthCheck,
-                )
+            PrimaryTabRow(
+                selectedTabIndex = state.selectedTab.ordinal,
+                modifier = Modifier
+                    .widthIn(max = 760.dp)
+                    .fillMaxWidth(),
+            ) {
+                AdminTab.entries.forEach { tab ->
+                    Tab(
+                        selected = state.selectedTab == tab,
+                        onClick = { viewModel.selectTab(tab) },
+                        text = { Text(tab.name.replace("_", " ")) },
+                    )
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .wrapContentWidth(Alignment.CenterHorizontally)
+                    .widthIn(max = 760.dp),
+                contentAlignment = Alignment.TopCenter,
+            ) {
+                when (state.selectedTab) {
+                    AdminTab.STATS -> StatsTabContent(
+                        state = state,
+                        onRefresh = viewModel::loadStats,
+                    )
+                    AdminTab.USERS -> UsersTabContent(
+                        state = state,
+                        onSearch = viewModel::onSearchQueryChanged,
+                        onRoleFilter = viewModel::onRoleFilterChanged,
+                        onStatusFilter = viewModel::onStatusFilterChanged,
+                        onToggleRole = viewModel::toggleUserRole,
+                        onToggleDisabled = viewModel::toggleUserDisabled,
+                    )
+                    AdminTab.AUDIT_LOGS -> AuditLogsTabContent(
+                        state = state,
+                        onActionFilter = viewModel::onLogActionFilterChanged,
+                    )
+                    AdminTab.DIAGNOSTICS -> DiagnosticsTabContent(
+                        state = state,
+                        onBackfill = viewModel::triggerThumbnailBackfill,
+                        onCheckHealth = viewModel::runHealthCheck,
+                    )
+                }
             }
         }
     }

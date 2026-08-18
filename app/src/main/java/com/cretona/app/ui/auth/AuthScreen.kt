@@ -45,6 +45,9 @@ import com.cretona.app.ui.theme.GalaxyDeepBlue
 import com.cretona.app.ui.theme.GalaxyIndigo
 import com.cretona.app.ui.theme.GalaxyViolet
 
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.widthIn
+
 @Composable
 fun AuthScreen(
     onLoginSuccess: (needsProfileSetup: Boolean) -> Unit,
@@ -69,14 +72,16 @@ fun AuthScreen(
         modifier = modifier
             .fillMaxSize()
             .background(galaxyGradient)
-            .systemBarsPadding(),
+            .systemBarsPadding()
+            .imePadding(),
         contentAlignment = Alignment.Center,
     ) {
         Column(
             modifier = Modifier
+                .widthIn(max = 440.dp)
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 32.dp, vertical = 24.dp),
+                .padding(horizontal = 28.dp, vertical = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
