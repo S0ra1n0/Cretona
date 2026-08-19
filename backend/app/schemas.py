@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ApiModel(BaseModel):
@@ -21,6 +21,10 @@ class ProjectStatus(StrEnum):
 AspectRatio = Literal["16:9", "9:16", "1:1"]
 StylePreset = Literal["anime", "cyberpunk", "3d_pixar", "vintage_film", "photorealistic"]
 CameraMotion = Literal["pan_left", "pan_right", "zoom_in", "zoom_out", "dolly_zoom", "orbit"]
+
+# Stored lowercase; the app capitalises for display. "other" is deliberately
+# last-resort rather than a catch-all label the account never chose.
+GENDERS = frozenset({"male", "female", "other"})
 
 
 class GenerationOptions(ApiModel):
@@ -110,6 +114,9 @@ class MeResponse(ApiModel):
     # Signed per response and never persisted, for the same reason videoUrl is:
     # a stored signed URL is a broken image once it expires.
     avatar_url: str | None = Field(default=None, alias="avatarUrl")
+    # Optional profile details; null until the account chooses one.
+    gender: str | None = None
+    birthday: str | None = None
     role: str
     is_disabled: bool = Field(alias="isDisabled")
     created_at: str = Field(alias="createdAt")
@@ -126,6 +133,44 @@ class MeUpdate(ApiModel):
     # Storage object key from POST /uploads, not a URL. Absent means "leave the
     # avatar as it is"; explicit null means "remove it".
     avatar_path: str | None = Field(default=None, alias="avatarPath")
+    # Optional details. Absent means "leave as is"; empty string means "clear".
+    # Empty string rather than null because the app serialises with
+    # explicitNulls=false, which drops null fields from the body entirely --
+    # a null would therefore be indistinguishable from "not sent" and no
+    # value could ever be taken back once set.
+    gender: str | None = None
+    birthday: str | None = None
+
+    @field_validator("gender", mode="before")
+    @classmethod
+    def _normalise_gender(cls, value: Any) -> Any:
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return None
+        if isinstance(value, str):
+            lowered = value.strip().lower()
+            if lowered not in GENDERS:
+                raise ValueError(f"gender must be one of {', '.join(sorted(GENDERS))}")
+            return lowered
+        return value
+
+    @field_validator("birthday", mode="before")
+    @classmethod
+    def _normalise_birthday(cls, value: Any) -> Any:
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return None
+        if isinstance(value, str):
+            candidate = value.strip()
+            try:
+                parsed = date.fromisoformat(candidate)
+            except ValueError as exc:
+                raise ValueError("birthday must be an ISO date (YYYY-MM-DD)") from exc
+            # A birthday in the future is a typo, not a preference. Rejecting
+            # it here keeps the stored value meaningful for any later
+            # age-derived logic.
+            if parsed > date.today():
+                raise ValueError("birthday cannot be in the future")
+            return parsed.isoformat()
+        return value
 
 
 class AdminUser(ApiModel):

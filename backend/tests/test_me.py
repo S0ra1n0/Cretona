@@ -108,3 +108,127 @@ def test_role_cannot_be_changed_through_the_profile(profiled: TestClient) -> Non
     # Extra fields are ignored, not applied: privilege is an admin decision.
     assert body["role"] == "user"
     assert body["isDisabled"] is False
+
+
+# --- optional profile details (gender / birthday) ---------------------------
+
+
+def test_details_are_null_until_the_account_chooses_them(profiled: TestClient) -> None:
+    body = profiled.get("/api/v1/me", headers=HEADERS).json()
+
+    # Only the username is required to finish setup, so an account that has
+    # not answered reads as null rather than as an empty string.
+    assert body["gender"] is None
+    assert body["birthday"] is None
+
+
+def test_details_are_saved_and_returned(profiled: TestClient) -> None:
+    response = profiled.patch(
+        "/api/v1/me",
+        headers=HEADERS,
+        json={"username": "alice", "gender": "female", "birthday": "1998-04-17"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["gender"] == "female"
+    assert response.json()["birthday"] == "1998-04-17"
+
+    body = profiled.get("/api/v1/me", headers=HEADERS).json()
+    assert body["gender"] == "female"
+    assert body["birthday"] == "1998-04-17"
+
+
+def test_gender_is_stored_lowercase(profiled: TestClient) -> None:
+    body = profiled.patch(
+        "/api/v1/me",
+        headers=HEADERS,
+        json={"username": "alice", "gender": "Male"},
+    ).json()
+
+    assert body["gender"] == "male"
+
+
+def test_omitted_details_are_left_alone(profiled: TestClient) -> None:
+    profiled.patch(
+        "/api/v1/me",
+        headers=HEADERS,
+        json={"username": "alice", "gender": "other", "birthday": "2000-01-01"},
+    )
+
+    # A rename that says nothing about the details must not wipe them.
+    profiled.patch("/api/v1/me", headers=HEADERS, json={"username": "alice_2"})
+
+    body = profiled.get("/api/v1/me", headers=HEADERS).json()
+    assert body["gender"] == "other"
+    assert body["birthday"] == "2000-01-01"
+
+
+def test_empty_string_clears_a_detail(profiled: TestClient) -> None:
+    profiled.patch(
+        "/api/v1/me",
+        headers=HEADERS,
+        json={"username": "alice", "gender": "male", "birthday": "1990-06-01"},
+    )
+
+    # The app serialises with explicitNulls=false, so null never reaches the
+    # wire. Empty string is the only way it can take a value back.
+    body = profiled.patch(
+        "/api/v1/me",
+        headers=HEADERS,
+        json={"username": "alice", "gender": "", "birthday": ""},
+    ).json()
+
+    assert body["gender"] is None
+    assert body["birthday"] is None
+
+
+@pytest.mark.parametrize("gender", ["male ", " FEMALE", "Other"])
+def test_gender_accepts_surrounding_space_and_case(profiled: TestClient, gender: str) -> None:
+    response = profiled.patch(
+        "/api/v1/me",
+        headers=HEADERS,
+        json={"username": "alice", "gender": gender},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["gender"] == gender.strip().lower()
+
+
+@pytest.mark.parametrize("gender", ["man", "f", "nonbinary", "1"])
+def test_unknown_genders_are_rejected(profiled: TestClient, gender: str) -> None:
+    response = profiled.patch(
+        "/api/v1/me",
+        headers=HEADERS,
+        json={"username": "alice", "gender": gender},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+@pytest.mark.parametrize(
+    "birthday",
+    ["17-04-1998", "1998/04/17", "not a date", "1998-13-01", "1998-02-30", "3000-01-01"],
+)
+def test_invalid_birthdays_are_rejected(profiled: TestClient, birthday: str) -> None:
+    response = profiled.patch(
+        "/api/v1/me",
+        headers=HEADERS,
+        json={"username": "alice", "birthday": birthday},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_details_are_the_callers_own(profiled: TestClient) -> None:
+    profiled.patch(
+        "/api/v1/me",
+        headers=HEADERS,
+        json={"username": "alice", "gender": "female", "birthday": "1998-04-17"},
+    )
+
+    body = profiled.get("/api/v1/me", headers=OTHER).json()
+
+    assert body["gender"] is None
+    assert body["birthday"] is None

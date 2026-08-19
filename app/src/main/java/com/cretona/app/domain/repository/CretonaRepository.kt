@@ -17,10 +17,15 @@ interface CretonaRepository {
     /**
      * Completes or edits the profile. [avatarPath] is the storage key returned
      * by [uploadImage]; null leaves the existing avatar untouched.
+     *
+     * [gender] and [birthday] are optional details: an empty string clears
+     * whatever is stored, which is how a value chosen once can be taken back.
      */
     suspend fun updateProfile(
         username: String,
         avatarPath: String? = null,
+        gender: String = "",
+        birthday: String = "",
     ): AppResult<UserProfile>
 
     suspend fun enhancePrompt(prompt: String): AppResult<EnhancedPrompt>

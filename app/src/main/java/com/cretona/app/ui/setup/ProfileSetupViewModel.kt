@@ -53,6 +53,11 @@ class ProfileSetupViewModel @Inject constructor(
                 is AppResult.Success -> _state.update {
                     it.copy(
                         username = result.data.username.orEmpty(),
+                        // Empty for a detail never answered, so the form opens
+                        // with nothing selected rather than a default the
+                        // account did not choose.
+                        gender = result.data.gender.orEmpty(),
+                        birthday = result.data.birthday.orEmpty(),
                         existingAvatarUrl = result.data.avatarUrl,
                     )
                 }
@@ -65,6 +70,43 @@ class ProfileSetupViewModel @Inject constructor(
 
     fun onUsernameChanged(value: String) {
         _state.update { it.copy(username = value, errorMessage = null) }
+    }
+
+    /**
+     * Selects a gender, or clears it by picking the one already selected.
+     *
+     * Re-tapping is the only way back to "prefer not to say" once an answer
+     * has been given; a form with no clear affordance would trap the account
+     * in whichever option it first touched.
+     */
+    fun onGenderSelected(option: GenderOption) {
+        _state.update {
+            val next = if (it.selectedGender == option) "" else option.stored
+            it.copy(gender = next, errorMessage = null)
+        }
+    }
+
+    fun onBirthdayChanged(value: String) {
+        _state.update { it.copy(birthday = value.trim(), errorMessage = null) }
+    }
+
+    fun onBirthdayCleared() {
+        _state.update { it.copy(birthday = "", errorMessage = null) }
+    }
+
+    fun onDatePickerRequested() {
+        _state.update { it.copy(showDatePicker = true) }
+    }
+
+    fun onDatePickerDismissed() {
+        _state.update { it.copy(showDatePicker = false) }
+    }
+
+    /** Accepts the picker's choice, already formatted as an ISO date. */
+    fun onBirthdayPicked(isoDate: String) {
+        _state.update {
+            it.copy(birthday = isoDate, showDatePicker = false, errorMessage = null)
+        }
     }
 
     fun onAvatarSelected(uri: Uri, bytes: ByteArray, mimeType: String, fileName: String) {
@@ -110,7 +152,17 @@ class ProfileSetupViewModel @Inject constructor(
                 }
             }
 
-            when (val result = repository.updateProfile(current.username, avatarPath)) {
+            // Both details are sent on every save, empty included: empty is
+            // how a value chosen before is taken back, and omitting the field
+            // would instead mean "leave whatever is stored".
+            when (
+                val result = repository.updateProfile(
+                    username = current.username,
+                    avatarPath = avatarPath,
+                    gender = current.gender,
+                    birthday = current.birthday,
+                )
+            ) {
                 is AppResult.Success -> _state.update {
                     it.copy(isSubmitting = false, isComplete = true)
                 }

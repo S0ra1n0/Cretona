@@ -3,6 +3,7 @@ package com.cretona.app.data
 import com.cretona.app.data.remote.MeDto
 import com.cretona.app.data.remote.QuotaDto
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class MeDtoMappingTest {
@@ -43,5 +44,41 @@ class MeDtoMappingTest {
         ).toDomain()
 
         assertEquals("fallback@example.com", user.displayName)
+    }
+
+    @Test
+    fun `optional details survive the mapping`() {
+        val user = MeDto(
+            id = "user-3",
+            email = "someone@example.com",
+            username = "someone",
+            gender = "female",
+            birthday = "1998-04-17",
+            role = "user",
+            isDisabled = false,
+            createdAt = "2026-08-01T00:00:00Z",
+            quota = QuotaDto(limit = 10, used = 0, remaining = 10, resetsAt = null),
+        ).toDomain()
+
+        assertEquals("female", user.gender)
+        assertEquals("1998-04-17", user.birthday)
+    }
+
+    @Test
+    fun `details absent from the body read as not chosen`() {
+        val user = MeDto(
+            id = "user-4",
+            email = "someone@example.com",
+            username = "someone",
+            role = "user",
+            isDisabled = false,
+            createdAt = "2026-08-01T00:00:00Z",
+            quota = QuotaDto(limit = 10, used = 0, remaining = 10, resetsAt = null),
+        ).toDomain()
+
+        // Null rather than empty string, so the profile screen can tell
+        // "not answered" from "answered with nothing".
+        assertNull(user.gender)
+        assertNull(user.birthday)
     }
 }

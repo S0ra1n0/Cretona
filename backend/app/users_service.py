@@ -30,6 +30,10 @@ class UsersService:
         *,
         avatar_path: str | None = None,
         set_avatar: bool = False,
+        gender: str | None = None,
+        set_gender: bool = False,
+        birthday: str | None = None,
+        set_birthday: bool = False,
         base_url: str = "",
     ) -> MeResponse:
         if set_avatar and avatar_path:
@@ -43,6 +47,10 @@ class UsersService:
                 username=username,
                 avatar_path=avatar_path,
                 set_avatar=set_avatar,
+                gender=gender,
+                set_gender=set_gender,
+                birthday=birthday,
+                set_birthday=set_birthday,
             )
         except UsernameTakenError as exc:
             # Checking availability before writing would still race; letting
@@ -66,6 +74,8 @@ class UsersService:
             email=row.get("email"),
             username=row.get("username"),
             avatarUrl=avatar_url,
+            gender=row.get("gender"),
+            birthday=row.get("birthday"),
             role=row.get("role", "user"),
             isDisabled=bool(row.get("is_disabled")),
             createdAt=row.get("created_at") or "",

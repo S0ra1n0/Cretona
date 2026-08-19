@@ -130,8 +130,11 @@ fun ProfileScreen(
         // no session at all, so a transient network error read as a logout.
         when {
             account != null -> {
+                // The username is the name the account chose for itself, so
+                // it leads here; the email is an identifier and belongs with
+                // the other details below.
                 Text(
-                    text = account.email ?: account.username ?: account.id,
+                    text = account.username ?: account.email ?: account.id,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                 )
@@ -180,8 +183,12 @@ fun ProfileScreen(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    ProfileRow("Username", account.username ?: "--")
+                    ProfileRow("Email", account.email ?: NOT_SET)
                     ProfileRow("Role", account.role)
+                    // Optional, so an account that skipped profile setup shows
+                    // the placeholder rather than an empty-looking row.
+                    ProfileRow("Gender", account.gender?.let(::genderLabel) ?: NOT_SET)
+                    ProfileRow("Birthday", account.birthday ?: NOT_SET)
                     ProfileRow(
                         "Quota",
                         "${account.quota.remaining} of ${account.quota.limit} remaining",
@@ -215,6 +222,23 @@ fun ProfileScreen(
         Spacer(modifier = Modifier.height(24.dp))
         }
     }
+}
+
+/**
+ * Shown for a detail the account has not chosen yet. The same marker the
+ * username row has always used, so an unanswered field reads as unanswered
+ * rather than as a blank the screen failed to load.
+ */
+private const val NOT_SET = "--"
+
+/** Stored lowercase; shown the way a person would write it. */
+internal fun genderLabel(stored: String): String = when (stored.lowercase()) {
+    "male" -> "Male"
+    "female" -> "Female"
+    "other" -> "Other"
+    // A value this build does not know about is still the account's own
+    // answer, so it is shown rather than hidden behind the placeholder.
+    else -> stored.replaceFirstChar { it.uppercase() }
 }
 
 @Composable

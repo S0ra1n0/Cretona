@@ -114,14 +114,19 @@ def update_me(
     user_id: UserId,
     service: Annotated[UsersService, Depends(users_service)],
 ) -> MeResponse:
-    # An omitted avatarPath must leave the existing picture alone, while an
-    # explicit null clears it. Both arrive as None, so the caller's intent is
+    # An omitted field must leave the existing value alone, while a sent one
+    # clears or replaces it. Both arrive as None, so the caller's intent is
     # only recoverable from which fields were actually sent.
+    sent = payload.model_fields_set
     return service.update_me(
         user_id,
         payload.username,
         avatar_path=payload.avatar_path,
-        set_avatar="avatar_path" in payload.model_fields_set,
+        set_avatar="avatar_path" in sent,
+        gender=payload.gender,
+        set_gender="gender" in sent,
+        birthday=payload.birthday,
+        set_birthday="birthday" in sent,
         base_url=request_base_url(request),
     )
 

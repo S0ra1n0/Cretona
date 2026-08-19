@@ -329,6 +329,8 @@ private class FakeRepository(
     override suspend fun updateProfile(
         username: String,
         avatarPath: String?,
+        gender: String,
+        birthday: String,
     ): AppResult<UserProfile> = AppResult.Failure(AppError.Unknown("not used in this test"))
 
     override suspend fun getCurrentUser(): AppResult<UserProfile> {

@@ -22,7 +22,8 @@ from app.repository import (
 )
 
 USER_COLUMNS = (
-    "u.id, u.email, u.username, u.avatar_path, u.is_disabled, u.created_at, r.name AS role"
+    "u.id, u.email, u.username, u.avatar_path, u.gender, u.birthday, "
+    "u.is_disabled, u.created_at, r.name AS role"
 )
 
 # The Supabase table spells the owner `user_id` and lives under a different
@@ -269,6 +270,22 @@ class PostgresDatabase:
             ).fetchone()
         return _to_user(row)
 
+    def sync_user_email(self, user_id: str, email: str) -> None:
+        """Record the email a verified token claims for this account.
+
+        The signup trigger writes the row once and never revisits it, so a
+        changed address never reached this table. Written only when it
+        actually differs, so the common request does no write.
+        """
+        if not _is_uuid(user_id):
+            return
+        with self.pool.connection() as connection:
+            connection.execute(
+                "UPDATE public.users SET email = %s WHERE id = %s "
+                "AND (email IS NULL OR email <> %s)",
+                (email, user_id, email),
+            )
+
     def set_username(self, user_id: str, username: str | None) -> dict[str, Any] | None:
         return self.update_profile(user_id, username=username)
 
@@ -279,12 +296,16 @@ class PostgresDatabase:
         username: str | None = None,
         avatar_path: str | None = None,
         set_avatar: bool = False,
+        gender: str | None = None,
+        set_gender: bool = False,
+        birthday: str | None = None,
+        set_birthday: bool = False,
     ) -> dict[str, Any] | None:
         """Write the profile fields in one statement.
 
-        `set_avatar` distinguishes "leave the avatar alone" from "clear it":
-        both arrive as `avatar_path=None`, and without the flag a rename would
-        silently wipe the picture.
+        Each `set_*` flag distinguishes "leave this alone" from "clear it":
+        both arrive as `None`, and without the flag a rename would silently
+        wipe the picture, the gender and the birthday.
         """
         if not _is_uuid(user_id):
             return None
@@ -294,6 +315,12 @@ class PostgresDatabase:
         if set_avatar:
             assignments.append("avatar_path = %s")
             parameters.append(avatar_path)
+        if set_gender:
+            assignments.append("gender = %s")
+            parameters.append(gender)
+        if set_birthday:
+            assignments.append("birthday = %s")
+            parameters.append(birthday)
         parameters.append(user_id)
 
         try:

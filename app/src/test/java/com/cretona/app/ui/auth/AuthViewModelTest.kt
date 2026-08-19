@@ -143,7 +143,12 @@ private class FakeCretonaRepository : CretonaRepository {
             ),
         )
 
-    override suspend fun updateProfile(username: String, avatarPath: String?): AppResult<UserProfile> =
+    override suspend fun updateProfile(
+        username: String,
+        avatarPath: String?,
+        gender: String,
+        birthday: String,
+    ): AppResult<UserProfile> =
         AppResult.Success(
             UserProfile(
                 id = "user_123",

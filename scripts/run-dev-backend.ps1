@@ -91,13 +91,20 @@ db.initialize()
 # row with that Supabase user id exists locally too. These are the ids of the
 # accounts supabase/seed_dev_users.sql creates in this project.
 for user_id, email, username, role in (
-    ("00000000-0000-4000-8000-000000000001", "user@cretona.test", "dev", "user"),
+    # The fixed local identity is not a Supabase account and must not borrow
+    # the address of one: seeding both rows as user@cretona.test made every
+    # profile screen show the same email and looked like a sync failure.
+    ("00000000-0000-4000-8000-000000000001", "dev@cretona.test", "dev", "user"),
     ("0f2ca26d-c0cc-4093-9c80-c40460176d83", "user@cretona.test", "user", "user"),
     ("046ea264-dd97-448e-9483-a1549664baae", "admin@cretona.test", "admin", "admin"),
 ):
+    # Keep a username the account has already chosen. upsert_user overwrites
+    # it unconditionally, so re-seeding on every start used to reset whatever
+    # you had just saved in Edit profile and made the change look unsaved.
+    existing = db.get_user(user_id) or {}
     db.upsert_user(
-        user_id, email=email, username=username, role=role,
-        created_at="2026-01-01T00:00:00Z",
+        user_id, email=email, username=existing.get("username") or username,
+        role=role, created_at="2026-01-01T00:00:00Z",
     )
 print("dev + real-auth users ready")
 '@

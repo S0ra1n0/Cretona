@@ -116,6 +116,20 @@ data class MeUpdateRequest(
     // Storage object key from POST /uploads, never a URL. Omitted entirely
     // when unchanged: sending an explicit null clears the existing avatar.
     val avatarPath: String? = null,
+    // Empty string clears; a value sets. Two deliberate choices here, and the
+    // field stops working if either is undone:
+    //
+    //  - Not nullable: the Json is configured explicitNulls = false, which
+    //    drops a null field from the body entirely.
+    //  - No default value: encodeDefaults is false, so kotlinx omits any
+    //    property still equal to its default. Defaulting these to "" made
+    //    every clear indistinguishable from "not sent", and the backend read
+    //    that as "leave as is" -- so a value could be set but never removed.
+    //
+    // Either way the field vanishes from the wire. MeUpdateRequestSerializationTest
+    // pins that both are actually encoded.
+    val gender: String,
+    val birthday: String,
 )
 
 @Serializable
@@ -124,6 +138,8 @@ data class MeDto(
     val email: String? = null,
     val username: String? = null,
     val avatarUrl: String? = null,
+    val gender: String? = null,
+    val birthday: String? = null,
     val role: String,
     val isDisabled: Boolean,
     val createdAt: String,

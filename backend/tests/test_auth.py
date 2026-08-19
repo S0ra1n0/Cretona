@@ -262,3 +262,137 @@ def test_another_user_cannot_read_update_or_delete_a_project(
     # The owner's project survived every attempt.
     owner_view = supabase_client.get(f"/api/v1/projects/{created['id']}", headers=bearer())
     assert owner_view.status_code == 200
+
+
+# --- email write-through ------------------------------------------------------
+
+
+def test_the_tokens_email_is_written_through_to_the_profile(
+    supabase_client: TestClient,
+    bearer: BearerFactory,
+) -> None:
+    # The signup trigger seeded a@example.com and never revisited the row, so
+    # a later address change only exists in the token until this syncs it.
+    response = supabase_client.get(
+        "/api/v1/me",
+        headers=bearer(subject=USER_A, email="alice.new@example.com"),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["email"] == "alice.new@example.com"
+
+    stored = supabase_client.app.state.database.get_user(USER_A)
+    assert stored["email"] == "alice.new@example.com"
+
+
+def test_a_token_without_an_email_leaves_the_stored_one_alone(
+    supabase_client: TestClient,
+    bearer: BearerFactory,
+) -> None:
+    supabase_client.get("/api/v1/me", headers=bearer(subject=USER_A))
+
+    stored = supabase_client.app.state.database.get_user(USER_A)
+    assert stored["email"] == "a@example.com"
+
+
+def test_the_write_through_only_touches_the_calling_account(
+    supabase_client: TestClient,
+    bearer: BearerFactory,
+) -> None:
+    supabase_client.get(
+        "/api/v1/me",
+        headers=bearer(subject=USER_A, email="changed@example.com"),
+    )
+
+    database = supabase_client.app.state.database
+    assert database.get_user(USER_B)["email"] == "b@example.com"
+
+
+def test_the_email_claim_cannot_grant_a_role(
+    supabase_client: TestClient,
+    bearer: BearerFactory,
+) -> None:
+    # Email is the one claim now trusted enough to persist. Authority still
+    # comes from the row (SECURITY.md 2), so it must not travel with it.
+    supabase_client.get(
+        "/api/v1/me",
+        headers=bearer(subject=USER_A, email="admin@cretona.test"),
+    )
+
+    body = supabase_client.get(
+        "/api/v1/me",
+        headers=bearer(subject=USER_A, email="admin@cretona.test"),
+    ).json()
+
+    assert body["role"] == "user"
+    assert supabase_client.get(
+        "/api/v1/admin/users",
+        headers=bearer(subject=USER_A, email="admin@cretona.test"),
+    ).status_code == 403
+
+
+# --- first sign-in provisioning ----------------------------------------------
+
+NEW_ACCOUNT = "3f8d9c22-5b41-4f7e-9a03-77c2d1e4b8a6"
+
+
+def test_a_new_account_is_provisioned_on_its_first_request(
+    supabase_client: TestClient,
+    bearer: BearerFactory,
+) -> None:
+    # The local sqlite mirror has no Supabase signup trigger, so an account
+    # created through the app has no row here until this makes one.
+    assert supabase_client.app.state.database.get_user(NEW_ACCOUNT) is None
+
+    response = supabase_client.get(
+        "/api/v1/me",
+        headers=bearer(subject=NEW_ACCOUNT, email="brand.new@example.com"),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == NEW_ACCOUNT
+    assert body["email"] == "brand.new@example.com"
+
+
+def test_a_provisioned_account_starts_with_nothing_chosen(
+    supabase_client: TestClient,
+    bearer: BearerFactory,
+) -> None:
+    body = supabase_client.get(
+        "/api/v1/me",
+        headers=bearer(subject=NEW_ACCOUNT, email="brand.new@example.com"),
+    ).json()
+
+    # No username is what sends a fresh account into profile setup; the
+    # optional details read as unanswered rather than as someone else's.
+    assert body["username"] is None
+    assert body["gender"] is None
+    assert body["birthday"] is None
+
+
+def test_provisioning_never_grants_a_role(
+    supabase_client: TestClient,
+    bearer: BearerFactory,
+) -> None:
+    # An address that looks privileged is still just an address.
+    headers = bearer(subject=NEW_ACCOUNT, email="admin@cretona.test")
+
+    body = supabase_client.get("/api/v1/me", headers=headers).json()
+
+    # Authority comes from the row, never from a claim the client influences.
+    assert body["role"] == "user"
+    assert supabase_client.get("/api/v1/admin/users", headers=headers).status_code == 403
+
+
+def test_provisioning_happens_once(
+    supabase_client: TestClient,
+    bearer: BearerFactory,
+) -> None:
+    headers = bearer(subject=NEW_ACCOUNT, email="brand.new@example.com")
+    supabase_client.get("/api/v1/me", headers=headers)
+    supabase_client.patch("/api/v1/me", headers=headers, json={"username": "brandnew"})
+
+    # A second request must not reset the profile the account just completed.
+    body = supabase_client.get("/api/v1/me", headers=headers).json()
+    assert body["username"] == "brandnew"

@@ -24,7 +24,11 @@ CREATE TABLE IF NOT EXISTS users (
     username TEXT UNIQUE,
     role TEXT NOT NULL DEFAULT 'user',
     is_disabled INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL DEFAULT '1970-01-01T00:00:00Z'
+    created_at TEXT NOT NULL DEFAULT '1970-01-01T00:00:00Z',
+    -- Optional profile details. Only the username is required to finish
+    -- setup, so both stay nullable and read as "not chosen yet".
+    gender TEXT CHECK (gender IN ('male', 'female', 'other')),
+    birthday TEXT
 );
 
 CREATE TABLE IF NOT EXISTS projects (
@@ -130,6 +134,11 @@ ADDED_COLUMNS = {
         # Storage object key for the profile avatar, never a signed URL
         # (supabase/010_add_user_avatar.sql).
         "avatar_path": "TEXT",
+        # Optional profile details (supabase/012_add_user_profile_fields.sql).
+        # No CHECK constraint here: SQLite cannot add one via ALTER TABLE, so
+        # the value is validated by the MeUpdate schema before it ever lands.
+        "gender": "TEXT",
+        "birthday": "TEXT",
     },
 }
 
@@ -229,11 +238,28 @@ class Database:
     def get_user(self, user_id: str) -> dict[str, Any] | None:
         with self.connect() as connection:
             row = connection.execute(
-                "SELECT id, email, username, avatar_path, role, is_disabled, created_at "
+                "SELECT id, email, username, avatar_path, gender, birthday, "
+                "role, is_disabled, created_at "
                 "FROM users WHERE id = ?",
                 (user_id,),
             ).fetchone()
         return self._user_row(row)
+
+    def sync_user_email(self, user_id: str, email: str) -> None:
+        """Record the email a verified token claims for this account.
+
+        Rows are created by the Supabase signup trigger, which is the only
+        thing that has ever written `users.email`; nothing refreshed it
+        afterwards, so a changed address never reached this database and the
+        profile screen kept showing whatever the row was seeded with. Written
+        only when it actually differs, so the common request does no write.
+        """
+        with self.connect() as connection:
+            connection.execute(
+                "UPDATE users SET email = ? WHERE id = ? "
+                "AND (email IS NULL OR email <> ?)",
+                (email, user_id, email),
+            )
 
     def set_username(self, user_id: str, username: str | None) -> dict[str, Any] | None:
         """Rename, letting the unique index decide.
@@ -250,18 +276,28 @@ class Database:
         username: str | None = None,
         avatar_path: str | None = None,
         set_avatar: bool = False,
+        gender: str | None = None,
+        set_gender: bool = False,
+        birthday: str | None = None,
+        set_birthday: bool = False,
     ) -> dict[str, Any] | None:
         """Write the profile fields in one statement.
 
-        `set_avatar` distinguishes "leave the avatar alone" from "clear it":
-        both arrive as `avatar_path=None`, and without the flag a rename would
-        silently wipe the picture.
+        Each `set_*` flag distinguishes "leave this alone" from "clear it":
+        both arrive as `None`, and without the flag a rename would silently
+        wipe the picture, the gender and the birthday.
         """
         assignments = ["username = ?"]
         parameters: list[Any] = [username]
         if set_avatar:
             assignments.append("avatar_path = ?")
             parameters.append(avatar_path)
+        if set_gender:
+            assignments.append("gender = ?")
+            parameters.append(gender)
+        if set_birthday:
+            assignments.append("birthday = ?")
+            parameters.append(birthday)
         parameters.append(user_id)
 
         try:

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from typing import Annotated
+import contextlib
+from datetime import UTC, datetime
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import Depends, Header, Request
@@ -51,6 +53,9 @@ def _resolved_account(request: Request, identity: VerifiedIdentity) -> str:
     user = request.app.state.database.get_user(identity.user_id)
 
     if user is None:
+        user = _provision_local_account(request, identity)
+
+    if user is None:
         # The token verifies but no profile exists, so the signup trigger never
         # fired. Treat as unauthenticated rather than failing downstream.
         raise AppError(
@@ -64,8 +69,67 @@ def _resolved_account(request: Request, identity: VerifiedIdentity) -> str:
     if user["is_disabled"]:
         raise AppError(403, "ACCOUNT_DISABLED", "This account has been disabled.")
 
+    # The signup trigger writes `email` once and never revisits it, so the row
+    # kept whatever it was created or seeded with and every profile screen
+    # showed that instead of the account's real address. The verified token is
+    # the authority on the email; role and disabled state are emphatically not
+    # (SECURITY.md 2) and are still read from the row above.
+    if identity.email and identity.email != user.get("email"):
+        _sync_email(request, identity.user_id, identity.email)
+
     request.state.auth_role = user.get("role", "user")
     return identity.user_id
+
+
+def _provision_local_account(
+    request: Request,
+    identity: VerifiedIdentity,
+) -> dict[str, Any] | None:
+    """Create the missing row behind a verified token, on sqlite only.
+
+    In a deployed profile the Supabase signup trigger owns this table, so a
+    missing row means something is genuinely wrong and the caller still gets
+    401. The local sqlite mirror has no trigger: nothing there ever learns
+    about an account created through the app, so signing in with a real token
+    hit "your account is not set up" forever and only the three seeded ids
+    could get in.
+
+    The row is created with no username, which is what puts a fresh account
+    into profile setup, and with the default role -- authority is never taken
+    from a token claim (SECURITY.md 2).
+    """
+    settings: Settings = request.app.state.settings
+    if settings.database_backend != "sqlite":
+        return None
+
+    database = request.app.state.database
+    if not hasattr(database, "upsert_user"):
+        return None
+
+    with contextlib.suppress(Exception):
+        database.upsert_user(
+            identity.user_id,
+            email=identity.email,
+            username=None,
+            role="user",
+            created_at=datetime.now(tz=UTC).isoformat().replace("+00:00", "Z"),
+        )
+        return database.get_user(identity.user_id)
+    return None
+
+
+def _sync_email(request: Request, user_id: str, email: str) -> None:
+    """Best-effort write-through of the token's email claim.
+
+    A failure here must not fail the request: the caller is authenticated
+    either way, and a stale email is a display problem, not an access one.
+    """
+    database = request.app.state.database
+    syncer = getattr(database, "sync_user_email", None)
+    if syncer is None:
+        return
+    with contextlib.suppress(Exception):
+        syncer(user_id, email)
 
 
 def require_admin(

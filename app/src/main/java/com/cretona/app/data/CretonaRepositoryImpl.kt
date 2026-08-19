@@ -29,6 +29,8 @@ import com.cretona.app.domain.model.UserProfile
 import com.cretona.app.domain.model.VideoProject
 import com.cretona.app.domain.repository.CretonaRepository
 import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -48,9 +50,16 @@ class CretonaRepositoryImpl @Inject constructor(
     override suspend fun updateProfile(
         username: String,
         avatarPath: String?,
+        gender: String,
+        birthday: String,
     ): AppResult<UserProfile> = apiCall {
         api.updateProfile(
-            MeUpdateRequest(username = username, avatarPath = avatarPath),
+            MeUpdateRequest(
+                username = username,
+                avatarPath = avatarPath,
+                gender = gender,
+                birthday = birthday,
+            ),
         ).toDomain()
     }
 
@@ -220,6 +229,8 @@ internal fun MeDto.toDomain(): UserProfile = UserProfile(
     email = email,
     username = username,
     avatarUrl = avatarUrl,
+    gender = gender,
+    birthday = birthday,
     role = role,
     isDisabled = isDisabled,
     createdAt = createdAt,
@@ -280,11 +291,47 @@ internal fun AdminMetricsDto.toDomain(): AdminMetrics = AdminMetrics(
 
 private val knownStatuses = setOf("pending", "generating", "completed", "failed")
 
-private fun HttpException.toAppError(): AppError = when (code()) {
-    401 -> AppError.Unauthorized()
-    403 -> AppError.Forbidden()
-    404 -> AppError.NotFound()
-    in 500..599 -> AppError.Server(code(), "The server could not complete the request.")
-    else -> AppError.Server(code(), "Request failed with HTTP ${code()}.")
+/** The backend's error envelope: `{"error": {"code", "message"}, "requestId"}`. */
+@Serializable
+private data class ApiErrorEnvelope(val error: ApiErrorBody? = null)
+
+@Serializable
+private data class ApiErrorBody(val code: String? = null, val message: String? = null)
+
+// Local to the mapper rather than injected: this only ever decodes the one
+// shape above, and a failure to parse must never replace the real failure.
+private val errorJson = Json { ignoreUnknownKeys = true; explicitNulls = false }
+
+/**
+ * The message the backend sent, or null when there is not a usable one.
+ *
+ * Reads the body at most once -- `errorBody().string()` consumes the stream.
+ */
+private fun HttpException.serverMessage(): String? = runCatching {
+    response()?.errorBody()?.string()
+        ?.takeIf { it.isNotBlank() }
+        ?.let { errorJson.decodeFromString(ApiErrorEnvelope.serializer(), it).error?.message }
+}.getOrNull()?.takeIf { it.isNotBlank() }
+
+/**
+ * Translates a failed call, preferring the backend's own wording.
+ *
+ * The envelope was previously discarded, so every 4xx the app does not
+ * special-case surfaced as "Request failed with HTTP 409" -- which told the
+ * account nothing about a username already being taken, or which field of a
+ * profile save the server actually rejected.
+ *
+ * 5xx keeps the generic line on purpose: a server fault's message is an
+ * internal detail, and the caller can do nothing with it either way.
+ */
+internal fun HttpException.toAppError(): AppError {
+    val detail = serverMessage()
+    return when (code()) {
+        401 -> detail?.let(AppError::Unauthorized) ?: AppError.Unauthorized()
+        403 -> detail?.let(AppError::Forbidden) ?: AppError.Forbidden()
+        404 -> detail?.let(AppError::NotFound) ?: AppError.NotFound()
+        in 500..599 -> AppError.Server(code(), "The server could not complete the request.")
+        else -> AppError.Server(code(), detail ?: "Request failed with HTTP ${code()}.")
+    }
 }
 
