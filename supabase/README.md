@@ -7,13 +7,13 @@ Database and storage setup for Cretona. Specified in [docs/DATA_MODEL.md](../doc
 1. **Create the project** (P1-1) at [supabase.com](https://supabase.com). Pick the region closest to your users.
 2. **Run [`bootstrap.sql`](bootstrap.sql)** — open the SQL Editor, paste the whole file, execute. It is one transaction and safe to re-run.
 
-   Then apply the numbered migrations in order. The current sequence is
-   `002_add_error_code.sql` through `007_add_shared_rate_limits.sql`; never
-   skip a number. Live Supabase was observed with migrations 004 and 005
-   already present, then migrations 006 and 007 were applied and verified on
-   2026-08-14. The `PREPARED, NOT APPLIED` headers remain unchanged because
-   editing an executed migration would invalidate its pinned execution hash;
-   live status belongs in this README and the evidence ledger.
+   Then apply the numbered migrations in order. The current source sequence is
+   `002_add_error_code.sql` through `012_add_user_profile_fields.sql`; never
+   skip a number. Migrations 006 and 007 were applied and verified on
+   2026-08-14, and evidence from 2026-08-17 records 008 and 009. The live state
+   of 010-012 must be checked with the read-only `status` action before any
+   apply action; source presence is not deployment proof. Never edit an
+   executed migration because that invalidates its pinned execution hash.
 3. **Run the verification queries** at the bottom of that file. All must pass before moving on.
 
    > The RLS check filters on `relnamespace = 'public'::regnamespace` deliberately. `auth.users` is *also* called `users` and has RLS off, so an unfiltered query returns two `users` rows and looks like a failure when nothing is wrong.
@@ -34,7 +34,7 @@ Database and storage setup for Cretona. Specified in [docs/DATA_MODEL.md](../doc
 
 ## Verification status
 
-`bootstrap.sql` has been executed end to end against Postgres 16 in Docker, with `auth` and `storage` stubbed to match Supabase's real shape (`auth.uid()`, `storage.foldername()`, and Supabase's default grants on `storage.objects`). It applies cleanly in one transaction.
+`bootstrap.sql` was executed end to end against Postgres 16 in Docker, with `auth` and `storage` stubbed to match Supabase's real shape (`auth.uid()`, `storage.foldername()`, and Supabase's default grants on `storage.objects`). The active adapter parity fixture now mirrors migrations through 012 and is intended to run against disposable Postgres 17 before release.
 
 Behaviour confirmed, not just syntax:
 
@@ -69,8 +69,11 @@ values from output:
 # Protected logical export outside the repository; requires Docker Desktop.
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/backup-live-supabase.ps1
 
-# Current post-migration catalog/security verification.
-backend/.venv/Scripts/python.exe scripts/live-supabase-migration-gate.py verify-007
+# Read-only inventory first. This reports migrations 006-012 separately.
+backend/.venv/Scripts/python.exe scripts/live-supabase-migration-gate.py status
+
+# Verify the latest migration only after status proves it was intentionally applied.
+backend/.venv/Scripts/python.exe scripts/live-supabase-migration-gate.py verify-012
 
 # Official Supabase Security and Performance Advisors.
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-live-supabase-advisors.ps1
@@ -101,13 +104,14 @@ Policies decide which *rows* a client may touch. Grants decide which *columns*. 
 
 ## Changing the schema later
 
-Add a numbered file (`002_add_x.sql`) rather than editing `bootstrap.sql`, so an existing database can be brought forward. Then update:
+Add a numbered file (`013_add_x.sql`) rather than editing an executed migration,
+so an existing database can be brought forward. Then update:
 
 - [docs/DATA_MODEL.md](../docs/DATA_MODEL.md) — the spec
-- [backend/prisma/schema.prisma](../backend/prisma/schema.prisma) — the client model
+- [`backend/app/postgres.py`](../backend/app/postgres.py) — startup and adapter contract
+- [`backend/tests/postgres_schema.sql`](../backend/tests/postgres_schema.sql) — disposable parity schema
+- [`scripts/live-supabase-migration-gate.py`](../scripts/live-supabase-migration-gate.py) — pinned preflight/apply/verify gate
 
-`prisma db pull` reports drift between the schema file and the live database. Do **not** use `prisma migrate` — it does not know about the RLS policies, the `auth.users` trigger, or the partial indexes, and will try to remove them.
-
-The B-3 rate-limit table is an exception to the Prisma-model update rule: it is
-an internal concern of the active FastAPI adapter, while `backend/` is retained
-only as Express migration evidence under ADR-008.
+The active backend is FastAPI/psycopg. Do not introduce Prisma migrations: they
+do not own the RLS policies, `auth.users` triggers, grants, or partial indexes
+in this schema.

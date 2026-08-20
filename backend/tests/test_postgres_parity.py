@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import psycopg
@@ -18,7 +19,7 @@ import pytest
 from fastapi.testclient import TestClient
 from psycopg.rows import dict_row
 
-from app.postgres import SELECTED_COLUMNS, PostgresDatabase
+from app.postgres import SELECTED_COLUMNS, PostgresDatabase, SchemaMismatchError
 from tests.conftest import USER_A, USER_B
 
 BearerFactory = Callable[..., dict[str, str]]
@@ -58,6 +59,39 @@ def test_every_selected_column_exists(postgres_client: TestClient, postgres_url:
         ).fetchall()
 
     assert expected <= {row[0] for row in rows}
+
+
+def test_profile_details_round_trip_on_postgres(
+    postgres_client: TestClient,
+    bearer: BearerFactory,
+) -> None:
+    headers = bearer()
+
+    updated = postgres_client.patch(
+        "/api/v1/me",
+        headers=headers,
+        json={"username": "alice", "gender": "female", "birthday": "1998-04-17"},
+    )
+    fetched = postgres_client.get("/api/v1/me", headers=headers)
+
+    assert updated.status_code == 200, updated.text
+    assert fetched.status_code == 200, fetched.text
+    assert fetched.json()["gender"] == "female"
+    assert fetched.json()["birthday"] == "1998-04-17"
+
+
+def test_startup_rejects_schema_missing_profile_details(postgres_url: str) -> None:
+    schema = (Path(__file__).parent / "postgres_schema.sql").read_text(encoding="utf-8")
+    with psycopg.connect(postgres_url, autocommit=True) as connection:
+        connection.execute(schema)
+        connection.execute("ALTER TABLE public.users DROP COLUMN gender, DROP COLUMN birthday")
+
+    store = PostgresDatabase(postgres_url, min_size=1, max_size=2)
+    try:
+        with pytest.raises(SchemaMismatchError, match="012_add_user_profile_fields"):
+            store.initialize()
+    finally:
+        store.close()
 
 
 def test_rate_limit_is_atomic_across_postgres_instances(

@@ -7,7 +7,7 @@
 -- # local host, so never point CRETONA_TEST_DATABASE_URL at Supabase.        #
 -- ############################################################################
 --
--- Mirrors the parts of supabase/bootstrap.sql + migrations 002 through 007
+-- Mirrors the parts of supabase/bootstrap.sql + migrations 002 through 012
 -- that app/postgres.py actually reads and writes.
 
 drop table if exists public.admin_audit_logs cascade;
@@ -18,7 +18,7 @@ drop table if exists public.users cascade;
 drop table if exists public.roles cascade;
 drop type if exists public.project_status cascade;
 
-create type public.project_status as enum ('pending', 'generating', 'completed', 'failed');
+create type public.project_status as enum ('pending', 'generating', 'completed', 'failed', 'cancelled');
 
 create table public.roles (
   id   smallserial primary key,
@@ -32,9 +32,17 @@ create table public.users (
   role_id     smallint    not null default 1 references public.roles (id),
   username    text        unique,
   email       text        not null unique,
+  avatar_path text,
+  gender      text,
+  birthday    text,
   is_disabled boolean     not null default false,
   created_at  timestamptz not null default now(),
-  updated_at  timestamptz not null default now()
+  updated_at  timestamptz not null default now(),
+
+  constraint users_gender_allowed
+    check (gender is null or gender in ('male', 'female', 'other')),
+  constraint users_birthday_iso_date
+    check (birthday is null or birthday ~ '^\d{4}-\d{2}-\d{2}$')
 );
 
 create table public.video_projects (
@@ -114,6 +122,12 @@ create table public.admin_audit_logs (
 create index idx_admin_audit_logs_created
   on public.admin_audit_logs (created_at desc, id desc);
 
+create index idx_admin_audit_logs_action_created
+  on public.admin_audit_logs (action, created_at desc, id desc);
+
+create index idx_admin_audit_logs_actor_created
+  on public.admin_audit_logs (actor_id, created_at desc, id desc);
+
 create table public.rate_limit_hits (
   id          bigserial   primary key,
   caller_key  text        not null,
@@ -141,6 +155,21 @@ create unique index uq_projects_idempotency
 create index idx_projects_user_created
   on public.video_projects (user_id, created_at desc)
   where deleted_at is null;
+
+create index idx_projects_started_at
+  on public.video_projects (started_at)
+  where status in ('pending', 'generating');
+
+create index idx_projects_lease
+  on public.video_projects (lease_expires_at)
+  where status in ('pending', 'generating') and deleted_at is null;
+
+create index idx_video_projects_provider_job
+  on public.video_projects (provider, provider_job_id)
+  where provider_job_id is not null;
+
+create index idx_video_projects_deleted_user
+  on public.video_projects (deleted_at, user_id);
 
 create or replace function public.set_updated_at()
 returns trigger language plpgsql as $$

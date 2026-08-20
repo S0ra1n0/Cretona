@@ -153,6 +153,15 @@ class PostgresDatabase:
                 "public.users is missing avatar_path. Apply supabase/010_add_user_avatar.sql."
             ) from exc
 
+        try:
+            with self.pool.connection() as connection:
+                connection.execute("SELECT gender, birthday FROM public.users LIMIT 0")
+        except psycopg.errors.UndefinedColumn as exc:
+            raise SchemaMismatchError(
+                "public.users is missing gender or birthday. Apply "
+                "supabase/012_add_user_profile_fields.sql."
+            ) from exc
+
     def close(self) -> None:
         self.pool.close()
 

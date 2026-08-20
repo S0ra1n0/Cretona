@@ -1,4 +1,4 @@
-"""Guarded preflight, apply, and verification for Cretona migrations 006-010.
+"""Guarded preflight, apply, and verification for Cretona migrations 006-012.
 
 Run this script only with the repository's pinned FastAPI virtual environment.
 It reads the ignored root ``env`` file, validates that SUPABASE_URL and
@@ -41,6 +41,14 @@ MIGRATIONS = {
     "010": (
         ROOT / "supabase" / "010_add_user_avatar.sql",
         "62d9d57a8fbfb19a34232fd63ff442dc98cd688c8943f42eaf2b8c2263f72592",
+    ),
+    "011": (
+        ROOT / "supabase" / "011_add_composite_query_indexes.sql",
+        "276b2f5044a205a6e180eebebdd4c0448aba3196b20278e231afe5eace2f959b",
+    ),
+    "012": (
+        ROOT / "supabase" / "012_add_user_profile_fields.sql",
+        "d2ee0a70963d2ef7a8e79167d3484a4f7ffdf2be941bff21b496b23238bb9a0a",
     ),
 }
 DATA_API_ROLES = ("anon", "authenticated", "service_role")
@@ -124,6 +132,8 @@ def collect_state(cursor: psycopg.Cursor[Any]) -> dict[str, Any]:
             (table_name = 'video_projects' and column_name in
               ('started_at', 'lease_owner', 'lease_expires_at',
                'progress_percent', 'step_message'))
+            or (table_name = 'users' and column_name in
+              ('avatar_path', 'gender', 'birthday'))
             or table_name in ('rate_limit_hits', 'admin_audit_logs')
           )
         order by table_name, ordinal_position
@@ -141,7 +151,11 @@ def collect_state(cursor: psycopg.Cursor[Any]) -> dict[str, Any]:
           and i.indexname in (
             'idx_projects_started_at', 'idx_projects_lease',
             'idx_logs_retention', 'rate_limit_hits_pkey',
-            'idx_rate_limit_caller_window', 'idx_rate_limit_cleanup'
+            'idx_rate_limit_caller_window', 'idx_rate_limit_cleanup',
+            'idx_admin_audit_logs_action_created',
+            'idx_admin_audit_logs_actor_created',
+            'idx_video_projects_provider_job',
+            'idx_video_projects_deleted_user'
           )
         order by i.indexname
         """
@@ -177,14 +191,15 @@ def collect_state(cursor: psycopg.Cursor[Any]) -> dict[str, Any]:
           and conname = 'chk_error_code'
         """
     ).fetchone()
-    avatar_column = cursor.execute(
+    profile_constraints = cursor.execute(
         """
-        select data_type, udt_name
-        from information_schema.columns
-        where table_schema = 'public' and table_name = 'users'
-          and column_name = 'avatar_path'
+        select conname, pg_get_constraintdef(oid) as definition
+        from pg_constraint
+        where conrelid = 'public.users'::regclass
+          and conname in ('users_gender_allowed', 'users_birthday_iso_date')
+        order by conname
         """
-    ).fetchone()
+    ).fetchall()
     status_enum_labels = [
         row["label"]
         for row in cursor.execute(
@@ -209,7 +224,14 @@ def collect_state(cursor: psycopg.Cursor[Any]) -> dict[str, Any]:
             error_code_constraint["definition"] if error_code_constraint else None
         ),
         "status_enum_labels": status_enum_labels,
-        "avatar_column": avatar_column["udt_name"] if avatar_column else None,
+        "profile_columns": {
+            row["column_name"]: row["udt_name"]
+            for row in columns
+            if row["table_name"] == "users"
+        },
+        "profile_constraints": {
+            row["conname"]: row["definition"] for row in profile_constraints
+        },
     }
 
 
@@ -377,7 +399,7 @@ def assert_009(state: dict[str, Any], *, present: bool) -> None:
 
 def assert_010(state: dict[str, Any], *, present: bool) -> None:
     """public.users.avatar_path, added by MIG-010."""
-    observed = state["avatar_column"]
+    observed = state["profile_columns"].get("avatar_path")
     if present and observed != "text":
         raise GateError(
             "public.users.avatar_path is "
@@ -385,6 +407,90 @@ def assert_010(state: dict[str, Any], *, present: bool) -> None:
         )
     if not present and observed is not None:
         raise GateError("MIG-010 is already applied; refusing an unplanned re-apply.")
+
+
+MIG_011_INDEXES = {
+    "idx_admin_audit_logs_action_created": (
+        "admin_audit_logs",
+        "action",
+        "created_at",
+        "id",
+    ),
+    "idx_admin_audit_logs_actor_created": (
+        "admin_audit_logs",
+        "actor_id",
+        "created_at",
+        "id",
+    ),
+    "idx_video_projects_provider_job": (
+        "video_projects",
+        "provider",
+        "provider_job_id",
+        "provider_job_id is not null",
+    ),
+    "idx_video_projects_deleted_user": (
+        "video_projects",
+        "deleted_at",
+        "user_id",
+    ),
+}
+
+
+def assert_011(state: dict[str, Any], *, present: bool) -> None:
+    """Composite query indexes added by MIG-011."""
+    indexes = index_by_name(state)
+    existing = MIG_011_INDEXES.keys() & indexes.keys()
+    for name in existing:
+        assert_index(indexes, name, MIG_011_INDEXES[name])
+
+    fully_applied = len(existing) == len(MIG_011_INDEXES)
+    if present and not fully_applied:
+        missing = sorted(MIG_011_INDEXES.keys() - existing)
+        raise GateError(f"MIG-011 is incomplete; missing indexes: {', '.join(missing)}.")
+    if not present and fully_applied:
+        raise GateError("MIG-011 is already fully applied; refusing an unplanned re-apply.")
+
+
+def state_012(state: dict[str, Any]) -> dict[str, Any]:
+    columns = state["profile_columns"]
+    constraints = state["profile_constraints"]
+    gender_definition = constraints.get("users_gender_allowed", "").casefold()
+    birthday_definition = constraints.get("users_birthday_iso_date", "").casefold()
+    return {
+        "gender_type": columns.get("gender"),
+        "birthday_type": columns.get("birthday"),
+        "gender_constraint_valid": all(
+            fragment in gender_definition for fragment in ("gender", "male", "female", "other")
+        ),
+        "birthday_constraint_valid": "birthday" in birthday_definition
+        and "~" in birthday_definition,
+    }
+
+
+def assert_012(state: dict[str, Any], *, present: bool) -> None:
+    """Optional user profile fields and checks added by MIG-012."""
+    facts = state_012(state)
+    fully_applied = (
+        facts["gender_type"] == "text"
+        and facts["birthday_type"] == "text"
+        and facts["gender_constraint_valid"]
+        and facts["birthday_constraint_valid"]
+    )
+    if present and not fully_applied:
+        raise GateError("MIG-012 is incomplete or has an unexpected column/constraint contract.")
+    if not present and fully_applied:
+        raise GateError("MIG-012 is already fully applied; refusing an unplanned re-apply.")
+
+    # The migration is idempotent, so a valid partial application may resume.
+    # Wrong existing objects would survive IF NOT EXISTS and must stop first.
+    for name in ("gender_type", "birthday_type"):
+        if facts[name] not in (None, "text"):
+            raise GateError(f"MIG-012 cannot repair unexpected {name}={facts[name]!r}.")
+    constraints = state["profile_constraints"]
+    if "users_gender_allowed" in constraints and not facts["gender_constraint_valid"]:
+        raise GateError("MIG-012 cannot repair the existing users_gender_allowed constraint.")
+    if "users_birthday_iso_date" in constraints and not facts["birthday_constraint_valid"]:
+        raise GateError("MIG-012 cannot repair the existing users_birthday_iso_date constraint.")
 
 
 def collect_007_verification(cursor: psycopg.Cursor[Any]) -> dict[str, Any]:
@@ -544,6 +650,7 @@ def run_status(connection: psycopg.Connection[Any]) -> dict[str, Any]:
     state = read_only_state(connection)
     indexes = index_by_name(state)
     facts = state_009(state)
+    profile_facts = state_012(state)
     return {
         "transaction_read_only": state["transaction_read_only"],
         "server_version": state["server"]["version"],
@@ -551,14 +658,22 @@ def run_status(connection: psycopg.Connection[Any]) -> dict[str, Any]:
             "006": "idx_logs_retention" in indexes,
             "007": bool(state["rate_limit_table"]),
             "008": bool(state["audit_table"]),
-            "010": state["avatar_column"] == "text",
             "009": (
                 facts["columns_present"]
                 and facts["constraint_allows_cancelled"]
                 and facts["status_enum_allows_cancelled"]
             ),
+            "010": state["profile_columns"].get("avatar_path") == "text",
+            "011": all(name in indexes for name in MIG_011_INDEXES),
+            "012": (
+                profile_facts["gender_type"] == "text"
+                and profile_facts["birthday_type"] == "text"
+                and profile_facts["gender_constraint_valid"]
+                and profile_facts["birthday_constraint_valid"]
+            ),
         },
         "migration_009": facts,
+        "migration_012": profile_facts,
         "invalid_indexes": state["invalid_indexes"],
     }
 
@@ -585,12 +700,24 @@ def run_apply(connection: psycopg.Connection[Any], number: str) -> dict[str, Any
             raise GateError("public.rate_limit_hits is absent; apply 007 before 009.")
         assert_008(state, present=True)
         assert_009(state, present=False)
-    else:
-        # 010 comes last, so everything before it must already be in place.
+    elif number == "010":
         assert_006(state, present=True)
         assert_008(state, present=True)
         assert_009(state, present=True)
         assert_010(state, present=False)
+    elif number == "011":
+        assert_006(state, present=True)
+        assert_008(state, present=True)
+        assert_009(state, present=True)
+        assert_010(state, present=True)
+        assert_011(state, present=False)
+    else:
+        assert_006(state, present=True)
+        assert_008(state, present=True)
+        assert_009(state, present=True)
+        assert_010(state, present=True)
+        assert_011(state, present=True)
+        assert_012(state, present=False)
     if state["invalid_indexes"]:
         raise GateError("The public schema contains an invalid, unready, or non-live index.")
 
@@ -653,7 +780,33 @@ def run_verify(connection: psycopg.Connection[Any], number: str) -> dict[str, An
                 raise GateError(
                     "The public schema contains an invalid, unready, or non-live index."
                 )
-            result = {"state": state, "avatar_column": state["avatar_column"]}
+            result = {
+                "state": state,
+                "avatar_column": state["profile_columns"].get("avatar_path"),
+            }
+        elif number == "011":
+            state = collect_state(cursor)
+            assert_004_005(state)
+            assert_009(state, present=True)
+            assert_010(state, present=True)
+            assert_011(state, present=True)
+            if state["invalid_indexes"]:
+                raise GateError(
+                    "The public schema contains an invalid, unready, or non-live index."
+                )
+            result = {"state": state}
+        elif number == "012":
+            state = collect_state(cursor)
+            assert_004_005(state)
+            assert_009(state, present=True)
+            assert_010(state, present=True)
+            assert_011(state, present=True)
+            assert_012(state, present=True)
+            if state["invalid_indexes"]:
+                raise GateError(
+                    "The public schema contains an invalid, unready, or non-live index."
+                )
+            result = {"state": state, "migration_012": state_012(state)}
         else:
             result = collect_007_verification(cursor)
             assert_004_005(result["state"])
@@ -691,6 +844,10 @@ def main() -> int:
             "verify-009",
             "apply-010",
             "verify-010",
+            "apply-011",
+            "verify-011",
+            "apply-012",
+            "verify-012",
         ),
     )
     parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE)
