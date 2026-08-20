@@ -23,7 +23,7 @@ migration evidence; it is not the active Mobile 1 runtime.
 Run the repository-owned preflight first:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\check-toolchain.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\check-toolchain-safe.ps1
 ```
 
 The checker reports required and optional tools separately. It never reads or
@@ -32,7 +32,7 @@ prints secrets. It discovers Java and Android SDK paths from `JAVA_HOME`,
 installations can be supplied without editing the script:
 
 ```powershell
-.\scripts\check-toolchain.ps1 -JavaHome 'D:\Tools\jbr' -AndroidSdk 'D:\Android\Sdk'
+.\scripts\check-toolchain-safe.ps1 -JavaHome 'D:\Tools\jbr' -AndroidSdk 'D:\Android\Sdk'
 ```
 
 ## 2. Android
@@ -135,9 +135,11 @@ PLUS26/.downloads/     verified vendor archives
 PLUS26/.tools/         portable tools such as Ollama and uv-managed Python
 ```
 
-`scripts/check-toolchain.ps1` verifies the exact FramePack source revision,
+`scripts/check-toolchain-safe.ps1` verifies the exact FramePack source revision,
 bundled Python/Torch/CUDA runtime, three pinned model snapshots, incomplete-file
-absence, and the persistent cache roots. Reproduction metadata—release URL,
+absence, and the persistent cache roots. Every native probe has a 20-second
+deadline by default; pass `-ProbeTimeoutSeconds` to lower it during diagnosis.
+Reproduction metadata—release URL,
 source/model revisions, byte counts, hashes, and license status—is in
 `docs/experiments/EXP-005/MODEL_RUNTIME_MANIFEST.json`.
 
@@ -150,7 +152,7 @@ failed.
 Before any FramePack process starts, run:
 
 ```powershell
-.\scripts\check-toolchain.ps1
+.\scripts\check-toolchain-safe.ps1
 .\scripts\check-exp005-preflight.ps1 -Profile framepack
 ```
 
@@ -213,4 +215,4 @@ the missing shell-hook notice does not mean command filtering is unavailable.
 | Prompt says deterministic fallback | Ollama is disabled/unreachable; check `.env`, model availability, and `/api/tags` locally |
 | Video is a color test pattern | Expected fake-provider evidence; real AI video remains gated by EXP-005 |
 | `rtk gain` cannot write LocalAppData | Confirm the roaming RTK config points `database_path` at `.rtk-data/history.db` |
-| FFmpeg link is blocked in Codex | Run `check-toolchain.ps1`; it resolves the WinGet symlink target before invoking the executable |
+| FFmpeg link is blocked in Codex | Run `check-toolchain-safe.ps1`; it resolves the WinGet symlink target before invoking the executable |

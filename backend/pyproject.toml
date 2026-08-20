@@ -20,6 +20,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "httpx2>=2.9,<3",
     "pytest>=8.4,<9",
     "ruff>=0.12,<1",
 ]
@@ -30,9 +31,8 @@ packages = ["app"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = "-q --basetemp=.pytest_tmp -p no:cacheprovider"
+addopts = "-q -p no:cacheprovider"
 filterwarnings = [
-    "ignore::starlette.testclient.StarletteDeprecationWarning",
     "ignore:.*InsecureKeyLengthWarning.*:UserWarning",
     "ignore:.*The HMAC key is.*:UserWarning",
 ]

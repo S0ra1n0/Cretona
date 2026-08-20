@@ -1,7 +1,9 @@
 [CmdletBinding()]
 param(
     [string]$JavaHome,
-    [string]$AndroidSdk
+    [string]$AndroidSdk,
+    [ValidateRange(1, 300)]
+    [int]$ProbeTimeoutSeconds = 20
 )
 
 $ErrorActionPreference = 'Stop'
@@ -45,26 +47,72 @@ function Resolve-Executable {
 function Invoke-Probe {
     param(
         [string]$FilePath,
-        [string[]]$Arguments
+        [string[]]$Arguments,
+        [int]$TimeoutSeconds = $ProbeTimeoutSeconds
     )
 
-    # Several version commands (notably java and ffmpeg) deliberately write
-    # normal version text to stderr. Do not let the script-wide Stop policy
-    # misclassify that output as a failed tool.
-    $previousErrorActionPreference = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
+    # A daemon-backed command such as `ollama list` can otherwise block the
+    # whole preflight indefinitely. A background job gives every native probe
+    # the same explicit deadline without shell-string interpolation.
+    $job = Start-Job -ScriptBlock {
+        param(
+            [string]$Executable,
+            [object[]]$ProbeArguments
+        )
+
+        $ErrorActionPreference = 'Continue'
+        try {
+            $rawOutput = & $Executable @ProbeArguments 2>&1
+            $nativeExitCode = $LASTEXITCODE
+            $lines = @(
+                $rawOutput |
+                    ForEach-Object { $_.ToString() } |
+                    Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+            )
+            [pscustomobject]@{
+                ExitCode = $nativeExitCode
+                Lines = $lines
+            }
+        } catch {
+            [pscustomobject]@{
+                ExitCode = 125
+                Lines = @($_.Exception.Message)
+            }
+        }
+    } -ArgumentList @($FilePath, (, $Arguments))
+
+    $timedOut = $false
     try {
-        $output = & $FilePath @Arguments 2>&1
-        $exitCode = $LASTEXITCODE
+        $completed = Wait-Job -Job $job -Timeout $TimeoutSeconds
+        if ($null -eq $completed) {
+            $timedOut = $true
+            Stop-Job -Job $job
+            $result = $null
+        } else {
+            $result = Receive-Job -Job $job
+        }
     } finally {
-        $ErrorActionPreference = $previousErrorActionPreference
+        Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
     }
 
-    $line = $output |
-        ForEach-Object { $_.ToString() } |
-        Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
-        Select-Object -First 1
-    return [pscustomobject]@{ ExitCode = $exitCode; Line = $line }
+    $lines = @()
+    if ($result) {
+        $lines = @($result.Lines)
+    }
+    $exitCode = if ($timedOut) { 124 } else { [int]$result.ExitCode }
+    $line = if ($timedOut) {
+        "Timed out after $TimeoutSeconds seconds."
+    } elseif ($lines.Count -gt 0) {
+        $lines[0]
+    } else {
+        "Exited with code $exitCode and no output."
+    }
+    return [pscustomobject]@{
+        ExitCode = $exitCode
+        Line = $line
+        Lines = $lines
+        TimedOut = $timedOut
+    }
 }
 
 function Test-CompleteModelSnapshot {
@@ -218,22 +266,15 @@ if ($ollama) {
     $probe = Invoke-Probe $ollama @('--version')
     Add-Result 'Ollama' ($probe.ExitCode -eq 0) "$($probe.Line) at $ollama" $false
 
-    $previousErrorActionPreference = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    try {
-        $ollamaList = & $ollama list 2>&1
-        $ollamaListExitCode = $LASTEXITCODE
-    } finally {
-        $ErrorActionPreference = $previousErrorActionPreference
-    }
+    $ollamaListProbe = Invoke-Probe $ollama @('list')
     $qwenTag = 'qwen3:4b-instruct-2507-q4_K_M'
     $matchingQwenRows = @(
-        $ollamaList |
-            ForEach-Object { $_.ToString() } |
+        $ollamaListProbe.Lines |
             Where-Object { $_ -match "^$([regex]::Escape($qwenTag))\s" }
     )
-    $hasQwen = $ollamaListExitCode -eq 0 -and $matchingQwenRows.Count -gt 0
-    Add-Result 'Qwen prompt model' $hasQwen $qwenTag $false
+    $hasQwen = $ollamaListProbe.ExitCode -eq 0 -and $matchingQwenRows.Count -gt 0
+    $qwenEvidence = if ($ollamaListProbe.TimedOut) { $ollamaListProbe.Line } else { $qwenTag }
+    Add-Result 'Qwen prompt model' $hasQwen $qwenEvidence $false
 } else {
     Add-Result 'Ollama' $false 'Optional; required for real local prompt enhancement.' $false
     Add-Result 'Qwen prompt model' $false 'Pull qwen3:4b-instruct-2507-q4_K_M after Ollama is installed.' $false
