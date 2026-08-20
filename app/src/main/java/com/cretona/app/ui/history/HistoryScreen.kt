@@ -57,6 +57,7 @@ enum class HistoryStatusFilter(val label: String) {
     COMPLETED("Completed"),
     GENERATING("In Progress"),
     FAILED("Failed"),
+    CANCELLED("Cancelled"),
 }
 
 @Composable
@@ -92,6 +93,7 @@ fun HistoryScreen(
                     HistoryStatusFilter.COMPLETED -> proj.status == ProjectStatus.COMPLETED
                     HistoryStatusFilter.GENERATING -> proj.status == ProjectStatus.GENERATING || proj.status == ProjectStatus.PENDING
                     HistoryStatusFilter.FAILED -> proj.status == ProjectStatus.FAILED
+                    HistoryStatusFilter.CANCELLED -> proj.status == ProjectStatus.CANCELLED
                 }
             }
             .filter { proj ->

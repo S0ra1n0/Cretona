@@ -359,6 +359,7 @@ fun ProjectStatusText(project: VideoProject) {
     val color = when (project.status) {
         ProjectStatus.COMPLETED -> MaterialTheme.colorScheme.primary
         ProjectStatus.FAILED -> MaterialTheme.colorScheme.error
+        ProjectStatus.CANCELLED -> MaterialTheme.colorScheme.onSurfaceVariant
         ProjectStatus.PENDING, ProjectStatus.GENERATING -> MaterialTheme.colorScheme.tertiary
     }
     Text(

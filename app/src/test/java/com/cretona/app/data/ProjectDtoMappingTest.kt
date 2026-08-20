@@ -48,4 +48,20 @@ class ProjectDtoMappingTest {
         assertEquals("Unknown job status.", project.errorMessage)
         assertNull(project.thumbnailUrl)
     }
+
+    @Test
+    fun `cancelled status remains a non-error terminal state`() {
+        val project = ProjectDto(
+            id = "project-cancelled",
+            title = "Cancelled project",
+            status = "cancelled",
+            provider = "fake",
+            createdAt = "2026-08-10T00:00:00Z",
+            updatedAt = "2026-08-10T00:00:01Z",
+        ).toDomain()
+
+        assertEquals(ProjectStatus.CANCELLED, project.status)
+        assertEquals(true, project.isTerminal)
+        assertNull(project.errorMessage)
+    }
 }

@@ -7,6 +7,7 @@ enum class ProjectStatus {
     GENERATING,
     COMPLETED,
     FAILED,
+    CANCELLED,
 }
 
 @Immutable
@@ -27,7 +28,10 @@ data class VideoProject(
     val createdAt: String,
 ) {
     val isTerminal: Boolean
-        get() = status == ProjectStatus.COMPLETED || status == ProjectStatus.FAILED
+        get() = when (status) {
+            ProjectStatus.PENDING, ProjectStatus.GENERATING -> false
+            ProjectStatus.COMPLETED, ProjectStatus.FAILED, ProjectStatus.CANCELLED -> true
+        }
 
     val thumbnailAspectRatio: Float
         get() = when (aspectRatio) {

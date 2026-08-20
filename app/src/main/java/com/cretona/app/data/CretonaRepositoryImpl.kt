@@ -234,6 +234,7 @@ internal fun ProjectDto.toDomain(): VideoProject = VideoProject(
         "generating" -> ProjectStatus.GENERATING
         "completed" -> ProjectStatus.COMPLETED
         "failed" -> ProjectStatus.FAILED
+        "cancelled" -> ProjectStatus.CANCELLED
         else -> ProjectStatus.FAILED
     },
     provider = provider,
@@ -310,7 +311,7 @@ internal fun AdminMetricsDto.toDomain(): AdminMetrics = AdminMetrics(
     storageBackend = storageBackend,
 )
 
-private val knownStatuses = setOf("pending", "generating", "completed", "failed")
+private val knownStatuses = setOf("pending", "generating", "completed", "failed", "cancelled")
 
 /** The backend's error envelope: `{"error": {"code", "message"}, "requestId"}`. */
 @Serializable
