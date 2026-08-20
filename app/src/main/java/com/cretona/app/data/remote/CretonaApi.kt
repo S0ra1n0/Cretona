@@ -47,7 +47,7 @@ interface CretonaApi {
     suspend fun cancelProject(@Path("id") id: String): ProjectCancelResponseDto
 
     @retrofit2.http.DELETE("projects/{id}")
-    suspend fun deleteProject(@Path("id") id: String): retrofit2.Response<Unit>
+    suspend fun deleteProject(@Path("id") id: String)
 
     @GET("projects/{id}")
     suspend fun getProject(@Path("id") id: String): ProjectDto

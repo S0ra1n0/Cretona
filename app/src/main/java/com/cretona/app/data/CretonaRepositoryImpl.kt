@@ -113,13 +113,15 @@ class CretonaRepositoryImpl @Inject constructor(
     }
 
     override suspend fun cancelProject(id: String): AppResult<Unit> = apiCall {
-        api.cancelProject(id)
-        Unit
+        api.cancelProject(id).run {
+            check(cancelled && projectId == id) {
+                "Cancel response did not confirm project '$id'."
+            }
+        }
     }
 
     override suspend fun deleteProject(id: String): AppResult<Unit> = apiCall {
         api.deleteProject(id)
-        Unit
     }
 
     override suspend fun listProjects(): AppResult<List<VideoProject>> = apiCall {
