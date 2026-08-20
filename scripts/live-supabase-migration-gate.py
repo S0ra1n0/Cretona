@@ -32,7 +32,7 @@ MIGRATIONS = {
     ),
     "008": (
         ROOT / "supabase" / "008_add_admin_audit_logs.sql",
-        "64ce17627642b55033791b31a5076329307e74fa05040886ec6fdb422985c1e1",
+        "8568cbe123eb2403752be5d82ee626585fe83a38416b19a00f5d2af4fd369ee7",
     ),
     "009": (
         ROOT / "supabase" / "009_add_progress_tracking.sql",
@@ -40,7 +40,7 @@ MIGRATIONS = {
     ),
     "010": (
         ROOT / "supabase" / "010_add_user_avatar.sql",
-        "62d9d57a8fbfb19a34232fd63ff442dc98cd688c8943f42eaf2b8c2263f72592",
+        "6cfdbcac48db577f4646862b5bd121354118ff72813b5d20021dbc211c32d198",
     ),
     "011": (
         ROOT / "supabase" / "011_add_composite_query_indexes.sql",
@@ -48,7 +48,7 @@ MIGRATIONS = {
     ),
     "012": (
         ROOT / "supabase" / "012_add_user_profile_fields.sql",
-        "d2ee0a70963d2ef7a8e79167d3484a4f7ffdf2be941bff21b496b23238bb9a0a",
+        "00b138555e4f59f0f9910a1285a8ac2c88f3f17a3e8e13d51c083e61c5d012e7",
     ),
 }
 DATA_API_ROLES = ("anon", "authenticated", "service_role")
@@ -101,7 +101,11 @@ def validated_connection(env_file: Path) -> tuple[str, str]:
 def migration_sql(number: str) -> str:
     path, expected_hash = MIGRATIONS[number]
     payload = path.read_bytes()
-    observed_hash = hashlib.sha256(payload).hexdigest()
+    # Git may materialize the same reviewed text as LF or CRLF depending on
+    # checkout policy. Pin semantic file content, not the host's newline bytes;
+    # otherwise a gate proven on Windows can reject the identical Git blob in CI.
+    canonical_payload = payload.replace(b"\r\n", b"\n")
+    observed_hash = hashlib.sha256(canonical_payload).hexdigest()
     if observed_hash != expected_hash:
         raise GateError(
             f"Migration {number} hash mismatch; refusing to use an unreviewed candidate."

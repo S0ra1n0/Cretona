@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 from pathlib import Path
 from types import ModuleType
@@ -74,6 +75,16 @@ def test_gate_pins_and_accepts_migrations_011_and_012() -> None:
     assert gate.migration_sql("012")
     gate.assert_011(state, present=True)
     gate.assert_012(state, present=True)
+
+
+def test_gate_hash_is_stable_across_git_line_endings(tmp_path: Path) -> None:
+    gate = load_gate()
+    migration = tmp_path / "migration.sql"
+    reviewed_lf = b"select 1;\nselect 2;\n"
+    migration.write_bytes(reviewed_lf.replace(b"\n", b"\r\n"))
+    gate.MIGRATIONS["test-eol"] = (migration, hashlib.sha256(reviewed_lf).hexdigest())
+
+    assert gate.migration_sql("test-eol") == "select 1;\r\nselect 2;\r\n"
 
 
 def test_gate_detects_missing_profile_column() -> None:

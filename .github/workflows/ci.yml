@@ -71,8 +71,8 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@4733eaac7c1b0da527e4206b7671e0061de1ce37 # v6
 
-      - name: Install Android API 37
-        run: sdkmanager "platforms;android-37"
+      - name: Verify Android API 37
+        run: test -f "$ANDROID_HOME/platforms/android-37/android.jar"
 
       - name: Test, lint, and build Android
         run: |
