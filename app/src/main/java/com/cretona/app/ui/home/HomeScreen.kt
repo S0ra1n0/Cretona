@@ -31,6 +31,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
@@ -148,6 +149,7 @@ fun HomeScreen(
         onDeleteProject = viewModel::deleteProject,
         onRefreshAccount = viewModel::refreshAccount,
         onRefresh = viewModel::refreshHistory,
+        onDismissError = viewModel::dismissErrorMessage,
         contentPadding = contentPadding,
         modifier = modifier,
     )
@@ -173,6 +175,7 @@ private fun HomeContent(
     onDeleteProject: (String) -> Unit,
     onRefreshAccount: () -> Unit,
     onRefresh: () -> Unit,
+    onDismissError: () -> Unit,
     contentPadding: PaddingValues = PaddingValues(0.dp),
     modifier: Modifier = Modifier,
 ) {
@@ -510,11 +513,25 @@ private fun HomeContent(
                             containerColor = MaterialTheme.colorScheme.errorContainer,
                         ),
                     ) {
-                        Text(
-                            text = message,
-                            modifier = Modifier.padding(16.dp),
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = message,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(16.dp),
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                            )
+                            IconButton(onClick = onDismissError) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Dismiss error",
+                                    tint = MaterialTheme.colorScheme.onErrorContainer,
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -931,7 +948,7 @@ private fun VideoPlayer(videoUrl: String) {
                 modifier = Modifier.size(36.dp),
             ) {
                 Icon(
-                    imageVector = if (isPlaying) Icons.Default.Close else Icons.Default.PlayArrow,
+                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                     contentDescription = if (isPlaying) "Pause" else "Play",
                 )
             }
@@ -1012,6 +1029,7 @@ private fun HomeScreenPreview() {
             onDeleteProject = {},
             onRefreshAccount = {},
             onRefresh = {},
+            onDismissError = {},
         )
     }
 }

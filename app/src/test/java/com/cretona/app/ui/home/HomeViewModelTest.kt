@@ -16,6 +16,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 
@@ -305,11 +306,45 @@ class HomeViewModelTest {
 
         assertEquals(1, repository.deleteCalls)
     }
+
+    @Test
+    fun `successful history retry clears only the history error`() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val repository = FakeRepository(historyFailure = true)
+            val viewModel = HomeViewModel(repository)
+            advanceUntilIdle()
+
+            assertEquals("History is unavailable.", viewModel.state.value.errorMessage)
+
+            repository.historyFailure = false
+            viewModel.refreshHistory()
+            advanceUntilIdle()
+
+            assertNull(viewModel.state.value.errorMessage)
+        }
+
+    @Test
+    fun `successful history refresh preserves unrelated error`() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val viewModel = HomeViewModel(FakeRepository())
+            advanceUntilIdle()
+
+            viewModel.generateVideo()
+            assertEquals("Enter a prompt before generating.", viewModel.state.value.errorMessage)
+
+            viewModel.refreshHistory()
+            advanceUntilIdle()
+
+            assertEquals("Enter a prompt before generating.", viewModel.state.value.errorMessage)
+            viewModel.dismissErrorMessage()
+            assertNull(viewModel.state.value.errorMessage)
+        }
 }
 
 private class FakeRepository(
     private val quotaRemaining: Int = 7,
     private val accountFailure: Boolean = false,
+    var historyFailure: Boolean = false,
 ) : CretonaRepository {
     private val pending = project(ProjectStatus.PENDING)
     private val completed = project(
@@ -411,7 +446,11 @@ private class FakeRepository(
     }
 
     override suspend fun listProjects(): AppResult<List<VideoProject>> =
-        AppResult.Success(if (createCalls == 0) emptyList() else listOf(completed))
+        if (historyFailure) {
+            AppResult.Failure(AppError.Network("History is unavailable."))
+        } else {
+            AppResult.Success(if (createCalls == 0) emptyList() else listOf(completed))
+        }
 
     override suspend fun getAdminStats(days: Int): AppResult<com.cretona.app.domain.model.AdminStats> =
         AppResult.Success(

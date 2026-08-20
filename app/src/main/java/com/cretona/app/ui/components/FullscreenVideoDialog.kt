@@ -28,6 +28,7 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Share
@@ -268,7 +269,7 @@ fun FullscreenVideoDialog(
                             .background(Color.Black.copy(alpha = 0.55f), CircleShape),
                     ) {
                         Icon(
-                            imageVector = if (isPlaying) Icons.Default.Close else Icons.Default.PlayArrow,
+                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                             contentDescription = if (isPlaying) "Pause" else "Play",
                             tint = Color.White,
                             modifier = Modifier.size(40.dp),

@@ -96,6 +96,29 @@ class AuthViewModel @Inject constructor(
         }
     }
 
+    fun devLogin() {
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true, errorMessage = null) }
+            when (val result = profiles.getCurrentUser()) {
+                is AppResult.Success -> _state.update {
+                    it.copy(
+                        isLoading = false,
+                        loginSucceeded = true,
+                        needsProfileSetup = result.data.needsProfileSetup,
+                    )
+                }
+
+                is AppResult.Failure -> _state.update {
+                    it.copy(
+                        isLoading = false,
+                        loginSucceeded = false,
+                        errorMessage = result.error.message,
+                    )
+                }
+            }
+        }
+    }
+
     fun signUp() {
         val current = _state.value
         if (current.email.isBlank() || current.password.isBlank()) return

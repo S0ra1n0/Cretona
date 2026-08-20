@@ -141,21 +141,6 @@ fun AdminScreen(
                 return@Column
             }
 
-            PrimaryTabRow(
-                selectedTabIndex = state.selectedTab.ordinal,
-                modifier = Modifier
-                    .widthIn(max = 760.dp)
-                    .fillMaxWidth(),
-            ) {
-                AdminTab.entries.forEach { tab ->
-                    Tab(
-                        selected = state.selectedTab == tab,
-                        onClick = { viewModel.selectTab(tab) },
-                        text = { Text(tab.name.replace("_", " ")) },
-                    )
-                }
-            }
-
             Box(
                 modifier = Modifier
                     .fillMaxSize()

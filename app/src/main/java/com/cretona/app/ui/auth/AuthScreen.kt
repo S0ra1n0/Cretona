@@ -40,6 +40,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.cretona.app.BuildConfig
 import com.cretona.app.ui.theme.GalaxyBrightAccent
 import com.cretona.app.ui.theme.GalaxyDeepBlue
 import com.cretona.app.ui.theme.GalaxyIndigo
@@ -211,6 +212,21 @@ fun AuthScreen(
                         "Don't have an account? Create an account"
                     },
                 )
+            }
+
+            if (BuildConfig.DEBUG) {
+                Spacer(modifier = Modifier.height(16.dp))
+                androidx.compose.material3.TextButton(
+                    onClick = viewModel::devLogin,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        "Quick dev sign-in (test mode)",
+                        color = Color.White.copy(alpha = 0.8f),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
             }
         }
     }

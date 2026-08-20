@@ -287,10 +287,30 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch { refreshHistoryInternal() }
     }
 
+    fun dismissErrorMessage() {
+        _state.update { it.copy(errorMessage = null, historyErrorMessage = null) }
+    }
+
     private suspend fun refreshHistoryInternal() {
         when (val result = repository.listProjects()) {
-            is AppResult.Success -> _state.update { it.copy(projects = result.data) }
-            is AppResult.Failure -> _state.update { it.copy(errorMessage = result.error.message) }
+            is AppResult.Success -> _state.update {
+                it.copy(
+                    projects = result.data,
+                    errorMessage = if (it.errorMessage == it.historyErrorMessage) {
+                        null
+                    } else {
+                        it.errorMessage
+                    },
+                    historyErrorMessage = null,
+                )
+            }
+
+            is AppResult.Failure -> _state.update {
+                it.copy(
+                    errorMessage = result.error.message,
+                    historyErrorMessage = result.error.message,
+                )
+            }
         }
     }
 

@@ -112,6 +112,33 @@ class AuthViewModelTest {
         assertTrue(state.needsProfileSetup)
         assertNull(state.errorMessage)
     }
+
+    @Test
+    fun `dev login succeeds only after backend profile check`() = runTest(mainDispatcherRule.dispatcher) {
+        val cretonaRepo = FakeCretonaRepository()
+        val viewModel = AuthViewModel(FakeAuthRepository(), cretonaRepo)
+
+        viewModel.devLogin()
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.loginSucceeded)
+        assertTrue(viewModel.state.value.needsProfileSetup)
+        assertNull(viewModel.state.value.errorMessage)
+    }
+
+    @Test
+    fun `dev login keeps user signed out when backend profile check fails`() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val cretonaRepo = FakeCretonaRepository().apply { shouldFailCurrentUser = true }
+            val viewModel = AuthViewModel(FakeAuthRepository(), cretonaRepo)
+
+            viewModel.devLogin()
+            advanceUntilIdle()
+
+            assertFalse(viewModel.state.value.isLoading)
+            assertFalse(viewModel.state.value.loginSucceeded)
+            assertEquals("FastAPI is unavailable.", viewModel.state.value.errorMessage)
+        }
 }
 
 private class FakeAuthRepository : AuthRepository {
@@ -129,19 +156,25 @@ private class FakeAuthRepository : AuthRepository {
 }
 
 private class FakeCretonaRepository : CretonaRepository {
+    var shouldFailCurrentUser: Boolean = false
+
     override suspend fun getCurrentUser(): AppResult<UserProfile> =
-        AppResult.Success(
-            UserProfile(
-                id = "user_123",
-                email = "user@cretona.test",
-                username = null,
-                avatarUrl = null,
-                role = "user",
-                isDisabled = false,
-                createdAt = "2026-01-01T00:00:00Z",
-                quota = GenerationQuota(limit = 10, used = 0, remaining = 10, resetsAt = null),
-            ),
-        )
+        if (shouldFailCurrentUser) {
+            AppResult.Failure(AppError.Network("FastAPI is unavailable."))
+        } else {
+            AppResult.Success(
+                UserProfile(
+                    id = "user_123",
+                    email = "user@cretona.test",
+                    username = null,
+                    avatarUrl = null,
+                    role = "user",
+                    isDisabled = false,
+                    createdAt = "2026-01-01T00:00:00Z",
+                    quota = GenerationQuota(limit = 10, used = 0, remaining = 10, resetsAt = null),
+                ),
+            )
+        }
 
     override suspend fun updateProfile(
         username: String,

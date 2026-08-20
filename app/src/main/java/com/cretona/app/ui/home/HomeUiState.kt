@@ -16,6 +16,7 @@ data class HomeUiState(
     val selectedProvider: String = "mock",
     val enhancementNote: String? = null,
     val errorMessage: String? = null,
+    val historyErrorMessage: String? = null,
     val selectedImageUri: Uri? = null,
     val selectedImageBytes: ByteArray? = null,
     val selectedImageMimeType: String? = null,
