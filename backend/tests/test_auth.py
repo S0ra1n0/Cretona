@@ -325,10 +325,13 @@ def test_the_email_claim_cannot_grant_a_role(
     ).json()
 
     assert body["role"] == "user"
-    assert supabase_client.get(
-        "/api/v1/admin/users",
-        headers=bearer(subject=USER_A, email="admin@cretona.test"),
-    ).status_code == 403
+    assert (
+        supabase_client.get(
+            "/api/v1/admin/users",
+            headers=bearer(subject=USER_A, email="admin@cretona.test"),
+        ).status_code
+        == 403
+    )
 
 
 # --- first sign-in provisioning ----------------------------------------------

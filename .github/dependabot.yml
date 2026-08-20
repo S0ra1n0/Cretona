@@ -1,0 +1,28 @@
+version: 2
+updates:
+  - package-ecosystem: gradle
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      android-dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: pip
+    directory: "/backend"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      backend-dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      workflow-actions:
+        patterns: ["*"]

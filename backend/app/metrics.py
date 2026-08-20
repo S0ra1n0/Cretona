@@ -35,7 +35,7 @@ def format_prometheus_metrics(
         "# TYPE cretona_database_status gauge",
         (
             f'cretona_database_status{{backend="{database_backend}"}} '
-            f'{1 if database_status == "healthy" else 0}'
+            f"{1 if database_status == 'healthy' else 0}"
         ),
         "",
         "# HELP cretona_storage_backend Storage provider in use.",

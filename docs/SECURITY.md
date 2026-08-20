@@ -123,6 +123,11 @@ Prompts and uploaded images leave our infrastructure and are processed by the AI
 
 ## 10. Pre-Release Checklist
 
+The repository CI uses read-only token permissions. Third-party workflow
+actions are pinned to commit SHAs, the Gradle wrapper JAR is verified against
+Gradle's published checksum, and the wrapper distribution ZIP has its own
+`distributionSha256Sum`. Dependency updates arrive as reviewable grouped PRs.
+
 - [ ] RLS enabled and policies verified on `users`, `video_projects`, `generation_logs`
 - [ ] Cross-user access attempted with a real second account and blocked at the API, not just the UI
 - [ ] `/admin/*` rejected for a non-admin token

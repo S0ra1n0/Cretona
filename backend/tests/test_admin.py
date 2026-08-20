@@ -391,4 +391,3 @@ def test_prometheus_metrics_endpoint(seeded: TestClient) -> None:
 def test_prometheus_metrics_forbidden_for_regular_user(seeded: TestClient) -> None:
     res = seeded.get("/api/v1/metrics", headers={"X-Debug-User-Id": USER_A})
     assert res.status_code == 403
-

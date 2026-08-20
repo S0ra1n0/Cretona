@@ -256,8 +256,7 @@ class Database:
         """
         with self.connect() as connection:
             connection.execute(
-                "UPDATE users SET email = ? WHERE id = ? "
-                "AND (email IS NULL OR email <> ?)",
+                "UPDATE users SET email = ? WHERE id = ? AND (email IS NULL OR email <> ?)",
                 (email, user_id, email),
             )
 

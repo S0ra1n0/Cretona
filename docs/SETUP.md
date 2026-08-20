@@ -68,6 +68,10 @@ $env:JAVA_HOME = 'C:\Program Files\Android\Android Studio\jbr'
 .\gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon
 ```
 
+The same Android gates plus the minified release build and instrumented-test
+compilation run in `.github/workflows/ci.yml`. CI verifies the checked-in
+wrapper JAR, and `distributionSha256Sum` verifies the downloaded Gradle ZIP.
+
 ## 3. Active FastAPI backend
 
 Create an isolated environment and install the locked dependency ranges:
@@ -102,6 +106,11 @@ Set-Location backend
 .\.venv\Scripts\python.exe -m pytest
 Set-Location ..
 ```
+
+CI recreates this exact Windows/Python 3.12 environment from the constraints
+file and runs `pip check`, Ruff check/format, and the complete pytest suite.
+Dependabot opens grouped weekly proposals for Gradle, Python, and workflow
+action updates; merging still requires the same gates.
 
 ### Optional local LLM
 
