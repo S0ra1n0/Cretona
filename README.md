@@ -6,21 +6,19 @@ image.
 
 ## Current integration status
 
-S0ra1n0's remote implementation establishes a root Android project using
-Kotlin, Jetpack Compose, MVVM, Retrofit, and a provider-neutral project/job
-contract. It also contains an Express/Prisma/Supabase backend implementation
-with authentication, quota, storage, a fake provider, and a tested polling job
-runner.
+The active implementation is an Android app (Kotlin, Jetpack Compose, MVVM,
+Hilt, Retrofit/OkHttp and Supabase Auth) calling a FastAPI backend. FastAPI owns
+the stable project/job contract, authorization, quota, persistence, storage,
+polling, prompt enhancement, and all media/provider orchestration. The Android
+client never receives provider credentials or raw model identifiers.
 
-The instructor requirement recorded by Bruce is that model calls go through
-FastAPI. Therefore the Express backend is valuable migration evidence and its
-behavior/tests must be preserved, but Express is not the final active backend
-technology. The migration must retain the provider-neutral contract, security
-rules, state transitions, idempotency, and deterministic fake provider before
-any local video model is integrated.
+Android authentication uses the Supabase Kotlin SDK with SDK-owned token
+rotation and an AES-GCM Android Keystore session store. Startup restores a
+valid session before routing; signed-out release builds fail closed instead of
+falling back to a development identity.
 
 No paid provider call is enabled by the accepted zero-additional-spend path.
-Local Qwen3-4B has passed a real FastAPI call. No real video model is selected:
+Local Qwen3-4B has passed a real FastAPI call. No temporal video model is selected:
 LTX-Video 2B was rejected by the pinned host-envelope pre-screen, and the
 installed FramePack F1 runtime is blocked before inference by resource and
 weight-license gates in `EXP-005`.

@@ -11,7 +11,7 @@ flowchart LR
     subgraph Client ["Android Client (Kotlin + Jetpack Compose)"]
         UI[Compose UI Studio]
         VM[ViewModels & StateFlow]
-        Net[Retrofit & SSE Client]
+        Net[Supabase Auth + Retrofit & SSE]
         Media[Media3 Player & MediaStore]
     end
 
@@ -91,11 +91,14 @@ flowchart TD
     UC --> R["domain/ — Repository Interfaces"]
     R -.implemented by.-> RI["data/ — Repository Implementations"]
     RI --> RS["data/remote — Retrofit & SSE Network Client"]
-    RI --> LS["data/local — DataStore Session Storage"]
+    RI --> LS["core/auth — AES-GCM + Android Keystore Session Store"]
 ```
 
 - **Clean Layering:** `ui → domain ← data`. The `domain` layer has 0 Android dependencies, ensuring pure testability.
 - **State Management:** Screens observe immutable `StateFlow<HomeUiState>` via Compose lifecycle-aware collectors.
+- **Session ownership:** `supabase-kt` owns refresh rotation; a custom SDK
+  `SessionManager` persists only authenticated ciphertext and the startup route
+  waits for initialization before entering the app.
 - **Media Engine:** Video playback uses `androidx.media3:media3-exoplayer`. Downloads directly write MP4 binaries into `MediaStore.Video.Media` with primary external volume scoping.
 - **Sharing Engine:** Social exports utilize `androidx.core.content.FileProvider` to deliver secure content URIs to external applications without granting broad file system access.
 

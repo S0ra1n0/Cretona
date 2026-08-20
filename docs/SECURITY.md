@@ -29,8 +29,14 @@ The anon key being shippable rests entirely on RLS being correct. It is not a cr
 - The app authenticates with Supabase Auth; the backend never sees a password.
 - The backend verifies the JWT signature and expiry on every non-public request, then resolves the `users` row from the `sub` claim.
 - Roles come from the database, **never** from a client-supplied header or a JWT claim the client could influence.
-- Session tokens are held by the Supabase SDK's encrypted storage. Do not copy tokens into DataStore, logs, or crash reports.
-- On `401 TOKEN_INVALID` the app refreshes once and retries; a second failure forces logout and clears local state.
+- The SDK owns session state and rotation. The full session is persisted only as
+  an AES-GCM blob whose non-exportable key lives in Android Keystore; tokens are
+  not copied into DataStore, logs, backups, or crash reports.
+- The SDK proactively refreshes the session. The current backend client does not
+  perform a second, hand-written refresh/retry path after a `401`; a rejected
+  token is surfaced to the UI and the user can sign in again.
+- `X-Debug-User-Id` is emitted only by an unconfigured debug build. It is never
+  a fallback for a configured signed-out build or any release build.
 
 ---
 

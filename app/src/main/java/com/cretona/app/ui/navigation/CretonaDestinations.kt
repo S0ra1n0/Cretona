@@ -9,6 +9,9 @@ import kotlinx.serialization.Serializable
 sealed interface CretonaRoute {
 
     @Serializable
+    data object SessionRestore : CretonaRoute
+
+    @Serializable
     data object Auth : CretonaRoute
 
     /**

@@ -20,6 +20,8 @@ okhttp = "5.5.0"
 serializationJson = "1.11.0"
 serializationConverter = "1.0.0"
 coroutines = "1.11.0"
+supabase = "3.7.0"
+ktor = "3.5.2"
 
 junit = "4.13.2"
 androidxJunit = "1.3.0"
@@ -70,6 +72,9 @@ okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhtt
 okhttp-logging-interceptor = { group = "com.squareup.okhttp3", name = "logging-interceptor", version.ref = "okhttp" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serializationJson" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+supabase-bom = { group = "io.github.jan-tennert.supabase", name = "bom", version.ref = "supabase" }
+supabase-auth = { group = "io.github.jan-tennert.supabase", name = "auth-kt" }
+ktor-client-okhttp = { group = "io.ktor", name = "ktor-client-okhttp", version.ref = "ktor" }
 
 # --- Test ---
 junit = { group = "junit", name = "junit", version.ref = "junit" }

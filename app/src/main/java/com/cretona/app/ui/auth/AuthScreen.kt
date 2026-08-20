@@ -214,7 +214,7 @@ fun AuthScreen(
                 )
             }
 
-            if (BuildConfig.DEBUG) {
+            if (BuildConfig.DEBUG && state.canUseLocalDemo) {
                 Spacer(modifier = Modifier.height(16.dp))
                 androidx.compose.material3.TextButton(
                     onClick = viewModel::devLogin,

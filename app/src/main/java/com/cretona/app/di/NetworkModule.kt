@@ -1,31 +1,25 @@
 package com.cretona.app.di
 
 import com.cretona.app.BuildConfig
+import com.cretona.app.core.auth.EncryptedAuthSessionStore
 import com.cretona.app.core.auth.SessionManager
+import com.cretona.app.core.auth.SupabaseSessionManager
+import com.cretona.app.core.auth.UnconfiguredSessionManager
 import com.cretona.app.data.remote.CretonaApi
-import com.cretona.app.data.remote.SupabaseAuthApi
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import io.github.jan.supabase.createSupabaseClient
+import io.github.jan.supabase.auth.Auth
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import java.util.concurrent.TimeUnit
-import javax.inject.Qualifier
 import javax.inject.Singleton
-
-/** Distinguishes the Supabase-facing OkHttpClient/Retrofit from the backend's own. */
-@Qualifier
-@Retention(AnnotationRetention.BINARY)
-annotation class SupabaseHttpClient
-
-@Qualifier
-@Retention(AnnotationRetention.BINARY)
-annotation class SupabaseRetrofit
 
 // Fixed local dev identity (app/config.py's dev_user_id default). Used only
 // when nobody has signed in yet, so credential-free local testing keeps
@@ -46,25 +40,33 @@ object NetworkModule {
 
     @Provides
     @Singleton
+    fun provideSessionManager(store: EncryptedAuthSessionStore): SessionManager {
+        val url = BuildConfig.SUPABASE_URL.trimEnd('/')
+        val key = BuildConfig.SUPABASE_ANON_KEY
+        if (url.isBlank() || key.isBlank()) return UnconfiguredSessionManager()
+
+        val client = createSupabaseClient(
+            supabaseUrl = url,
+            supabaseKey = key,
+        ) {
+            install(Auth) {
+                sessionManager = store
+                alwaysAutoRefresh = true
+                autoLoadFromStorage = true
+                autoSaveToStorage = true
+            }
+        }
+        return SupabaseSessionManager(client)
+    }
+
+    @Provides
+    @Singleton
     fun provideOkHttpClient(session: SessionManager): OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .addInterceptor { chain ->
             val requestBuilder = chain.request().newBuilder()
-            val token = session.accessToken
-
-            if (token != null) {
-                // Signed in for real: send only the Supabase token. Sending
-                // X-Debug-User-Id alongside it would pin every request to the
-                // fixed dev identity on a dev-mode backend, so whoever signed
-                // in would still be served another account's profile, quota
-                // and role.
-                requestBuilder.header("Authorization", "Bearer $token")
-            } else {
-                // Nobody has signed in: fall back to the fixed local identity
-                // so the credential-free dev backend still works.
-                requestBuilder.header("X-Debug-User-Id", DEV_USER_ID)
-            }
+            applyBackendIdentity(requestBuilder, session, BuildConfig.DEBUG)
             chain.proceed(requestBuilder.build())
         }
         .apply {
@@ -91,40 +93,21 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideCretonaApi(retrofit: Retrofit): CretonaApi = retrofit.create(CretonaApi::class.java)
+}
 
-    @Provides
-    @Singleton
-    @SupabaseHttpClient
-    fun provideSupabaseOkHttpClient(): OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .apply {
-            if (BuildConfig.DEBUG) {
-                addInterceptor(
-                    HttpLoggingInterceptor().apply {
-                        // Supabase Auth bodies contain plaintext passwords.
-                        level = HttpLoggingInterceptor.Level.BASIC
-                    },
-                )
-            }
-        }
-        .build()
-
-    @Provides
-    @Singleton
-    @SupabaseRetrofit
-    fun provideSupabaseRetrofit(
-        @SupabaseHttpClient client: OkHttpClient,
-        json: Json,
-    ): Retrofit = Retrofit.Builder()
-        // BuildConfig.SUPABASE_URL has no trailing slash; Retrofit requires one.
-        .baseUrl("${BuildConfig.SUPABASE_URL}/")
-        .client(client)
-        .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
-        .build()
-
-    @Provides
-    @Singleton
-    fun provideSupabaseAuthApi(@SupabaseRetrofit retrofit: Retrofit): SupabaseAuthApi =
-        retrofit.create(SupabaseAuthApi::class.java)
+/**
+ * Real tokens and the local dev identity are mutually exclusive. The debug
+ * identity exists only for credential-free local builds with Auth unconfigured;
+ * a signed-out production or Supabase-configured build sends neither header.
+ */
+internal fun applyBackendIdentity(
+    request: okhttp3.Request.Builder,
+    session: SessionManager,
+    isDebug: Boolean,
+) {
+    val token = session.accessToken
+    when {
+        token != null -> request.header("Authorization", "Bearer $token")
+        isDebug && !session.isConfigured -> request.header("X-Debug-User-Id", DEV_USER_ID)
+    }
 }

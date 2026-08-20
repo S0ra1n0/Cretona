@@ -1,30 +1,77 @@
 package com.cretona.app.core.auth
 
-import javax.inject.Inject
-import javax.inject.Singleton
+import io.github.jan.supabase.SupabaseClient
+import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.auth.providers.builtin.Email
 
 /**
- * Holds the access token from a real Supabase sign-in, in memory only.
- *
- * Does not survive process death by design -- every fresh launch starts at
- * the login screen rather than silently resuming a session, which is the
- * simplest correct behaviour until real session persistence is asked for.
- *
- * NetworkModule's interceptor reads [accessToken] and falls back to the fixed
- * local dev identity when nobody has signed in, which is what keeps dev-mode
- * backend testing (scripts/run-dev-backend.ps1) working unchanged.
+ * App-owned boundary around Supabase Auth. The SDK remains the sole owner of
+ * access/refresh rotation and persisted sessions.
  */
-@Singleton
-class SessionManager @Inject constructor() {
-    @Volatile
-    var accessToken: String? = null
-        private set
+interface SessionManager {
+    val isConfigured: Boolean
+    val accessToken: String?
+    val hasSession: Boolean
 
-    fun setSession(token: String) {
-        accessToken = token
+    suspend fun awaitInitialization()
+    suspend fun signIn(email: String, password: String)
+    suspend fun signUp(email: String, password: String): Boolean
+    suspend fun signOut()
+}
+
+internal class SupabaseSessionManager(
+    private val client: SupabaseClient,
+) : SessionManager {
+    override val isConfigured: Boolean = true
+    override val accessToken: String?
+        get() = client.auth.currentAccessTokenOrNull()
+    override val hasSession: Boolean
+        get() = client.auth.currentSessionOrNull() != null
+
+    override suspend fun awaitInitialization() {
+        client.auth.awaitInitialization()
     }
 
-    fun clear() {
-        accessToken = null
+    override suspend fun signIn(email: String, password: String) {
+        client.auth.signInWith(Email) {
+            this.email = email
+            this.password = password
+        }
+    }
+
+    override suspend fun signUp(email: String, password: String): Boolean {
+        client.auth.signUpWith(Email) {
+            this.email = email
+            this.password = password
+        }
+        return hasSession
+    }
+
+    override suspend fun signOut() {
+        if (hasSession) {
+            client.auth.signOut()
+        } else {
+            client.auth.clearSession()
+        }
     }
 }
+
+internal class UnconfiguredSessionManager : SessionManager {
+    override val isConfigured: Boolean = false
+    override val accessToken: String? = null
+    override val hasSession: Boolean = false
+
+    override suspend fun awaitInitialization() = Unit
+
+    override suspend fun signIn(email: String, password: String): Nothing =
+        throw AuthNotConfiguredException()
+
+    override suspend fun signUp(email: String, password: String): Nothing =
+        throw AuthNotConfiguredException()
+
+    override suspend fun signOut() = Unit
+}
+
+class AuthNotConfiguredException : IllegalStateException(
+    "Supabase Auth is not configured for this build. Use Dev Login or configure local.properties.",
+)

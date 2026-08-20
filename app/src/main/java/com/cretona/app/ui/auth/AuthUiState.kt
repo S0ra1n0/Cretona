@@ -8,6 +8,7 @@ data class AuthUiState(
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
     val successNotice: String? = null,
+    val canUseLocalDemo: Boolean = false,
     val loginSucceeded: Boolean = false,
     // An account with no username has not been through profile setup yet.
     val needsProfileSetup: Boolean = false,

@@ -18,7 +18,9 @@ class AuthViewModel @Inject constructor(
     private val repository: AuthRepository,
     private val profiles: CretonaRepository,
 ) : ViewModel() {
-    private val _state = MutableStateFlow(AuthUiState())
+    private val _state = MutableStateFlow(
+        AuthUiState(canUseLocalDemo = repository.canUseLocalDemo),
+    )
     val state: StateFlow<AuthUiState> = _state.asStateFlow()
 
     fun onEmailChanged(value: String) {
@@ -97,6 +99,8 @@ class AuthViewModel @Inject constructor(
     }
 
     fun devLogin() {
+        if (!_state.value.canUseLocalDemo) return
+
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, errorMessage = null) }
             when (val result = profiles.getCurrentUser()) {
@@ -136,24 +140,33 @@ class AuthViewModel @Inject constructor(
             _state.update { it.copy(isLoading = true, errorMessage = null, successNotice = null) }
             when (val result = repository.signUp(current.email, current.password)) {
                 is AppResult.Success -> {
-                    // Check if signed in automatically or needs email verification
-                    when (val me = profiles.getCurrentUser()) {
-                        is AppResult.Success -> {
-                            _state.update {
+                    if (!result.data.sessionCreated) {
+                        // Hosted projects normally require email confirmation;
+                        // no backend request may run as the local dev identity
+                        // and accidentally treat that account as the new user.
+                        _state.update {
+                            it.copy(
+                                isLoading = false,
+                                isSignUpMode = false,
+                                successNotice = "Account created successfully! Confirm your email, then sign in.",
+                            )
+                        }
+                    } else {
+                        // Auto-confirmed development projects create a session.
+                        // The profile lookup proves that token reaches FastAPI.
+                        when (profiles.getCurrentUser()) {
+                            is AppResult.Success -> _state.update {
                                 it.copy(
                                     isLoading = false,
                                     loginSucceeded = true,
-                                    needsProfileSetup = true, // Fresh account always needs profile setup!
+                                    needsProfileSetup = true,
                                 )
                             }
-                        }
-                        is AppResult.Failure -> {
-                            // Account created; if confirmation required, guide user to login
-                            _state.update {
+                            is AppResult.Failure -> _state.update {
                                 it.copy(
                                     isLoading = false,
+                                    errorMessage = "Account created, but the profile could not be loaded. Sign in to retry.",
                                     isSignUpMode = false,
-                                    successNotice = "Account created successfully! Please sign in.",
                                 )
                             }
                         }

@@ -16,7 +16,7 @@ import org.junit.Test
 class NetworkModuleTest {
     @Test
     fun `signed-out requests use only the local debug identity`() {
-        val session = SessionManager()
+        val session = FakeSessionManager(isConfigured = false)
 
         val request = executeAndCapture(NetworkModule.provideOkHttpClient(session))
 
@@ -26,7 +26,10 @@ class NetworkModuleTest {
 
     @Test
     fun `signed-in requests use only the Supabase access token`() {
-        val session = SessionManager().apply { setSession("test-access-token") }
+        val session = FakeSessionManager(
+            isConfigured = true,
+            accessToken = "test-access-token",
+        )
 
         val request = executeAndCapture(NetworkModule.provideOkHttpClient(session))
 
@@ -35,11 +38,34 @@ class NetworkModuleTest {
     }
 
     @Test
-    fun `debug HTTP logging never records request or response bodies`() {
-        val backendClient = NetworkModule.provideOkHttpClient(SessionManager())
-        val supabaseClient = NetworkModule.provideSupabaseOkHttpClient()
+    fun `configured signed-out requests never impersonate the dev user`() {
+        val request = executeAndCapture(
+            NetworkModule.provideOkHttpClient(FakeSessionManager(isConfigured = true)),
+        )
 
-        listOf(backendClient, supabaseClient).forEach { client ->
+        assertNull(request.header("Authorization"))
+        assertNull(request.header("X-Debug-User-Id"))
+    }
+
+    @Test
+    fun `release requests never use the local debug identity`() {
+        val builder = Request.Builder().url("https://example.test/")
+        applyBackendIdentity(
+            request = builder,
+            session = FakeSessionManager(isConfigured = false),
+            isDebug = false,
+        )
+
+        val request = builder.build()
+        assertNull(request.header("Authorization"))
+        assertNull(request.header("X-Debug-User-Id"))
+    }
+
+    @Test
+    fun `debug HTTP logging never records request or response bodies`() {
+        val backendClient = NetworkModule.provideOkHttpClient(FakeSessionManager(isConfigured = false))
+
+        listOf(backendClient).forEach { client ->
             val loggers = client.interceptors.filterIsInstance<HttpLoggingInterceptor>()
             assertTrue(loggers.isNotEmpty())
             assertTrue(loggers.all { it.level == HttpLoggingInterceptor.Level.BASIC })
@@ -66,4 +92,15 @@ class NetworkModuleTest {
         }
         return requireNotNull(captured)
     }
+}
+
+private class FakeSessionManager(
+    override val isConfigured: Boolean,
+    override val accessToken: String? = null,
+) : SessionManager {
+    override val hasSession: Boolean = accessToken != null
+    override suspend fun awaitInitialization() = Unit
+    override suspend fun signIn(email: String, password: String) = Unit
+    override suspend fun signUp(email: String, password: String): Boolean = true
+    override suspend fun signOut() = Unit
 }

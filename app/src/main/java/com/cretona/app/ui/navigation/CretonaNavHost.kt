@@ -1,13 +1,20 @@
 package com.cretona.app.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cretona.app.ui.admin.AdminScreen
 import com.cretona.app.ui.auth.AuthScreen
+import com.cretona.app.ui.auth.RestoredDestination
+import com.cretona.app.ui.auth.SessionRestoreScreen
+import com.cretona.app.ui.auth.SessionRestoreViewModel
 import com.cretona.app.ui.main.MainScreen
 import com.cretona.app.ui.setup.ProfileSetupScreen
 
@@ -18,9 +25,31 @@ fun CretonaNavHost(
 ) {
     NavHost(
         navController = navController,
-        startDestination = CretonaRoute.Auth,
+        startDestination = CretonaRoute.SessionRestore,
         modifier = modifier,
     ) {
+        composable<CretonaRoute.SessionRestore> {
+            val viewModel = hiltViewModel<SessionRestoreViewModel>()
+            val state by viewModel.state.collectAsStateWithLifecycle()
+
+            LaunchedEffect(state.destination) {
+                val destination = when (state.destination) {
+                    RestoredDestination.AUTH -> CretonaRoute.Auth
+                    RestoredDestination.PROFILE_SETUP -> CretonaRoute.ProfileSetup(isEdit = false)
+                    RestoredDestination.MAIN -> CretonaRoute.Main
+                    null -> return@LaunchedEffect
+                }
+                navController.navigate(destination) {
+                    popUpTo(CretonaRoute.SessionRestore) { inclusive = true }
+                }
+            }
+
+            SessionRestoreScreen(
+                state = state,
+                onRetry = viewModel::restore,
+            )
+        }
+
         composable<CretonaRoute.Auth> {
             AuthScreen(
                 onLoginSuccess = { needsProfileSetup ->

@@ -1,8 +1,7 @@
 # Development setup
 
 This guide describes the current local integration profile: Android talks to
-FastAPI on port 8000. The Express service in `backend/` remains executable
-migration evidence; it is not the active Mobile 1 runtime.
+the active FastAPI service in `backend/` on port 8000.
 
 ## 1. Prerequisites
 
@@ -49,7 +48,8 @@ sdk.dir=C\:\\Users\\<you>\\AppData\\Local\\Android\\Sdk
 cretona.api.baseUrl.debug=http\://10.0.2.2\:8000/api/v1/
 cretona.api.baseUrl.release=https\://api.cretona.app/api/v1/
 
-# Optional until Supabase auth is ported to FastAPI.
+# Required for real sign-up/sign-in and persisted sessions. Leave both blank
+# only for the credential-free debug profile.
 supabase.url=https\://<project-ref>.supabase.co
 supabase.anonKey=<anon-public-key>
 ```
@@ -90,8 +90,9 @@ powershell -ExecutionPolicy Bypass -File .\scripts\run-fastapi.ps1
 ```
 
 The service binds `0.0.0.0:8000` so an emulator can use
-`http://10.0.2.2:8000/api/v1/`. Development auth uses one fixed local identity
-or `X-Debug-User-Id`; this mode must never be used as a deployed auth profile.
+`http://10.0.2.2:8000/api/v1/`. Credential-free debug builds send one fixed
+`X-Debug-User-Id` only while Supabase is unconfigured. A configured signed-out
+build sends no debug identity, and production rejects development auth.
 
 Verify the backend:
 

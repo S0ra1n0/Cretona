@@ -13,6 +13,7 @@ import com.cretona.app.domain.model.GenerationQuota
 import com.cretona.app.domain.model.UserProfile
 import com.cretona.app.domain.model.VideoProject
 import com.cretona.app.domain.repository.AuthRepository
+import com.cretona.app.domain.repository.AuthSignUpResult
 import com.cretona.app.domain.repository.CretonaRepository
 import com.cretona.app.ui.home.MainDispatcherRule
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -114,6 +115,26 @@ class AuthViewModelTest {
     }
 
     @Test
+    fun `signUp requiring confirmation never calls FastAPI as the dev user`() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val authRepo = FakeAuthRepository().apply { sessionCreatedOnSignUp = false }
+            val cretonaRepo = FakeCretonaRepository()
+            val viewModel = AuthViewModel(authRepo, cretonaRepo)
+            viewModel.setSignUpMode(true)
+            viewModel.onEmailChanged("newuser@cretona.test")
+            viewModel.onPasswordChanged("password123")
+            viewModel.onConfirmPasswordChanged("password123")
+
+            viewModel.submit()
+            advanceUntilIdle()
+
+            assertFalse(viewModel.state.value.loginSucceeded)
+            assertFalse(viewModel.state.value.isSignUpMode)
+            assertTrue(viewModel.state.value.successNotice.orEmpty().contains("Confirm your email"))
+            assertEquals(0, cretonaRepo.currentUserCalls)
+        }
+
+    @Test
     fun `dev login succeeds only after backend profile check`() = runTest(mainDispatcherRule.dispatcher) {
         val cretonaRepo = FakeCretonaRepository()
         val viewModel = AuthViewModel(FakeAuthRepository(), cretonaRepo)
@@ -139,27 +160,50 @@ class AuthViewModelTest {
             assertFalse(viewModel.state.value.loginSucceeded)
             assertEquals("FastAPI is unavailable.", viewModel.state.value.errorMessage)
         }
+
+    @Test
+    fun `dev login is unavailable when Supabase is configured`() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val authRepo = FakeAuthRepository().apply { canUseLocalDemo = false }
+            val cretonaRepo = FakeCretonaRepository()
+            val viewModel = AuthViewModel(authRepo, cretonaRepo)
+
+            viewModel.devLogin()
+            advanceUntilIdle()
+
+            assertFalse(viewModel.state.value.canUseLocalDemo)
+            assertFalse(viewModel.state.value.loginSucceeded)
+            assertEquals(0, cretonaRepo.currentUserCalls)
+        }
 }
 
 private class FakeAuthRepository : AuthRepository {
+    override var canUseLocalDemo: Boolean = true
     var shouldFail: Boolean = false
+    var sessionCreatedOnSignUp: Boolean = true
+
+    override suspend fun restoreSession(): AppResult<Boolean> = AppResult.Success(false)
 
     override suspend fun signIn(email: String, password: String): AppResult<Unit> {
         if (shouldFail) return AppResult.Failure(AppError.Unauthorized("Incorrect email or password."))
         return AppResult.Success(Unit)
     }
 
-    override suspend fun signUp(email: String, password: String): AppResult<Unit> {
+    override suspend fun signUp(email: String, password: String): AppResult<AuthSignUpResult> {
         if (shouldFail) return AppResult.Failure(AppError.Unauthorized("Sign up failed."))
-        return AppResult.Success(Unit)
+        return AppResult.Success(AuthSignUpResult(sessionCreatedOnSignUp))
     }
+
+    override suspend fun signOut(): AppResult<Unit> = AppResult.Success(Unit)
 }
 
-private class FakeCretonaRepository : CretonaRepository {
+internal class FakeCretonaRepository : CretonaRepository {
     var shouldFailCurrentUser: Boolean = false
+    var currentUserCalls: Int = 0
 
-    override suspend fun getCurrentUser(): AppResult<UserProfile> =
-        if (shouldFailCurrentUser) {
+    override suspend fun getCurrentUser(): AppResult<UserProfile> {
+        currentUserCalls += 1
+        return if (shouldFailCurrentUser) {
             AppResult.Failure(AppError.Network("FastAPI is unavailable."))
         } else {
             AppResult.Success(
@@ -175,6 +219,7 @@ private class FakeCretonaRepository : CretonaRepository {
                 ),
             )
         }
+    }
 
     override suspend fun updateProfile(
         username: String,

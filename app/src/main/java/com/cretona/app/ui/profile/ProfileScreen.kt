@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.cretona.app.domain.model.UserProfile
 
@@ -58,6 +59,7 @@ fun ProfileScreen(
     viewModel: ProfileViewModel = hiltViewModel(),
 ) {
     var showSignOutDialog by remember { mutableStateOf(false) }
+    val signOutState by viewModel.signOutState.collectAsStateWithLifecycle()
 
     if (showSignOutDialog) {
         AlertDialog(
@@ -68,9 +70,9 @@ fun ProfileScreen(
                 TextButton(
                     onClick = {
                         showSignOutDialog = false
-                        viewModel.signOut()
-                        onSignedOut()
+                        viewModel.signOut(onSignedOut)
                     },
+                    enabled = !signOutState.isSigningOut,
                 ) {
                     Text("Sign out", color = MaterialTheme.colorScheme.error)
                 }
@@ -224,11 +226,29 @@ fun ProfileScreen(
         Button(
             onClick = { showSignOutDialog = true },
             modifier = Modifier.fillMaxWidth(),
+            enabled = !signOutState.isSigningOut,
             colors = ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.error,
             ),
         ) {
-            Text("Sign out")
+            if (signOutState.isSigningOut) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.onError,
+                )
+            } else {
+                Text("Sign out")
+            }
+        }
+
+        signOutState.errorMessage?.let { message ->
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Could not sign out: $message",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
 
         Spacer(modifier = Modifier.height(24.dp))
