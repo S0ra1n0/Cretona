@@ -73,6 +73,15 @@ class ProfileSetupViewModelTest {
         assertTrue(viewModel.state.value.canSubmit)
     }
 
+    @Test
+    fun `avatar picker failure is visible to the user`() {
+        val viewModel = ProfileSetupViewModel(FakeRepository())
+
+        viewModel.onAvatarSelectionFailed("The selected image could not be read.")
+
+        assertEquals("The selected image could not be read.", viewModel.state.value.errorMessage)
+    }
+
     // --- gender selection ----------------------------------------------------
 
     @Test

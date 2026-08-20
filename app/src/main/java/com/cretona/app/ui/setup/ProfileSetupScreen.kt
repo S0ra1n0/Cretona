@@ -48,6 +48,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,10 +64,15 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import com.cretona.app.core.util.ImageCompressor
 import com.cretona.app.ui.theme.GalaxyBrightAccent
 import com.cretona.app.ui.theme.GalaxyDeepBlue
 import com.cretona.app.ui.theme.GalaxyIndigo
 import com.cretona.app.ui.theme.GalaxyViolet
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -88,6 +94,7 @@ fun ProfileSetupScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val imagePickerScope = rememberCoroutineScope()
 
     LaunchedEffect(isEdit) {
         if (isEdit) viewModel.startEdit()
@@ -106,16 +113,30 @@ fun ProfileSetupScreen(
         contract = ActivityResultContracts.PickVisualMedia(),
         onResult = { uri ->
             if (uri != null) {
-                try {
-                    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                    val mime = context.contentResolver.getType(uri) ?: "image/jpeg"
-                    val name = uri.lastPathSegment ?: "avatar.jpg"
-                    if (bytes != null) {
-                        viewModel.onAvatarSelected(uri, bytes, mime, name)
+                imagePickerScope.launch {
+                    try {
+                        val selection = withContext(Dispatchers.IO) {
+                            val rawBytes = context.contentResolver.openInputStream(uri)?.use {
+                                ImageCompressor.readBounded(it)
+                            } ?: throw IllegalStateException("The selected image could not be opened.")
+                            val originalMime = context.contentResolver.getType(uri) ?: "image/jpeg"
+                            val (bytes, mime) = ImageCompressor.compress(rawBytes, originalMime)
+                            val name = uri.lastPathSegment ?: "avatar.jpg"
+                            Triple(bytes, mime, name)
+                        }
+                        viewModel.onAvatarSelected(
+                            uri,
+                            selection.first,
+                            selection.second,
+                            selection.third,
+                        )
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        viewModel.onAvatarSelectionFailed(
+                            error.message ?: "The selected image could not be read.",
+                        )
                     }
-                } catch (_: Exception) {
-                    // A picked file we cannot read is not worth crashing over;
-                    // the avatar is optional and the user can pick another.
                 }
             }
         },

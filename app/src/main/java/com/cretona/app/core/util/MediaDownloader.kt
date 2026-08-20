@@ -8,12 +8,19 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import androidx.core.content.FileProvider
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.job
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
+import java.io.OutputStream
 
 /**
  * Utility for real Android devices:
@@ -26,21 +33,18 @@ object MediaDownloader {
 
     /**
      * Downloads video bytes and inserts into Android's public MediaStore (Movies/Cretona).
-     * Works across Android 10 (API 29) to Android 15 without requiring legacy WRITE_EXTERNAL_STORAGE.
+     * Android 10+ needs no storage permission. Android 8/9 callers must obtain
+     * WRITE_EXTERNAL_STORAGE before invoking this method.
      */
+    @Suppress("DEPRECATION")
     suspend fun saveVideoToGallery(
         context: Context,
         videoUrl: String,
         title: String,
     ): Result<Uri> = withContext(Dispatchers.IO) {
+        var itemUri: Uri? = null
         try {
-            val request = Request.Builder().url(videoUrl).build()
-            val response = httpClient.newCall(request).execute()
-            if (!response.isSuccessful) {
-                return@withContext Result.failure(Exception("Failed to download video: HTTP ${response.code}"))
-            }
-
-            val sanitizedTitle = title.replace(Regex("[^a-zA-Z0-9_-]"), "_").take(40)
+            val sanitizedTitle = safeTitle(title)
             val fileName = "Cretona_${sanitizedTitle}_${System.currentTimeMillis()}.mp4"
 
             val contentValues = ContentValues().apply {
@@ -49,6 +53,15 @@ object MediaDownloader {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     put(MediaStore.Video.Media.RELATIVE_PATH, "${Environment.DIRECTORY_MOVIES}/Cretona")
                     put(MediaStore.Video.Media.IS_PENDING, 1)
+                } else {
+                    val legacyDirectory = File(
+                        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES),
+                        "Cretona",
+                    )
+                    if (!legacyDirectory.exists() && !legacyDirectory.mkdirs()) {
+                        throw IOException("Could not create Movies/Cretona.")
+                    }
+                    put(MediaStore.Video.Media.DATA, File(legacyDirectory, fileName).absolutePath)
                 }
             }
 
@@ -59,21 +72,29 @@ object MediaDownloader {
                 MediaStore.Video.Media.EXTERNAL_CONTENT_URI
             }
 
-            val itemUri = resolver.insert(collection, contentValues)
-                ?: return@withContext Result.failure(Exception("Could not create MediaStore entry."))
+            val createdUri = resolver.insert(collection, contentValues)
+                ?: throw IOException("Could not create MediaStore entry.")
+            itemUri = createdUri
 
-            resolver.openOutputStream(itemUri)?.use { outputStream ->
-                response.body.byteStream().copyTo(outputStream)
-            }
+            val bytesWritten = resolver.openOutputStream(createdUri)?.use { outputStream ->
+                downloadInto(videoUrl, outputStream)
+            } ?: throw IOException("Could not open the MediaStore destination.")
+            if (bytesWritten == 0L) throw IOException("The downloaded video was empty.")
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 contentValues.clear()
                 contentValues.put(MediaStore.Video.Media.IS_PENDING, 0)
-                resolver.update(itemUri, contentValues, null, null)
+                if (resolver.update(createdUri, contentValues, null, null) != 1) {
+                    throw IOException("Could not publish the downloaded video.")
+                }
             }
 
-            Result.success(itemUri)
+            Result.success(createdUri)
+        } catch (error: CancellationException) {
+            itemUri?.let { runCatching { context.contentResolver.delete(it, null, null) } }
+            throw error
         } catch (e: Exception) {
+            itemUri?.let { runCatching { context.contentResolver.delete(it, null, null) } }
             Result.failure(e)
         }
     }
@@ -85,20 +106,20 @@ object MediaDownloader {
         context: Context,
         videoUrl: String,
         title: String,
-    ) = withContext(Dispatchers.IO) {
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        var cacheFile: File? = null
         try {
-            val cacheDir = File(context.cacheDir, "videos").apply { mkdirs() }
-            val cacheFile = File(cacheDir, "share_${System.currentTimeMillis()}.mp4")
-
-            val request = Request.Builder().url(videoUrl).build()
-            val response = httpClient.newCall(request).execute()
-            if (!response.isSuccessful) return@withContext
-
-            response.body.byteStream().use { input ->
-                FileOutputStream(cacheFile).use { output ->
-                    input.copyTo(output)
-                }
+            val cacheDir = File(context.cacheDir, "videos")
+            if (!cacheDir.exists() && !cacheDir.mkdirs()) {
+                throw IOException("Could not create the video share cache.")
             }
+            pruneExpiredShares(cacheDir)
+            cacheFile = File(cacheDir, "share_${System.currentTimeMillis()}.mp4")
+
+            val bytesWritten = FileOutputStream(cacheFile).use { output ->
+                downloadInto(videoUrl, output)
+            }
+            if (bytesWritten == 0L) throw IOException("The downloaded video was empty.")
 
             val contentUri = FileProvider.getUriForFile(
                 context,
@@ -118,6 +139,71 @@ object MediaDownloader {
                 chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 context.startActivity(chooser)
             }
-        } catch (_: Exception) {}
+            Result.success(Unit)
+        } catch (error: CancellationException) {
+            cacheFile?.delete()
+            throw error
+        } catch (error: Exception) {
+            cacheFile?.delete()
+            Result.failure(error)
+        }
     }
+
+    internal fun safeTitle(title: String): String =
+        title.replace(Regex("[^a-zA-Z0-9_-]"), "_")
+            .trim('_')
+            .take(40)
+            .ifBlank { "video" }
+
+    internal fun copyResponseTo(
+        response: Response,
+        output: OutputStream,
+        maxBytes: Long = MAX_VIDEO_BYTES,
+    ): Long = response.use {
+        if (!it.isSuccessful) {
+            throw IOException("Failed to download video: HTTP ${it.code}")
+        }
+        val declaredLength = it.body.contentLength()
+        if (declaredLength > maxBytes) {
+            throw IOException("The video exceeds the download size limit.")
+        }
+        it.body.byteStream().use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            var total = 0L
+            while (true) {
+                val count = input.read(buffer)
+                if (count == -1) break
+                total += count
+                if (total > maxBytes) {
+                    throw IOException("The video exceeds the download size limit.")
+                }
+                output.write(buffer, 0, count)
+            }
+            total
+        }
+    }
+
+    private suspend fun downloadInto(videoUrl: String, output: OutputStream): Long {
+        val request = Request.Builder().url(videoUrl).build()
+        val call = httpClient.newCall(request)
+        val cancellationHandle = currentCoroutineContext().job.invokeOnCompletion { cause ->
+            if (cause is CancellationException) call.cancel()
+        }
+        return try {
+            copyResponseTo(call.execute(), output)
+        } finally {
+            cancellationHandle.dispose()
+            currentCoroutineContext().ensureActive()
+        }
+    }
+
+    private fun pruneExpiredShares(cacheDir: File, nowMillis: Long = System.currentTimeMillis()) {
+        val oldestAllowed = nowMillis - SHARE_CACHE_MAX_AGE_MILLIS
+        cacheDir.listFiles()
+            ?.filter { it.isFile && it.name.startsWith("share_") && it.lastModified() < oldestAllowed }
+            ?.forEach { it.delete() }
+    }
+
+    private const val SHARE_CACHE_MAX_AGE_MILLIS = 24L * 60L * 60L * 1000L
+    internal const val MAX_VIDEO_BYTES = 500L * 1024L * 1024L
 }

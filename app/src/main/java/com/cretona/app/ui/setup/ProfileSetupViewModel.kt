@@ -114,6 +114,10 @@ class ProfileSetupViewModel @Inject constructor(
         _state.update { it.copy(avatarUri = uri, errorMessage = null) }
     }
 
+    fun onAvatarSelectionFailed(message: String) {
+        _state.update { it.copy(errorMessage = message) }
+    }
+
     fun onAvatarCleared() {
         pendingAvatar = null
         // Clears the existing picture too, so "Remove" means removed rather

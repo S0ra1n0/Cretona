@@ -30,6 +30,8 @@ class HomeViewModel @Inject constructor(
     private val networkMonitor: NetworkMonitor? = null,
 ) : ViewModel() {
     var ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+    internal var imageCompressor: (ByteArray, String) -> Pair<ByteArray, String> =
+        ImageCompressor::compress
 
     private val _state = MutableStateFlow(HomeUiState())
     val state: StateFlow<HomeUiState> = _state.asStateFlow()
@@ -87,7 +89,7 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             // Compress on IO thread so the main thread stays responsive
             val (compressedBytes, finalMime) = withContext(ioDispatcher) {
-                ImageCompressor.compress(bytes, mimeType)
+                imageCompressor(bytes, mimeType)
             }
             _state.update {
                 it.copy(
@@ -312,6 +314,10 @@ class HomeViewModel @Inject constructor(
                 )
             }
         }
+    }
+
+    fun onImageSelectionFailed(message: String) {
+        _state.update { it.copy(errorMessage = message) }
     }
 
     private fun poll(initial: VideoProject) {

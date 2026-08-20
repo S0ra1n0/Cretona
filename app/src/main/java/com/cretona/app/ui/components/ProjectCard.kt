@@ -233,12 +233,19 @@ fun ProjectHistoryCard(
                                 if (!isSharing) {
                                     isSharing = true
                                     coroutineScope.launch {
-                                        MediaDownloader.shareVideo(
+                                        val result = MediaDownloader.shareVideo(
                                             context,
                                             project.videoUrl,
                                             project.title,
                                         )
                                         isSharing = false
+                                        result.exceptionOrNull()?.let { error ->
+                                            Toast.makeText(
+                                                context,
+                                                "Share failed: ${error.message ?: "Unknown error"}",
+                                                Toast.LENGTH_LONG,
+                                            ).show()
+                                        }
                                     }
                                 }
                             },

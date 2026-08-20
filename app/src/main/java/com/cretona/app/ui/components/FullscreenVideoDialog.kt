@@ -1,6 +1,11 @@
 package com.cretona.app.ui.components
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn as AndroidxOptIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -58,6 +63,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -92,6 +98,40 @@ fun FullscreenVideoDialog(
     var durationMs by remember { mutableLongStateOf(0L) }
     var isDraggingSlider by remember { mutableStateOf(false) }
     var sliderPosition by remember { mutableFloatStateOf(0f) }
+
+    val saveVideo = {
+        if (!isSaving) {
+            isSaving = true
+            coroutineScope.launch {
+                val result = MediaDownloader.saveVideoToGallery(
+                    context = context,
+                    videoUrl = videoUrl,
+                    title = title,
+                )
+                isSaving = false
+                val message = if (result.isSuccess) {
+                    "Saved to Gallery / Movies / Cretona"
+                } else {
+                    "Save failed: ${result.exceptionOrNull()?.message ?: "Unknown error"}"
+                }
+                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+    val storagePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+        onResult = { granted ->
+            if (granted) {
+                saveVideo()
+            } else {
+                Toast.makeText(
+                    context,
+                    "Storage permission is required to save videos on Android 8 and 9.",
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
+        },
+    )
 
     val exoPlayer = remember(videoUrl) {
         ExoPlayer.Builder(context)
@@ -388,27 +428,18 @@ fun FullscreenVideoDialog(
                                     shape = CircleShape,
                                     color = Color.Black.copy(alpha = 0.5f),
                                     modifier = Modifier.clickable(enabled = !isSaving) {
-                                        isSaving = true
-                                        coroutineScope.launch {
-                                            val result = MediaDownloader.saveVideoToGallery(
-                                                context = context,
-                                                videoUrl = videoUrl,
-                                                title = title,
+                                        val needsLegacyPermission =
+                                            Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
+                                                ContextCompat.checkSelfPermission(
+                                                    context,
+                                                    Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                                                ) != PackageManager.PERMISSION_GRANTED
+                                        if (needsLegacyPermission) {
+                                            storagePermissionLauncher.launch(
+                                                Manifest.permission.WRITE_EXTERNAL_STORAGE,
                                             )
-                                            isSaving = false
-                                            if (result.isSuccess) {
-                                                Toast.makeText(
-                                                    context,
-                                                    "✅ Saved to Gallery / Movies / Cretona",
-                                                    Toast.LENGTH_LONG,
-                                                ).show()
-                                            } else {
-                                                Toast.makeText(
-                                                    context,
-                                                    "❌ Save failed: ${result.exceptionOrNull()?.message}",
-                                                    Toast.LENGTH_SHORT,
-                                                ).show()
-                                            }
+                                        } else {
+                                            saveVideo()
                                         }
                                     },
                                 ) {
@@ -442,12 +473,19 @@ fun FullscreenVideoDialog(
                                     modifier = Modifier.clickable(enabled = !isSharing) {
                                         isSharing = true
                                         coroutineScope.launch {
-                                            MediaDownloader.shareVideo(
+                                            val result = MediaDownloader.shareVideo(
                                                 context = context,
                                                 videoUrl = videoUrl,
                                                 title = title,
                                             )
                                             isSharing = false
+                                            result.exceptionOrNull()?.let { error ->
+                                                Toast.makeText(
+                                                    context,
+                                                    "Share failed: ${error.message ?: "Unknown error"}",
+                                                    Toast.LENGTH_LONG,
+                                                ).show()
+                                            }
                                         }
                                     },
                                 ) {

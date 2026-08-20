@@ -1,5 +1,6 @@
 package com.cretona.app.ui.home
 
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -61,8 +62,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -85,10 +86,15 @@ import com.cretona.app.domain.model.GenerationQuota
 import com.cretona.app.domain.model.ProjectStatus
 import com.cretona.app.domain.model.UserProfile
 import com.cretona.app.domain.model.VideoProject
+import com.cretona.app.core.util.ImageCompressor
 import com.cretona.app.ui.components.FullscreenVideoDialog
 import com.cretona.app.ui.components.ProjectStatusText
 import com.cretona.app.ui.components.verticalScrollbar
 import com.cretona.app.ui.theme.CretonaTheme
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -104,19 +110,36 @@ fun HomeScreen(
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val context = LocalContext.current
+    val imagePickerScope = rememberCoroutineScope()
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),
         onResult = { uri ->
             if (uri != null) {
-                try {
-                    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                    val mime = context.contentResolver.getType(uri) ?: "image/jpeg"
-                    val fileName = uri.lastPathSegment ?: "reference.jpg"
-                    if (bytes != null) {
-                        viewModel.onImageSelected(uri, bytes, mime, fileName)
+                imagePickerScope.launch {
+                    try {
+                        val selection = withContext(Dispatchers.IO) {
+                            val bytes = context.contentResolver.openInputStream(uri)?.use {
+                                ImageCompressor.readBounded(it)
+                            } ?: throw IllegalStateException("The selected image could not be opened.")
+                            val mime = context.contentResolver.getType(uri) ?: "image/jpeg"
+                            val fileName = uri.lastPathSegment ?: "reference.jpg"
+                            Triple(bytes, mime, fileName)
+                        }
+                        viewModel.onImageSelected(
+                            uri,
+                            selection.first,
+                            selection.second,
+                            selection.third,
+                        )
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        viewModel.onImageSelectionFailed(
+                            error.message ?: "The selected image could not be read.",
+                        )
                     }
-                } catch (_: Exception) {}
+                }
             }
         },
     )
@@ -753,9 +776,7 @@ private fun CurrentProjectCard(
 
                 val context = LocalContext.current
                 val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
-                var isSaving by remember { mutableStateOf(false) }
                 var isSharing by remember { mutableStateOf(false) }
-                var saveFeedback by remember { mutableStateOf<String?>(null) }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -774,12 +795,19 @@ private fun CurrentProjectCard(
                             if (!isSharing) {
                                 isSharing = true
                                 coroutineScope.launch {
-                                    com.cretona.app.core.util.MediaDownloader.shareVideo(
+                                    val result = com.cretona.app.core.util.MediaDownloader.shareVideo(
                                         context,
                                         project.videoUrl,
                                         project.title,
                                     )
                                     isSharing = false
+                                    result.exceptionOrNull()?.let { error ->
+                                        Toast.makeText(
+                                            context,
+                                            "Share failed: ${error.message ?: "Unknown error"}",
+                                            Toast.LENGTH_LONG,
+                                        ).show()
+                                    }
                                 }
                             }
                         },
@@ -791,14 +819,6 @@ private fun CurrentProjectCard(
                             Text("📤 Share")
                         }
                     }
-                }
-
-                saveFeedback?.let {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
                 }
             }
         }

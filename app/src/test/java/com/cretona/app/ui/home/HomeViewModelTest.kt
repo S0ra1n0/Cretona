@@ -93,6 +93,15 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun `image picker failure is visible to the user`() {
+        val viewModel = HomeViewModel(FakeRepository())
+
+        viewModel.onImageSelectionFailed("Images must be 10 MB or smaller.")
+
+        assertEquals("Images must be 10 MB or smaller.", viewModel.state.value.errorMessage)
+    }
+
+    @Test
     fun `opening home loads current quota`() = runTest(mainDispatcherRule.dispatcher) {
         val viewModel = HomeViewModel(FakeRepository(quotaRemaining = 7))
 
@@ -231,6 +240,7 @@ class HomeViewModelTest {
     fun `selecting and clearing image updates state`() = runTest(mainDispatcherRule.dispatcher) {
         val viewModel = HomeViewModel(FakeRepository()).apply {
             ioDispatcher = mainDispatcherRule.dispatcher
+            imageCompressor = { bytes, mime -> bytes to mime }
         }
 
         viewModel.onImageSelected(
@@ -258,6 +268,7 @@ class HomeViewModelTest {
         val repository = FakeRepository()
         val viewModel = HomeViewModel(repository).apply {
             ioDispatcher = mainDispatcherRule.dispatcher
+            imageCompressor = { bytes, mime -> bytes to mime }
         }
 
         viewModel.onImageSelected(
