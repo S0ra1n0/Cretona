@@ -98,28 +98,39 @@ fun ProfileScreen(
 
         Box(
             modifier = Modifier
-                .size(96.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+                .size(104.dp)
+                .background(
+                    brush = com.cretona.app.ui.theme.PrimaryGradient,
+                    shape = CircleShape,
+                )
+                .padding(3.dp),
             contentAlignment = Alignment.Center,
         ) {
-            val avatarUrl = account?.avatarUrl
-            if (avatarUrl != null) {
-                AsyncImage(
-                    model = avatarUrl,
-                    contentDescription = "Profile picture",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else {
-                // The neutral placeholder, for accounts that skipped or have
-                // not reached profile setup.
-                Icon(
-                    imageVector = Icons.Default.Person,
-                    contentDescription = "Profile picture",
-                    modifier = Modifier.size(56.dp),
-                    tint = Color.Gray,
-                )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center,
+            ) {
+                val avatarUrl = account?.avatarUrl
+                if (avatarUrl != null) {
+                    AsyncImage(
+                        model = avatarUrl,
+                        contentDescription = "Profile picture",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    // The neutral placeholder, for accounts that skipped or have
+                    // not reached profile setup.
+                    Icon(
+                        imageVector = Icons.Default.Person,
+                        contentDescription = "Profile picture",
+                        modifier = Modifier.size(56.dp),
+                        tint = Color.Gray,
+                    )
+                }
             }
         }
 
@@ -175,8 +186,9 @@ fun ProfileScreen(
         if (account != null) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f),
                 ),
             ) {
                 Column(

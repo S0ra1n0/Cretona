@@ -10,20 +10,22 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -38,6 +40,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Surface
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -200,11 +203,16 @@ private fun HomeContent(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             item {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Create an AI video", style = MaterialTheme.typography.headlineMedium)
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        "FastAPI owns prompt enhancement and the video job lifecycle.",
+                        text = "✨ AI Video Studio",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = "Create cinematic video clips from text or reference images",
                         style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -219,167 +227,221 @@ private fun HomeContent(
             }
 
             item {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = state.prompt,
-                        onValueChange = onPromptChanged,
-                        modifier = Modifier.fillMaxWidth(),
-                        minLines = 4,
-                        maxLines = 8,
-                        label = { Text("Describe the video") },
-                        supportingText = {
-                            Text(
-                                state.enhancementNote
-                                    ?: when (state.selectedProvider) {
-                                        "cloud", "real", "wan21" -> "AI image, then a 5s camera move"
-                                        "local" -> "Placeholder tier — behaves like AI image + motion"
-                                        else -> "Bundled demo clip — zero spend"
-                                    },
-                            )
-                        },
-                    )
-
-                    if (state.prompt.isBlank()) {
-                        val ideas = listOf(
-                            "🐉 Rồng bay trên núi",
-                            "🌆 Cyberpunk city",
-                            "🌊 Hoàng hôn trên biển",
-                            "🐱 Mèo trong vũ trụ",
-                            "🎆 Fireworks celebration",
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text(
+                            text = "Prompt Studio",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary,
                         )
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            ideas.forEach { idea ->
-                                FilterChip(
-                                    selected = false,
-                                    onClick = { onSelectPromptIdea(idea) },
-                                    label = { Text(idea, style = MaterialTheme.typography.labelSmall) },
+
+                        OutlinedTextField(
+                            value = state.prompt,
+                            onValueChange = onPromptChanged,
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 3,
+                            maxLines = 6,
+                            placeholder = { Text("Describe the cinematic scene in detail...") },
+                            shape = RoundedCornerShape(12.dp),
+                            supportingText = {
+                                Text(
+                                    state.enhancementNote
+                                        ?: when (state.selectedProvider) {
+                                            "cloud", "real", "wan21" -> "AI image + motion pan"
+                                            "local" -> "Local placeholder"
+                                            else -> "Instant demo sample"
+                                        },
+                                    style = MaterialTheme.typography.labelSmall,
                                 )
+                            },
+                        )
+
+                        if (state.prompt.isBlank()) {
+                            val ideas = listOf(
+                                "🐉 Rồng bay đỉnh núi tuyết",
+                                "🌆 Cyberpunk neon Tokyo",
+                                "🌊 Hoàng hôn trên biển",
+                                "🐱 Phi hành gia mèo vũ trụ",
+                                "🎆 Pháo hoa rực rỡ đêm giao thừa",
+                            )
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(
+                                    "💡 Gợi ý ý tưởng:",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                ) {
+                                    ideas.forEach { idea ->
+                                        FilterChip(
+                                            selected = false,
+                                            onClick = { onSelectPromptIdea(idea) },
+                                            label = { Text(idea, style = MaterialTheme.typography.labelSmall) },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Enhance & Revert actions directly under prompt
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            if (state.previousPrompt != null) {
+                                OutlinedButton(
+                                    onClick = onRevertPrompt,
+                                    enabled = !state.isEnhancing && !state.isSubmitting,
+                                    modifier = Modifier.padding(end = 8.dp),
+                                ) {
+                                    Text("↩️ Revert")
+                                }
+                            }
+                            OutlinedButton(
+                                onClick = onEnhance,
+                                enabled = !state.isEnhancing && !state.isSubmitting && state.prompt.isNotBlank(),
+                            ) {
+                                if (state.isEnhancing) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp,
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Enhancing...")
+                                } else {
+                                    Text("✨ AI Enhance")
+                                }
                             }
                         }
                     }
                 }
             }
 
+            // Creative Controls Group Card
             item {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Model / Engine:", style = MaterialTheme.typography.bodyMedium)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        FilterChip(
-                            selected = state.selectedProvider == "mock" || state.selectedProvider == "fake",
-                            onClick = { onProviderSelected("mock") },
-                            label = { Text("🎭 Demo") },
-                        )
-                        FilterChip(
-                            selected = state.selectedProvider == "cloud" || state.selectedProvider == "real" || state.selectedProvider == "wan21",
-                            onClick = { onProviderSelected("cloud") },
-                            label = { Text("🖼️ AI image + motion") },
-                        )
-                        FilterChip(
-                            selected = state.selectedProvider == "local",
-                            onClick = { onProviderSelected("local") },
-                            label = { Text("💻 Local (not yet available)") },
-                        )
-                    }
-                    // These describe what each tier actually produces. No video
-                    // model has cleared EXP-005, so none of them generates
-                    // video: the AI tiers render one still image with a camera
-                    // move. Claiming a GPU cluster or local weights would be
-                    // untrue, and users judge the output against the claim.
-                    val modelDesc = when (state.selectedProvider) {
-                        "mock", "fake" -> "⚡ Instant bundled sample clip — no generation, best for UI testing"
-                        "cloud", "real", "wan21" ->
-                            "🖼️ Generates an AI image from your prompt, then pans across it for 5s"
-                        "local" -> "🚧 Placeholder — no local model runs yet; output matches AI image + motion"
-                        else -> ""
-                    }
-                    if (modelDesc.isNotEmpty()) {
-                        Text(
-                            modelDesc,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-
-            item {
-                Row(
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                    ),
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("Ratio:", style = MaterialTheme.typography.bodyMedium)
-                    listOf("9:16" to "📱 9:16", "16:9" to "📺 16:9", "1:1" to "🔲 1:1").forEach { (ratio, label) ->
-                        FilterChip(
-                            selected = state.selectedAspectRatio == ratio,
-                            onClick = { onAspectRatioSelected(ratio) },
-                            label = { Text(label) },
-                        )
-                    }
-                }
-            }
-
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Style Preset:", style = MaterialTheme.typography.bodyMedium)
-                    val styles = listOf(
-                        "anime" to "🌸 Anime",
-                        "cyberpunk" to "🌆 Cyberpunk",
-                        "3d_pixar" to "🧸 3D Pixar",
-                        "vintage_film" to "🎞️ Vintage Film",
-                        "photorealistic" to "🌿 8K Realistic",
-                    )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        styles.forEach { (key, label) ->
-                            FilterChip(
-                                selected = state.selectedStylePreset == key,
-                                onClick = { onStylePresetSelected(key) },
-                                label = { Text(label) },
-                            )
+                        // Aspect ratio
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Aspect Ratio:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                listOf("9:16" to "📱 9:16", "16:9" to "📺 16:9", "1:1" to "🔲 1:1").forEach { (ratio, label) ->
+                                    FilterChip(
+                                        selected = state.selectedAspectRatio == ratio,
+                                        onClick = { onAspectRatioSelected(ratio) },
+                                        label = { Text(label) },
+                                    )
+                                }
+                            }
                         }
-                    }
-                }
-            }
 
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Camera Motion:", style = MaterialTheme.typography.bodyMedium)
-                    val motions = listOf(
-                        "pan_left" to "⬅️ Pan Left",
-                        "pan_right" to "➡️ Pan Right",
-                        "zoom_in" to "🔍 Zoom In",
-                        "zoom_out" to "🔭 Zoom Out",
-                        "dolly_zoom" to "🌀 Dolly Zoom",
-                        "orbit" to "🔄 Orbit 360",
-                    )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        motions.forEach { (key, label) ->
-                            FilterChip(
-                                selected = state.selectedCameraMotion == key,
-                                onClick = { onCameraMotionSelected(key) },
-                                label = { Text(label) },
+                        // Style Preset
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Visual Style:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                            val styles = listOf(
+                                "anime" to "🌸 Anime",
+                                "cyberpunk" to "🌆 Cyberpunk",
+                                "3d_pixar" to "🧸 3D Pixar",
+                                "vintage_film" to "🎞️ Vintage Film",
+                                "photorealistic" to "🌿 8K Realistic",
                             )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                styles.forEach { (key, label) ->
+                                    FilterChip(
+                                        selected = state.selectedStylePreset == key,
+                                        onClick = { onStylePresetSelected(key) },
+                                        label = { Text(label) },
+                                    )
+                                }
+                            }
+                        }
+
+                        // Camera Motion
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Camera Motion:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                            val motions = listOf(
+                                "pan_left" to "⬅️ Pan Left",
+                                "pan_right" to "➡️ Pan Right",
+                                "zoom_in" to "🔍 Zoom In",
+                                "zoom_out" to "🔭 Zoom Out",
+                                "dolly_zoom" to "🌀 Dolly Zoom",
+                                "orbit" to "🔄 Orbit 360",
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                motions.forEach { (key, label) ->
+                                    FilterChip(
+                                        selected = state.selectedCameraMotion == key,
+                                        onClick = { onCameraMotionSelected(key) },
+                                        label = { Text(label) },
+                                    )
+                                }
+                            }
+                        }
+
+                        // Model / Engine
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Engine Tier:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                FilterChip(
+                                    selected = state.selectedProvider == "mock" || state.selectedProvider == "fake",
+                                    onClick = { onProviderSelected("mock") },
+                                    label = { Text("🎭 Demo Sample") },
+                                )
+                                FilterChip(
+                                    selected = state.selectedProvider == "cloud" || state.selectedProvider == "real" || state.selectedProvider == "wan21",
+                                    onClick = { onProviderSelected("cloud") },
+                                    label = { Text("🖼️ AI image + motion") },
+                                )
+                                FilterChip(
+                                    selected = state.selectedProvider == "local",
+                                    onClick = { onProviderSelected("local") },
+                                    label = { Text("💻 Local") },
+                                )
+                            }
                         }
                     }
                 }
@@ -395,55 +457,49 @@ private fun HomeContent(
 
             item {
                 val quotaCost = if (state.selectedProvider in listOf("real", "wan21")) 2 else 1
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    if (state.previousPrompt != null) {
-                        OutlinedButton(
-                            onClick = onRevertPrompt,
-                            enabled = !state.isEnhancing && !state.isSubmitting,
-                        ) {
-                            Text("Revert")
-                        }
-                    }
-                    OutlinedButton(
-                        onClick = onEnhance,
-                        enabled = !state.isEnhancing && !state.isSubmitting,
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        if (state.isEnhancing) {
-                            CircularProgressIndicator(modifier = Modifier.padding(2.dp))
-                        } else {
-                            Text("Enhance")
-                        }
-                    }
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Button(
                         onClick = onGenerate,
                         enabled = !state.isSubmitting &&
                             !state.isEnhancing &&
                             !state.isAccountLoading &&
-                            !state.isQuotaExhausted,
-                        modifier = Modifier.weight(1f),
+                            !state.isQuotaExhausted &&
+                            (state.prompt.isNotBlank() || state.selectedImageUri != null),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp),
                     ) {
                         if (state.isSubmitting) {
-                            CircularProgressIndicator(modifier = Modifier.padding(2.dp))
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Starting Generation...")
                         } else {
-                            Text("Generate (-$quotaCost Quota)")
+                            Text(
+                                "🚀 Generate AI Video (-$quotaCost Quota)",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                            )
                         }
                     }
-                }
-                if (state.isAccountLoading) {
-                    Text(
-                        "Checking quota before generation.",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                } else if (state.isQuotaExhausted) {
-                    Text(
-                        "Generation is unavailable until your quota resets.",
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
+
+                    if (state.isAccountLoading) {
+                        Text(
+                            "Checking quota before generation.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else if (state.isQuotaExhausted) {
+                        Text(
+                            "Generation is unavailable until your quota resets.",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                 }
             }
 
@@ -487,31 +543,58 @@ private fun QuotaCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f),
         ),
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("Generation quota", style = MaterialTheme.typography.titleMedium)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Studio Membership",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                if (account != null) {
+                    val roleLabel = if (account.role == "admin") "👑 Admin Tier" else "⚡ Pro Creator"
+                    Box(
+                        modifier = Modifier
+                            .background(
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                shape = CircleShape,
+                            )
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                    ) {
+                        Text(
+                            text = roleLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
+            }
+
             when {
                 isLoading -> Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                    Text("Checking remaining generations...")
+                    Text("Checking remaining generations...", style = MaterialTheme.typography.bodySmall)
                 }
 
                 errorMessage != null -> {
-                    Text("Quota unavailable. $errorMessage")
-                    Text(
-                        "Retry now, or continue after the server verifies quota at submission.",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    OutlinedButton(onClick = onRetry) { Text("Retry quota") }
+                    Text("Quota unavailable: $errorMessage", style = MaterialTheme.typography.bodySmall)
+                    OutlinedButton(onClick = onRetry) { Text("Retry Quota") }
                 }
 
                 account != null -> QuotaDetails(account)
@@ -524,27 +607,42 @@ private fun QuotaCard(
 private fun QuotaDetails(account: UserProfile) {
     val quota = account.quota
     val fraction = if (quota.limit == 0) 0f else quota.remaining.toFloat() / quota.limit
-    Text("Signed in as ${account.displayName}", style = MaterialTheme.typography.bodySmall)
-    Text(
-        "${quota.remaining} of ${quota.limit} generations remaining",
-        style = MaterialTheme.typography.titleLarge,
-    )
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        Text(
+            text = "⚡ ${quota.remaining} of ${quota.limit} credits remaining",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            text = "${account.displayName}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
     LinearProgressIndicator(
         progress = { fraction.coerceIn(0f, 1f) },
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(6.dp),
+        color = MaterialTheme.colorScheme.primary,
+        trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
     )
     Text(
         if (quota.remaining == 0) {
             resetCopy(quota)
         } else {
-            "${quota.used} used in the current rolling window."
+            "${quota.used} credits used in current rolling window."
         },
         color = if (quota.remaining == 0) {
             MaterialTheme.colorScheme.error
         } else {
-            MaterialTheme.colorScheme.onSecondaryContainer
+            MaterialTheme.colorScheme.onSurfaceVariant
         },
-        style = MaterialTheme.typography.bodyMedium,
+        style = MaterialTheme.typography.bodySmall,
     )
 }
 

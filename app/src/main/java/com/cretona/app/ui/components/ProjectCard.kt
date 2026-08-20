@@ -104,7 +104,13 @@ fun ProjectHistoryCard(
         )
     }
 
-    Card(modifier = modifier.fillMaxWidth()) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+        colors = androidx.compose.material3.CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f),
+        ),
+    ) {
         Column {
             if (project.status == ProjectStatus.COMPLETED) {
                 Box(
@@ -122,19 +128,52 @@ fun ProjectHistoryCard(
                     if (project.videoUrl != null) {
                         Surface(
                             shape = CircleShape,
-                            color = Color.Black.copy(alpha = 0.55f),
+                            color = Color.Black.copy(alpha = 0.65f),
                             modifier = Modifier
                                 .align(Alignment.Center)
-                                .size(48.dp),
+                                .size(52.dp),
                         ) {
                             Icon(
                                 imageVector = Icons.Default.PlayArrow,
                                 contentDescription = "Play Video",
                                 tint = Color.White,
                                 modifier = Modifier
-                                    .padding(8.dp)
+                                    .padding(10.dp)
                                     .fillMaxSize(),
                             )
+                        }
+                    }
+
+                    // Aspect ratio & duration badges overlay
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Surface(
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
+                            color = Color.Black.copy(alpha = 0.75f),
+                        ) {
+                            Text(
+                                text = project.aspectRatio,
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelSmall,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            )
+                        }
+                        if (project.durationSeconds != null) {
+                            Surface(
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
+                                color = Color.Black.copy(alpha = 0.75f),
+                            ) {
+                                Text(
+                                    text = "${project.durationSeconds}s",
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                )
+                            }
                         }
                     }
                 }

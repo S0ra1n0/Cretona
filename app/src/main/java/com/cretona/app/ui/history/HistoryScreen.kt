@@ -129,8 +129,24 @@ fun HistoryScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("History", style = MaterialTheme.typography.headlineMedium)
-                    OutlinedButton(onClick = onRefresh) { Text("Refresh") }
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = "🎬 Project Gallery",
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        )
+                        Text(
+                            text = "${filteredProjects.size} creations saved",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = onRefresh,
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Text("🔄 Refresh")
+                    }
                 }
             }
 

@@ -13,8 +13,12 @@ import androidx.compose.ui.platform.LocalContext
 private val LightColors = lightColorScheme(
     primary = CretonaPurple,
     onPrimary = androidx.compose.ui.graphics.Color.White,
-    primaryContainer = CretonaPurpleLight,
+    primaryContainer = CretonaPurpleLight.copy(alpha = 0.3f),
     secondary = CretonaBlue,
+    tertiary = CretonaPink,
+    background = androidx.compose.ui.graphics.Color(0xFFF8F9FE),
+    surface = androidx.compose.ui.graphics.Color.White,
+    surfaceVariant = androidx.compose.ui.graphics.Color(0xFFEEF0FA),
     error = CretonaError,
 )
 
@@ -22,9 +26,11 @@ private val DarkColors = darkColorScheme(
     primary = CretonaPurpleLight,
     onPrimary = CretonaInk,
     primaryContainer = CretonaPurpleDark,
-    secondary = CretonaBlue,
+    secondary = CretonaCyan,
+    tertiary = CretonaPink,
     background = CretonaInk,
     surface = CretonaSurfaceDark,
+    surfaceVariant = CretonaSurfaceCard,
     error = CretonaError,
 )
 
