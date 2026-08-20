@@ -37,10 +37,14 @@ jobs:
       - name: Install locked environment
         run: |
           python -m venv .venv
+          .\.venv\Scripts\python.exe -m pip install --upgrade pip==26.2.1
           .\.venv\Scripts\python.exe -m pip install -c constraints-windows-py312.lock -e ".[dev]"
 
       - name: Verify dependency consistency
         run: .\.venv\Scripts\python.exe -m pip check
+
+      - name: Audit Python dependencies
+        run: .\.venv\Scripts\python.exe -m pip_audit --local --progress-spinner off
 
       - name: Lint and formatting
         run: |
@@ -87,10 +91,14 @@ jobs:
       - name: Install constrained environment
         run: |
           python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip==26.2.1
           .venv/bin/python -m pip install -c constraints-windows-py312.lock -e ".[dev]"
 
       - name: Verify dependency consistency
         run: .venv/bin/python -m pip check
+
+      - name: Audit Python dependencies
+        run: .venv/bin/python -m pip_audit --local --progress-spinner off
 
       - name: Run full suite with Postgres parity enabled
         run: .venv/bin/python -m pytest
