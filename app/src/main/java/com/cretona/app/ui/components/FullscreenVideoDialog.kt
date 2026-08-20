@@ -59,6 +59,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -73,6 +74,7 @@ import com.cretona.app.core.util.MediaDownloader
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 @AndroidxOptIn(UnstableApi::class)
 @Composable
@@ -202,6 +204,8 @@ fun FullscreenVideoDialog(
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
+                    onClickLabel = if (showControls) "Hide playback controls" else "Show playback controls",
+                    role = Role.Button,
                 ) {
                     showControls = !showControls
                 },
@@ -386,14 +390,14 @@ fun FullscreenVideoDialog(
                                 }
 
                                 Surface(
-                                    shape = CircleShape,
-                                    color = Color.Black.copy(alpha = 0.5f),
-                                    modifier = Modifier.clickable {
+                                    onClick = {
                                         val speeds = listOf(0.5f, 1.0f, 1.25f, 1.5f, 2.0f)
                                         val nextIndex = (speeds.indexOf(playbackSpeed) + 1) % speeds.size
                                         playbackSpeed = speeds[nextIndex]
                                         exoPlayer.setPlaybackSpeed(playbackSpeed)
                                     },
+                                    shape = CircleShape,
+                                    color = Color.Black.copy(alpha = 0.5f),
                                 ) {
                                     Text(
                                         text = "${playbackSpeed}x",
@@ -425,9 +429,7 @@ fun FullscreenVideoDialog(
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 // Save to Gallery
                                 Surface(
-                                    shape = CircleShape,
-                                    color = Color.Black.copy(alpha = 0.5f),
-                                    modifier = Modifier.clickable(enabled = !isSaving) {
+                                    onClick = {
                                         val needsLegacyPermission =
                                             Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
                                                 ContextCompat.checkSelfPermission(
@@ -442,6 +444,9 @@ fun FullscreenVideoDialog(
                                             saveVideo()
                                         }
                                     },
+                                    enabled = !isSaving,
+                                    shape = CircleShape,
+                                    color = Color.Black.copy(alpha = 0.5f),
                                 ) {
                                     Row(
                                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
@@ -468,9 +473,7 @@ fun FullscreenVideoDialog(
 
                                 // Native Share
                                 Surface(
-                                    shape = CircleShape,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.clickable(enabled = !isSharing) {
+                                    onClick = {
                                         isSharing = true
                                         coroutineScope.launch {
                                             val result = MediaDownloader.shareVideo(
@@ -488,6 +491,9 @@ fun FullscreenVideoDialog(
                                             }
                                         }
                                     },
+                                    enabled = !isSharing,
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.primary,
                                 ) {
                                     Row(
                                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
@@ -524,5 +530,5 @@ private fun formatDuration(millis: Long): String {
     val totalSeconds = (millis / 1000).coerceAtLeast(0)
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
-    return String.format("%d:%02d", minutes, seconds)
+    return String.format(Locale.ROOT, "%d:%02d", minutes, seconds)
 }

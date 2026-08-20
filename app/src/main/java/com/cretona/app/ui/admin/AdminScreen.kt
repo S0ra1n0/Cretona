@@ -52,6 +52,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cretona.app.domain.model.AdminAuditLog
 import com.cretona.app.domain.model.AdminStats
 import com.cretona.app.domain.model.AdminUser
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -801,7 +802,7 @@ private fun DiagnosticsTabContent(
                             ) {
                                 Text("Process Memory (RSS):", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text(
-                                    text = "${String.format("%.1f", m.memoryRssMb)} MB",
+                                    text = "${String.format(Locale.ROOT, "%.1f", m.memoryRssMb)} MB",
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Bold,
                                 )
@@ -964,6 +965,6 @@ private fun formatUptime(seconds: Float): String {
     return when {
         hours > 0 -> "${hours}h ${minutes}m ${remSec}s"
         minutes > 0 -> "${minutes}m ${remSec}s"
-        else -> String.format("%.1fs", seconds)
+        else -> String.format(Locale.ROOT, "%.1fs", seconds)
     }
 }

@@ -29,6 +29,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.VolumeMute
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Image
@@ -60,6 +62,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -199,8 +202,8 @@ private fun HomeContent(
     onRefreshAccount: () -> Unit,
     onRefresh: () -> Unit,
     onDismissError: () -> Unit,
-    contentPadding: PaddingValues = PaddingValues(0.dp),
     modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
 ) {
     // The app bar and bottom navigation live in MainScreen, which hosts this
     // tab; duplicating a Scaffold here would nest two of each.
@@ -904,8 +907,8 @@ private fun VideoPlayer(videoUrl: String) {
             .build()
     }
     var isPlaying by remember { mutableStateOf(true) }
-    var currentPositionMs by remember { mutableStateOf(0L) }
-    var durationMs by remember { mutableStateOf(0L) }
+    var currentPositionMs by remember { mutableLongStateOf(0L) }
+    var durationMs by remember { mutableLongStateOf(0L) }
     var isMuted by remember { mutableStateOf(false) }
 
     LaunchedEffect(videoUrl) {
@@ -1004,7 +1007,10 @@ private fun VideoPlayer(videoUrl: String) {
                 },
                 modifier = Modifier.size(36.dp),
             ) {
-                Text(if (isMuted) "🔇" else "🔊", style = MaterialTheme.typography.bodyMedium)
+                Icon(
+                    imageVector = if (isMuted) Icons.AutoMirrored.Filled.VolumeMute else Icons.AutoMirrored.Filled.VolumeUp,
+                    contentDescription = if (isMuted) "Unmute" else "Mute",
+                )
             }
         }
     }

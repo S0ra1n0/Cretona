@@ -39,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.cretona.app.core.util.MediaDownloader
@@ -116,7 +117,11 @@ fun ProjectHistoryCard(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable(enabled = project.videoUrl != null) {
+                        .clickable(
+                            enabled = project.videoUrl != null,
+                            onClickLabel = "Play ${project.title}",
+                            role = Role.Button,
+                        ) {
                             showFullscreenPlayer = true
                         },
                 ) {

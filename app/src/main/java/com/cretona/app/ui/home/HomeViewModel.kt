@@ -410,7 +410,6 @@ class HomeViewModel @Inject constructor(
 
     override fun onCleared() {
         pollingJob?.cancel()
-        super.onCleared()
     }
 
     private companion object {
