@@ -373,3 +373,22 @@ def test_admin_metrics_endpoint(seeded: TestClient) -> None:
 def test_admin_metrics_forbidden_for_regular_user(seeded: TestClient) -> None:
     res = seeded.get("/api/v1/admin/metrics", headers={"X-Debug-User-Id": USER_A})
     assert res.status_code == 403
+
+
+def test_prometheus_metrics_endpoint(seeded: TestClient) -> None:
+    res = seeded.get("/api/v1/metrics", headers=ADMIN_HEADERS)
+    assert res.status_code == 200
+    assert "text/plain" in res.headers["content-type"]
+    body = res.text
+    assert "cretona_uptime_seconds" in body
+    assert "cretona_memory_rss_bytes" in body
+    assert "cretona_video_jobs_total" in body
+    assert "cretona_active_jobs" in body
+    assert "cretona_database_status" in body
+    assert "cretona_storage_backend" in body
+
+
+def test_prometheus_metrics_forbidden_for_regular_user(seeded: TestClient) -> None:
+    res = seeded.get("/api/v1/metrics", headers={"X-Debug-User-Id": USER_A})
+    assert res.status_code == 403
+

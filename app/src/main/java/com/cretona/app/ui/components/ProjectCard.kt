@@ -1,5 +1,6 @@
 package com.cretona.app.ui.components
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
@@ -68,6 +70,7 @@ fun ProjectHistoryCard(
         FullscreenVideoDialog(
             videoUrl = project.videoUrl,
             title = project.title,
+            prompt = project.prompt,
             aspectRatioString = project.aspectRatio,
             onDismiss = { showFullscreenPlayer = false },
         )
@@ -214,6 +217,24 @@ fun ProjectHistoryCard(
                                     tint = MaterialTheme.colorScheme.primary,
                                 )
                             }
+                        }
+                    }
+
+                    if (project.prompt != null || project.title.isNotBlank()) {
+                        IconButton(
+                            onClick = {
+                                val textToCopy = project.prompt ?: project.title
+                                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                val clip = android.content.ClipData.newPlainText("Prompt", textToCopy)
+                                clipboard.setPrimaryClip(clip)
+                                Toast.makeText(context, "📋 Prompt copied to clipboard!", Toast.LENGTH_SHORT).show()
+                            },
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = "Copy prompt",
+                                tint = MaterialTheme.colorScheme.outline,
+                            )
                         }
                     }
 

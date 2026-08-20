@@ -26,8 +26,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeMute
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -70,6 +72,7 @@ import kotlinx.coroutines.launch
 fun FullscreenVideoDialog(
     videoUrl: String,
     title: String,
+    prompt: String? = null,
     aspectRatioString: String = "16:9",
     onDismiss: () -> Unit,
 ) {
@@ -78,6 +81,8 @@ fun FullscreenVideoDialog(
 
     var isPlaying by remember { mutableStateOf(true) }
     var isMuted by remember { mutableStateOf(false) }
+    var isLooping by remember { mutableStateOf(true) }
+    var playbackSpeed by remember { mutableFloatStateOf(1.0f) }
     var isSaving by remember { mutableStateOf(false) }
     var isSharing by remember { mutableStateOf(false) }
     var showControls by remember { mutableStateOf(true) }
@@ -209,17 +214,41 @@ fun FullscreenVideoDialog(
                             )
                         }
 
-                        IconButton(
-                            onClick = onDismiss,
-                            modifier = Modifier
-                                .size(40.dp)
-                                .background(Color.Black.copy(alpha = 0.5f), CircleShape),
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Close",
-                                tint = Color.White,
-                            )
+                            IconButton(
+                                onClick = {
+                                    val textToCopy = prompt ?: title
+                                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                    val clip = android.content.ClipData.newPlainText("Prompt", textToCopy)
+                                    clipboard.setPrimaryClip(clip)
+                                    Toast.makeText(context, "📋 Prompt copied to clipboard!", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .background(Color.Black.copy(alpha = 0.5f), CircleShape),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ContentCopy,
+                                    contentDescription = "Copy Prompt",
+                                    tint = Color.White,
+                                )
+                            }
+
+                            IconButton(
+                                onClick = onDismiss,
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .background(Color.Black.copy(alpha = 0.5f), CircleShape),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Close",
+                                    tint = Color.White,
+                                )
+                            }
                         }
                     }
 
@@ -291,24 +320,65 @@ fun FullscreenVideoDialog(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        // Action Buttons: Mute, Save to Gallery, Share
+                        // Action Buttons: Mute, Speed, Loop, Save, Share
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            IconButton(
-                                onClick = {
-                                    isMuted = !isMuted
-                                    exoPlayer.volume = if (isMuted) 0f else 1f
-                                },
-                                modifier = Modifier.background(Color.Black.copy(alpha = 0.5f), CircleShape),
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Icon(
-                                    imageVector = if (isMuted) Icons.AutoMirrored.Filled.VolumeMute else Icons.AutoMirrored.Filled.VolumeUp,
-                                    contentDescription = if (isMuted) "Unmute" else "Mute",
-                                    tint = Color.White,
-                                )
+                                IconButton(
+                                    onClick = {
+                                        isMuted = !isMuted
+                                        exoPlayer.volume = if (isMuted) 0f else 1f
+                                    },
+                                    modifier = Modifier.background(Color.Black.copy(alpha = 0.5f), CircleShape),
+                                ) {
+                                    Icon(
+                                        imageVector = if (isMuted) Icons.AutoMirrored.Filled.VolumeMute else Icons.AutoMirrored.Filled.VolumeUp,
+                                        contentDescription = if (isMuted) "Unmute" else "Mute",
+                                        tint = Color.White,
+                                    )
+                                }
+
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color.Black.copy(alpha = 0.5f),
+                                    modifier = Modifier.clickable {
+                                        val speeds = listOf(0.5f, 1.0f, 1.25f, 1.5f, 2.0f)
+                                        val nextIndex = (speeds.indexOf(playbackSpeed) + 1) % speeds.size
+                                        playbackSpeed = speeds[nextIndex]
+                                        exoPlayer.setPlaybackSpeed(playbackSpeed)
+                                    },
+                                ) {
+                                    Text(
+                                        text = "${playbackSpeed}x",
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                }
+
+                                IconButton(
+                                    onClick = {
+                                        isLooping = !isLooping
+                                        exoPlayer.repeatMode = if (isLooping) Player.REPEAT_MODE_ALL else Player.REPEAT_MODE_OFF
+                                    },
+                                    modifier = Modifier.background(
+                                        if (isLooping) MaterialTheme.colorScheme.primary.copy(alpha = 0.8f) else Color.Black.copy(alpha = 0.5f),
+                                        CircleShape,
+                                    ),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Repeat,
+                                        contentDescription = if (isLooping) "Looping Enabled" else "Looping Disabled",
+                                        tint = Color.White,
+                                    )
+                                }
                             }
 
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

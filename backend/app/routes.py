@@ -11,6 +11,7 @@ from fastapi.responses import StreamingResponse
 from app.admin_service import AdminService
 from app.auth import current_user_id, require_admin
 from app.errors import AppError
+from app.metrics import format_prometheus_metrics
 from app.project_service import ProjectService
 from app.prompt_service import PromptEnhancer
 from app.schemas import (
@@ -178,6 +179,28 @@ def admin_system_metrics(
 ) -> AdminMetricsResponse:
     start_time = getattr(request.app.state, "start_time", 0.0)
     return service.get_system_metrics(storage, start_time)
+
+
+@router.get("/metrics", response_class=Response)
+def prometheus_metrics(
+    request: Request,
+    _admin_id: AdminId,
+    service: Annotated[AdminService, Depends(admin_service)],
+    storage: Annotated[StorageBackend, Depends(media_storage)],
+) -> Response:
+    start_time = getattr(request.app.state, "start_time", 0.0)
+    sys_metrics = service.get_system_metrics(storage, start_time)
+    body = format_prometheus_metrics(
+        uptime_seconds=sys_metrics.uptime_seconds,
+        active_jobs=sys_metrics.active_jobs,
+        completed_jobs=sys_metrics.completed_jobs,
+        failed_jobs=sys_metrics.failed_jobs,
+        memory_rss_mb=sys_metrics.memory_rss_mb,
+        database_backend=sys_metrics.database_backend,
+        database_status=sys_metrics.database_status,
+        storage_backend=sys_metrics.storage_backend,
+    )
+    return Response(content=body, media_type="text/plain; version=0.0.4; charset=utf-8")
 
 
 @router.get("/admin/projects/{project_id}/logs", response_model=AdminLogList)

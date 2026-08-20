@@ -628,6 +628,7 @@ private fun CurrentProjectCard(
                     FullscreenVideoDialog(
                         videoUrl = project.videoUrl,
                         title = project.title,
+                        prompt = project.prompt,
                         aspectRatioString = project.aspectRatio,
                         onDismiss = { showFullscreen = false },
                     )
