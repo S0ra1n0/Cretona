@@ -28,6 +28,9 @@ data class AdminUiState(
     // Users Tab
     val users: List<AdminUser> = emptyList(),
     val isLoadingUsers: Boolean = false,
+    val isLoadingMoreUsers: Boolean = false,
+    val usersNextCursor: String? = null,
+    val hasMoreUsers: Boolean = false,
     val usersError: String? = null,
     val userSearchQuery: String = "",
     val userRoleFilter: String? = null,
@@ -37,6 +40,9 @@ data class AdminUiState(
     // Audit Logs Tab
     val auditLogs: List<AdminAuditLog> = emptyList(),
     val isLoadingLogs: Boolean = false,
+    val isLoadingMoreLogs: Boolean = false,
+    val logsNextCursor: String? = null,
+    val hasMoreLogs: Boolean = false,
     val logsError: String? = null,
     val logActionFilter: String? = null,
     // Diagnostics Tab

@@ -8,6 +8,7 @@ import com.cretona.app.domain.model.AdminMetrics
 import com.cretona.app.domain.model.AdminStats
 import com.cretona.app.domain.model.AdminUser
 import com.cretona.app.domain.model.BackfillResult
+import com.cretona.app.domain.model.CursorPage
 import com.cretona.app.domain.model.EnhancedPrompt
 import com.cretona.app.domain.model.UserProfile
 import com.cretona.app.domain.model.VideoProject
@@ -132,9 +133,52 @@ class AdminViewModelTest {
         assertEquals(0, state.metrics?.activeJobs)
         assertEquals("sqlite", state.metrics?.databaseBackend)
     }
+
+    @Test
+    fun `user pagination forwards cursor appends uniquely and filter restarts`() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val repository = FakeAdminRepository(paginatedCollections = true)
+            val viewModel = AdminViewModel(repository)
+            advanceUntilIdle()
+
+            viewModel.selectTab(AdminTab.USERS)
+            advanceUntilIdle()
+            assertEquals(1, viewModel.state.value.users.size)
+            assertTrue(viewModel.state.value.hasMoreUsers)
+
+            viewModel.loadMoreUsers()
+            advanceUntilIdle()
+            assertEquals(listOf(null, "users-page-2"), repository.userCursors)
+            assertEquals(listOf("admin-1", "user-2"), viewModel.state.value.users.map { it.id })
+
+            viewModel.onRoleFilterChanged("admin")
+            advanceUntilIdle()
+            assertEquals(null, repository.userCursors.last())
+        }
+
+    @Test
+    fun `audit pagination forwards cursor and appends uniquely`() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val repository = FakeAdminRepository(paginatedCollections = true)
+            val viewModel = AdminViewModel(repository)
+            advanceUntilIdle()
+
+            viewModel.selectTab(AdminTab.AUDIT_LOGS)
+            advanceUntilIdle()
+            assertTrue(viewModel.state.value.hasMoreLogs)
+
+            viewModel.loadMoreAuditLogs()
+            advanceUntilIdle()
+
+            assertEquals(listOf(null, "logs-page-2"), repository.logCursors)
+            assertEquals(listOf("log-1", "log-2"), viewModel.state.value.auditLogs.map { it.id })
+            assertFalse(viewModel.state.value.hasMoreLogs)
+        }
 }
 
-private class FakeAdminRepository : CretonaRepository {
+private class FakeAdminRepository(
+    private val paginatedCollections: Boolean = false,
+) : CretonaRepository {
     private var users = mutableListOf(
         AdminUser(
             id = "admin-1",
@@ -155,6 +199,8 @@ private class FakeAdminRepository : CretonaRepository {
             projectCount = 2,
         ),
     )
+    val userCursors = mutableListOf<String?>()
+    val logCursors = mutableListOf<String?>()
 
     override suspend fun updateProfile(
         username: String,
@@ -178,7 +224,7 @@ private class FakeAdminRepository : CretonaRepository {
     override suspend fun getProject(id: String): AppResult<VideoProject> = throw NotImplementedError()
     override suspend fun cancelProject(id: String): AppResult<Unit> = throw NotImplementedError()
     override suspend fun deleteProject(id: String): AppResult<Unit> = throw NotImplementedError()
-    override suspend fun listProjects(): AppResult<List<VideoProject>> = throw NotImplementedError()
+    override suspend fun listProjects(limit: Int, cursor: String?): AppResult<CursorPage<VideoProject>> = throw NotImplementedError()
 
     override suspend fun getAdminStats(days: Int): AppResult<AdminStats> =
         AppResult.Success(
@@ -199,7 +245,22 @@ private class FakeAdminRepository : CretonaRepository {
         query: String?,
         role: String?,
         isDisabled: Boolean?,
-    ): AppResult<List<AdminUser>> = AppResult.Success(users)
+    ): AppResult<CursorPage<AdminUser>> {
+        userCursors += cursor
+        return if (paginatedCollections && cursor == null) {
+            AppResult.Success(
+                CursorPage(
+                    items = listOf(users[0]),
+                    nextCursor = "users-page-2",
+                    hasMore = true,
+                ),
+            )
+        } else if (paginatedCollections) {
+            AppResult.Success(CursorPage(items = listOf(users[0], users[1])))
+        } else {
+            AppResult.Success(CursorPage(items = users))
+        }
+    }
 
     override suspend fun updateAdminUser(
         id: String,
@@ -221,19 +282,44 @@ private class FakeAdminRepository : CretonaRepository {
         cursor: String?,
         action: String?,
         actorId: String?,
-    ): AppResult<List<AdminAuditLog>> =
-        AppResult.Success(
-            listOf(
-                AdminAuditLog(
-                    id = "log-1",
-                    actorId = "admin-1",
-                    action = "user_updated",
-                    targetType = "user",
-                    targetId = "user-2",
-                    createdAt = "2026-08-14T10:00:00Z",
-                ),
-            ),
+    ): AppResult<CursorPage<AdminAuditLog>> {
+        logCursors += cursor
+        val first = AdminAuditLog(
+            id = "log-1",
+            actorId = "admin-1",
+            action = "user_updated",
+            targetType = "user",
+            targetId = "user-2",
+            createdAt = "2026-08-14T10:00:00Z",
         )
+        return if (paginatedCollections && cursor == null) {
+            AppResult.Success(
+                CursorPage(
+                    items = listOf(first),
+                    nextCursor = "logs-page-2",
+                    hasMore = true,
+                ),
+            )
+        } else if (paginatedCollections) {
+            AppResult.Success(
+                CursorPage(
+                    items = listOf(
+                        first,
+                        AdminAuditLog(
+                            id = "log-2",
+                            actorId = "admin-1",
+                            action = "thumbnails_backfilled",
+                            targetType = "project",
+                            targetId = null,
+                            createdAt = "2026-08-14T11:00:00Z",
+                        ),
+                    ),
+                ),
+            )
+        } else {
+            AppResult.Success(CursorPage(items = listOf(first)))
+        }
+    }
 
     override suspend fun backfillThumbnails(): AppResult<BackfillResult> =
         AppResult.Success(BackfillResult(backfilled = 3, processed = 5))

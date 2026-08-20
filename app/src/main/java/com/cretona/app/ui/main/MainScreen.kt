@@ -190,6 +190,9 @@ fun MainScreen(
                 },
                 onDeleteProject = viewModel::deleteProject,
                 onRefresh = viewModel::refreshHistory,
+                hasMoreProjects = state.hasMoreProjects,
+                isLoadingMoreProjects = state.isLoadingMoreProjects,
+                onLoadMore = viewModel::loadMoreHistory,
                 contentPadding = innerPadding,
             )
 

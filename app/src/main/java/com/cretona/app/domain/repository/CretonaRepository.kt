@@ -7,6 +7,7 @@ import com.cretona.app.domain.model.AdminMetrics
 import com.cretona.app.domain.model.AdminStats
 import com.cretona.app.domain.model.AdminUser
 import com.cretona.app.domain.model.BackfillResult
+import com.cretona.app.domain.model.CursorPage
 import com.cretona.app.domain.model.EnhancedPrompt
 import com.cretona.app.domain.model.UserProfile
 import com.cretona.app.domain.model.VideoProject
@@ -53,7 +54,10 @@ interface CretonaRepository {
 
     suspend fun deleteProject(id: String): AppResult<Unit>
 
-    suspend fun listProjects(): AppResult<List<VideoProject>>
+    suspend fun listProjects(
+        limit: Int = 20,
+        cursor: String? = null,
+    ): AppResult<CursorPage<VideoProject>>
 
     suspend fun getAdminStats(days: Int = 30): AppResult<AdminStats>
 
@@ -63,7 +67,7 @@ interface CretonaRepository {
         query: String? = null,
         role: String? = null,
         isDisabled: Boolean? = null,
-    ): AppResult<List<AdminUser>>
+    ): AppResult<CursorPage<AdminUser>>
 
     suspend fun updateAdminUser(
         id: String,
@@ -76,7 +80,7 @@ interface CretonaRepository {
         cursor: String? = null,
         action: String? = null,
         actorId: String? = null,
-    ): AppResult<List<AdminAuditLog>>
+    ): AppResult<CursorPage<AdminAuditLog>>
 
     suspend fun backfillThumbnails(): AppResult<BackfillResult>
 

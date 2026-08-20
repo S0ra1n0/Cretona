@@ -161,10 +161,12 @@ fun AdminScreen(
                         onStatusFilter = viewModel::onStatusFilterChanged,
                         onToggleRole = viewModel::toggleUserRole,
                         onToggleDisabled = viewModel::toggleUserDisabled,
+                        onLoadMore = viewModel::loadMoreUsers,
                     )
                     AdminTab.AUDIT_LOGS -> AuditLogsTabContent(
                         state = state,
                         onActionFilter = viewModel::onLogActionFilterChanged,
+                        onLoadMore = viewModel::loadMoreAuditLogs,
                     )
                     AdminTab.DIAGNOSTICS -> DiagnosticsTabContent(
                         state = state,
@@ -410,6 +412,7 @@ private fun UsersTabContent(
     onStatusFilter: (Boolean?) -> Unit,
     onToggleRole: (AdminUser) -> Unit,
     onToggleDisabled: (AdminUser) -> Unit,
+    onLoadMore: () -> Unit,
 ) {
     var confirmAction by remember { mutableStateOf<AdminConfirmAction?>(null) }
 
@@ -522,6 +525,16 @@ private fun UsersTabContent(
             }
         }
 
+        if (state.usersError != null) {
+            item {
+                Text(
+                    text = state.usersError,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+
         if (state.isLoadingUsers) {
             item {
                 Box(
@@ -549,6 +562,25 @@ private fun UsersTabContent(
                     onToggleRole = { confirmAction = AdminConfirmAction.ToggleRole(user) },
                     onToggleDisabled = { confirmAction = AdminConfirmAction.ToggleDisabled(user) },
                 )
+            }
+
+            if (state.hasMoreUsers) {
+                item(key = "load-more-users") {
+                    OutlinedButton(
+                        onClick = onLoadMore,
+                        enabled = !state.isLoadingMoreUsers,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        if (state.isLoadingMoreUsers) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Text("Load more users")
+                        }
+                    }
+                }
             }
         }
     }
@@ -638,6 +670,7 @@ private fun UserCard(
 private fun AuditLogsTabContent(
     state: AdminUiState,
     onActionFilter: (String?) -> Unit,
+    onLoadMore: () -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier
@@ -668,6 +701,16 @@ private fun AuditLogsTabContent(
             }
         }
 
+        if (state.logsError != null) {
+            item {
+                Text(
+                    text = state.logsError,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+
         if (state.isLoadingLogs) {
             item {
                 Box(
@@ -690,6 +733,25 @@ private fun AuditLogsTabContent(
         } else {
             items(state.auditLogs, key = { it.id }) { log ->
                 AuditLogCard(log = log)
+            }
+
+            if (state.hasMoreLogs) {
+                item(key = "load-more-audit-logs") {
+                    OutlinedButton(
+                        onClick = onLoadMore,
+                        enabled = !state.isLoadingMoreLogs,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        if (state.isLoadingMoreLogs) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Text("Load more audit logs")
+                        }
+                    }
+                }
             }
         }
     }

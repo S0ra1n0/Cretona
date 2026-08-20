@@ -53,7 +53,10 @@ interface CretonaApi {
     suspend fun getProject(@Path("id") id: String): ProjectDto
 
     @GET("projects")
-    suspend fun listProjects(): ProjectPageDto
+    suspend fun listProjects(
+        @retrofit2.http.Query("limit") limit: Int = 20,
+        @retrofit2.http.Query("cursor") cursor: String? = null,
+    ): ProjectPageDto
 
     @GET("admin/stats")
     suspend fun getAdminStats(

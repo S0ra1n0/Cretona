@@ -21,6 +21,7 @@ import com.cretona.app.domain.model.AdminMetrics
 import com.cretona.app.domain.model.AdminStats
 import com.cretona.app.domain.model.AdminUser
 import com.cretona.app.domain.model.BackfillResult
+import com.cretona.app.domain.model.CursorPage
 import com.cretona.app.domain.model.DailyStats
 import com.cretona.app.domain.model.EnhancedPrompt
 import com.cretona.app.domain.model.GenerationQuota
@@ -124,8 +125,16 @@ class CretonaRepositoryImpl @Inject constructor(
         api.deleteProject(id)
     }
 
-    override suspend fun listProjects(): AppResult<List<VideoProject>> = apiCall {
-        api.listProjects().items.map(ProjectDto::toDomain)
+    override suspend fun listProjects(
+        limit: Int,
+        cursor: String?,
+    ): AppResult<CursorPage<VideoProject>> = apiCall {
+        val response = api.listProjects(limit = limit, cursor = cursor)
+        CursorPage(
+            items = response.items.map(ProjectDto::toDomain),
+            nextCursor = response.page.nextCursor,
+            hasMore = response.page.hasMore,
+        )
     }
 
     override suspend fun getAdminStats(days: Int): AppResult<AdminStats> = apiCall {
@@ -138,14 +147,19 @@ class CretonaRepositoryImpl @Inject constructor(
         query: String?,
         role: String?,
         isDisabled: Boolean?,
-    ): AppResult<List<AdminUser>> = apiCall {
-        api.getAdminUsers(
+    ): AppResult<CursorPage<AdminUser>> = apiCall {
+        val response = api.getAdminUsers(
             limit = limit,
             cursor = cursor,
             query = query,
             role = role,
             isDisabled = isDisabled,
-        ).items.map(AdminUserDto::toDomain)
+        )
+        CursorPage(
+            items = response.items.map(AdminUserDto::toDomain),
+            nextCursor = response.page.nextCursor,
+            hasMore = response.page.hasMore,
+        )
     }
 
     override suspend fun updateAdminUser(
@@ -164,13 +178,18 @@ class CretonaRepositoryImpl @Inject constructor(
         cursor: String?,
         action: String?,
         actorId: String?,
-    ): AppResult<List<AdminAuditLog>> = apiCall {
-        api.getAdminAuditLogs(
+    ): AppResult<CursorPage<AdminAuditLog>> = apiCall {
+        val response = api.getAdminAuditLogs(
             limit = limit,
             cursor = cursor,
             action = action,
             actorId = actorId,
-        ).items.map(AdminAuditLogDto::toDomain)
+        )
+        CursorPage(
+            items = response.items.map(AdminAuditLogDto::toDomain),
+            nextCursor = response.page.nextCursor,
+            hasMore = response.page.hasMore,
+        )
     }
 
     override suspend fun backfillThumbnails(): AppResult<BackfillResult> = apiCall {

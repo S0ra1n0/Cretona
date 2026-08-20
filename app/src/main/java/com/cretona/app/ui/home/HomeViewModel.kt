@@ -37,6 +37,7 @@ class HomeViewModel @Inject constructor(
     val state: StateFlow<HomeUiState> = _state.asStateFlow()
 
     private var pollingJob: Job? = null
+    private var historyVersion: Long = 0
 
     init {
         refreshAccount()
@@ -289,29 +290,96 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch { refreshHistoryInternal() }
     }
 
+    fun loadMoreHistory() {
+        val current = _state.value
+        val cursor = current.projectsNextCursor
+        if (
+            !current.hasMoreProjects ||
+            cursor.isNullOrBlank() ||
+            current.isRefreshingProjects ||
+            current.isLoadingMoreProjects
+        ) {
+            return
+        }
+
+        val requestVersion = historyVersion
+        _state.update { it.copy(isLoadingMoreProjects = true) }
+        viewModelScope.launch {
+            when (val result = repository.listProjects(cursor = cursor)) {
+                is AppResult.Success -> {
+                    if (requestVersion != historyVersion) return@launch
+                    _state.update {
+                        it.copy(
+                            projects = (it.projects + result.data.items).distinctBy(VideoProject::id),
+                            projectsNextCursor = result.data.nextCursor,
+                            hasMoreProjects = result.data.hasMore,
+                            isLoadingMoreProjects = false,
+                            errorMessage = if (it.errorMessage == it.historyErrorMessage) {
+                                null
+                            } else {
+                                it.errorMessage
+                            },
+                            historyErrorMessage = null,
+                        )
+                    }
+                }
+
+                is AppResult.Failure -> {
+                    if (requestVersion != historyVersion) return@launch
+                    _state.update {
+                        it.copy(
+                            isLoadingMoreProjects = false,
+                            errorMessage = result.error.message,
+                            historyErrorMessage = result.error.message,
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     fun dismissErrorMessage() {
         _state.update { it.copy(errorMessage = null, historyErrorMessage = null) }
     }
 
     private suspend fun refreshHistoryInternal() {
+        val requestVersion = ++historyVersion
+        _state.update {
+            it.copy(
+                isRefreshingProjects = true,
+                isLoadingMoreProjects = false,
+            )
+        }
         when (val result = repository.listProjects()) {
-            is AppResult.Success -> _state.update {
-                it.copy(
-                    projects = result.data,
-                    errorMessage = if (it.errorMessage == it.historyErrorMessage) {
-                        null
-                    } else {
-                        it.errorMessage
-                    },
-                    historyErrorMessage = null,
-                )
+            is AppResult.Success -> {
+                if (requestVersion != historyVersion) return
+                _state.update {
+                    it.copy(
+                        projects = result.data.items,
+                        projectsNextCursor = result.data.nextCursor,
+                        hasMoreProjects = result.data.hasMore,
+                        isRefreshingProjects = false,
+                        isLoadingMoreProjects = false,
+                        errorMessage = if (it.errorMessage == it.historyErrorMessage) {
+                            null
+                        } else {
+                            it.errorMessage
+                        },
+                        historyErrorMessage = null,
+                    )
+                }
             }
 
-            is AppResult.Failure -> _state.update {
-                it.copy(
-                    errorMessage = result.error.message,
-                    historyErrorMessage = result.error.message,
-                )
+            is AppResult.Failure -> {
+                if (requestVersion != historyVersion) return
+                _state.update {
+                    it.copy(
+                        errorMessage = result.error.message,
+                        historyErrorMessage = result.error.message,
+                        isRefreshingProjects = false,
+                        isLoadingMoreProjects = false,
+                    )
+                }
             }
         }
     }

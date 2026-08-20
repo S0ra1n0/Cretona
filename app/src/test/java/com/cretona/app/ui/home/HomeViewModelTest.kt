@@ -3,6 +3,7 @@ package com.cretona.app.ui.home
 import com.cretona.app.core.result.AppError
 import com.cretona.app.core.result.AppResult
 import com.cretona.app.domain.model.EnhancedPrompt
+import com.cretona.app.domain.model.CursorPage
 import com.cretona.app.domain.model.GenerationQuota
 import com.cretona.app.domain.model.ProjectStatus
 import com.cretona.app.domain.model.UserProfile
@@ -17,6 +18,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -350,12 +352,32 @@ class HomeViewModelTest {
             viewModel.dismissErrorMessage()
             assertNull(viewModel.state.value.errorMessage)
         }
+
+    @Test
+    fun `load more history forwards cursor and appends unique projects`() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val repository = FakeRepository(paginatedHistory = true)
+            val viewModel = HomeViewModel(repository)
+            advanceUntilIdle()
+
+            assertEquals(1, viewModel.state.value.projects.size)
+            assertTrue(viewModel.state.value.hasMoreProjects)
+
+            viewModel.loadMoreHistory()
+            advanceUntilIdle()
+
+            assertEquals(listOf(null, "page-2"), repository.historyCursors)
+            assertEquals(listOf("project-1", "project-2"), viewModel.state.value.projects.map { it.id })
+            assertFalse(viewModel.state.value.hasMoreProjects)
+            assertFalse(viewModel.state.value.isLoadingMoreProjects)
+        }
 }
 
 private class FakeRepository(
     private val quotaRemaining: Int = 7,
     private val accountFailure: Boolean = false,
     var historyFailure: Boolean = false,
+    private val paginatedHistory: Boolean = false,
 ) : CretonaRepository {
     private val pending = project(ProjectStatus.PENDING)
     private val completed = project(
@@ -365,6 +387,7 @@ private class FakeRepository(
     var createCalls = 0
     var accountCalls = 0
     var uploadCalls = 0
+    val historyCursors = mutableListOf<String?>()
     var cancelCalls = 0
     var deleteCalls = 0
     var lastCreatedImagePath: String? = null
@@ -456,12 +479,33 @@ private class FakeRepository(
         return AppResult.Success(Unit)
     }
 
-    override suspend fun listProjects(): AppResult<List<VideoProject>> =
-        if (historyFailure) {
+    override suspend fun listProjects(limit: Int, cursor: String?): AppResult<CursorPage<VideoProject>> {
+        historyCursors += cursor
+        return if (historyFailure) {
             AppResult.Failure(AppError.Network("History is unavailable."))
+        } else if (paginatedHistory && cursor == null) {
+            AppResult.Success(
+                CursorPage(
+                    items = listOf(completed.copy(id = "project-1")),
+                    nextCursor = "page-2",
+                    hasMore = true,
+                ),
+            )
+        } else if (paginatedHistory) {
+            AppResult.Success(
+                CursorPage(
+                    items = listOf(
+                        completed.copy(id = "project-1"),
+                        completed.copy(id = "project-2"),
+                    ),
+                ),
+            )
         } else {
-            AppResult.Success(if (createCalls == 0) emptyList() else listOf(completed))
+            AppResult.Success(
+                CursorPage(items = if (createCalls == 0) emptyList() else listOf(completed)),
+            )
         }
+    }
 
     override suspend fun getAdminStats(days: Int): AppResult<com.cretona.app.domain.model.AdminStats> =
         AppResult.Success(
@@ -482,7 +526,7 @@ private class FakeRepository(
         query: String?,
         role: String?,
         isDisabled: Boolean?,
-    ): AppResult<List<com.cretona.app.domain.model.AdminUser>> = AppResult.Success(emptyList())
+    ): AppResult<CursorPage<com.cretona.app.domain.model.AdminUser>> = AppResult.Success(CursorPage(emptyList()))
 
     override suspend fun updateAdminUser(
         id: String,
@@ -505,7 +549,7 @@ private class FakeRepository(
         cursor: String?,
         action: String?,
         actorId: String?,
-    ): AppResult<List<com.cretona.app.domain.model.AdminAuditLog>> = AppResult.Success(emptyList())
+    ): AppResult<CursorPage<com.cretona.app.domain.model.AdminAuditLog>> = AppResult.Success(CursorPage(emptyList()))
 
     override suspend fun backfillThumbnails(): AppResult<com.cretona.app.domain.model.BackfillResult> =
         AppResult.Success(com.cretona.app.domain.model.BackfillResult(backfilled = 2, processed = 5))

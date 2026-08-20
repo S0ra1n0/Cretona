@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -64,6 +65,9 @@ fun HistoryScreen(
     onRemixProject: (VideoProject) -> Unit,
     onDeleteProject: (String) -> Unit,
     onRefresh: () -> Unit,
+    hasMoreProjects: Boolean,
+    isLoadingMoreProjects: Boolean,
+    onLoadMore: () -> Unit,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(0.dp),
 ) {
@@ -136,7 +140,7 @@ fun HistoryScreen(
                             fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                         )
                         Text(
-                            text = "${filteredProjects.size} creations saved",
+                            text = "${filteredProjects.size} of ${projects.size} loaded creations shown",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -268,6 +272,26 @@ fun HistoryScreen(
                             onRemix = { onRemixProject(project) },
                             onDelete = { onDeleteProject(project.id) },
                         )
+                    }
+                }
+
+            }
+
+            if (hasMoreProjects) {
+                item(key = "load-more-projects") {
+                    OutlinedButton(
+                        onClick = onLoadMore,
+                        enabled = !isLoadingMoreProjects,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        if (isLoadingMoreProjects) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Text("Load more projects")
+                        }
                     }
                 }
             }

@@ -25,6 +25,7 @@ class AdminViewModel @Inject constructor(
     val state: StateFlow<AdminUiState> = _state.asStateFlow()
 
     private var usersJob: Job? = null
+    private var logsJob: Job? = null
 
     init {
         loadStats()
@@ -83,14 +84,33 @@ class AdminViewModel @Inject constructor(
         // Cancelling the previous request is what stops a slower earlier
         // response from landing after a newer one and winning.
         usersJob?.cancel()
-        usersJob = viewModelScope.launch { loadUsersNow() }
+        usersJob = viewModelScope.launch { loadUsersNow(cursor = null, append = false) }
     }
 
-    private suspend fun loadUsersNow() {
-        _state.update { it.copy(isLoadingUsers = true, usersError = null) }
+    fun loadMoreUsers() {
+        val current = _state.value
+        val cursor = current.usersNextCursor
+        if (!current.hasMoreUsers || cursor.isNullOrBlank() || current.isLoadingMoreUsers) {
+            return
+        }
+        usersJob?.cancel()
+        usersJob = viewModelScope.launch { loadUsersNow(cursor = cursor, append = true) }
+    }
+
+    private suspend fun loadUsersNow(cursor: String?, append: Boolean) {
+        _state.update {
+            it.copy(
+                isLoadingUsers = !append,
+                isLoadingMoreUsers = append,
+                usersError = null,
+                usersNextCursor = if (append) it.usersNextCursor else null,
+                hasMoreUsers = if (append) it.hasMoreUsers else false,
+            )
+        }
         val current = _state.value
         when (
             val result = repository.getAdminUsers(
+                cursor = cursor,
                 query = current.userSearchQuery.ifBlank { null },
                 role = current.userRoleFilter,
                 isDisabled = current.userStatusFilter,
@@ -100,16 +120,24 @@ class AdminViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         isLoadingUsers = false,
-                        users = result.data,
+                        isLoadingMoreUsers = false,
+                        users = if (append) {
+                            (it.users + result.data.items).distinctBy(AdminUser::id)
+                        } else {
+                            result.data.items
+                        },
+                        usersNextCursor = result.data.nextCursor,
+                        hasMoreUsers = result.data.hasMore,
                         usersError = null,
                     )
                 }
             }
             is AppResult.Failure -> {
-                    result.error.markIfForbidden()
+                result.error.markIfForbidden()
                 _state.update {
                     it.copy(
                         isLoadingUsers = false,
+                        isLoadingMoreUsers = false,
                         usersError = result.error.message,
                     )
                 }
@@ -118,13 +146,19 @@ class AdminViewModel @Inject constructor(
     }
 
     fun onSearchQueryChanged(query: String) {
-        _state.update { it.copy(userSearchQuery = query) }
+        _state.update {
+            it.copy(
+                userSearchQuery = query,
+                usersNextCursor = null,
+                hasMoreUsers = false,
+            )
+        }
         // Debounced: a keystroke-per-request search both floods the server and
         // races itself, because responses need not arrive in send order.
         usersJob?.cancel()
         usersJob = viewModelScope.launch {
             delay(SEARCH_DEBOUNCE_MS)
-            loadUsersNow()
+            loadUsersNow(cursor = null, append = false)
         }
     }
 
@@ -192,15 +226,49 @@ class AdminViewModel @Inject constructor(
         }
     }
 
-    fun loadAuditLogs(action: String? = null) {
-        viewModelScope.launch {
-            _state.update { it.copy(isLoadingLogs = true, logsError = null, logActionFilter = action) }
-            when (val result = repository.getAdminAuditLogs(action = action)) {
+    fun loadAuditLogs(action: String? = _state.value.logActionFilter) {
+        logsJob?.cancel()
+        logsJob = viewModelScope.launch {
+            loadAuditLogsNow(action = action, cursor = null, append = false)
+        }
+    }
+
+    fun loadMoreAuditLogs() {
+        val current = _state.value
+        val cursor = current.logsNextCursor
+        if (!current.hasMoreLogs || cursor.isNullOrBlank() || current.isLoadingMoreLogs) {
+            return
+        }
+        logsJob?.cancel()
+        logsJob = viewModelScope.launch {
+            loadAuditLogsNow(action = current.logActionFilter, cursor = cursor, append = true)
+        }
+    }
+
+    private suspend fun loadAuditLogsNow(action: String?, cursor: String?, append: Boolean) {
+        _state.update {
+            it.copy(
+                isLoadingLogs = !append,
+                isLoadingMoreLogs = append,
+                logsError = null,
+                logActionFilter = action,
+                logsNextCursor = if (append) it.logsNextCursor else null,
+                hasMoreLogs = if (append) it.hasMoreLogs else false,
+            )
+        }
+        when (val result = repository.getAdminAuditLogs(cursor = cursor, action = action)) {
                 is AppResult.Success -> {
                     _state.update {
                         it.copy(
                             isLoadingLogs = false,
-                            auditLogs = result.data,
+                            isLoadingMoreLogs = false,
+                            auditLogs = if (append) {
+                                (it.auditLogs + result.data.items).distinctBy { log -> log.id }
+                            } else {
+                                result.data.items
+                            },
+                            logsNextCursor = result.data.nextCursor,
+                            hasMoreLogs = result.data.hasMore,
                             logsError = null,
                         )
                     }
@@ -210,12 +278,12 @@ class AdminViewModel @Inject constructor(
                     _state.update {
                         it.copy(
                             isLoadingLogs = false,
+                            isLoadingMoreLogs = false,
                             logsError = result.error.message,
                         )
                     }
                 }
             }
-        }
     }
 
     fun onLogActionFilterChanged(action: String?) {

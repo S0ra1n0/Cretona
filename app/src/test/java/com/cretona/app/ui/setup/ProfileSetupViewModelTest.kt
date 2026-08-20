@@ -8,6 +8,7 @@ import com.cretona.app.domain.model.AdminMetrics
 import com.cretona.app.domain.model.AdminStats
 import com.cretona.app.domain.model.AdminUser
 import com.cretona.app.domain.model.BackfillResult
+import com.cretona.app.domain.model.CursorPage
 import com.cretona.app.domain.model.EnhancedPrompt
 import com.cretona.app.domain.model.GenerationQuota
 import com.cretona.app.domain.model.UserProfile
@@ -276,7 +277,7 @@ private class FakeRepository(
     override suspend fun getProject(id: String): AppResult<VideoProject> = throw NotImplementedError()
     override suspend fun cancelProject(id: String): AppResult<Unit> = throw NotImplementedError()
     override suspend fun deleteProject(id: String): AppResult<Unit> = throw NotImplementedError()
-    override suspend fun listProjects(): AppResult<List<VideoProject>> = throw NotImplementedError()
+    override suspend fun listProjects(limit: Int, cursor: String?): AppResult<CursorPage<VideoProject>> = throw NotImplementedError()
     override suspend fun getAdminStats(days: Int): AppResult<AdminStats> = throw NotImplementedError()
 
     override suspend fun getAdminUsers(
@@ -285,7 +286,7 @@ private class FakeRepository(
         query: String?,
         role: String?,
         isDisabled: Boolean?,
-    ): AppResult<List<AdminUser>> = throw NotImplementedError()
+    ): AppResult<CursorPage<AdminUser>> = throw NotImplementedError()
 
     override suspend fun updateAdminUser(
         id: String,
@@ -298,7 +299,7 @@ private class FakeRepository(
         cursor: String?,
         action: String?,
         actorId: String?,
-    ): AppResult<List<AdminAuditLog>> = throw NotImplementedError()
+    ): AppResult<CursorPage<AdminAuditLog>> = throw NotImplementedError()
 
     override suspend fun backfillThumbnails(): AppResult<BackfillResult> = throw NotImplementedError()
     override suspend fun checkHealth(): AppResult<HealthResponse> = throw NotImplementedError()
