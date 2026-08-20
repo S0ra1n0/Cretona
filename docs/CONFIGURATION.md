@@ -39,7 +39,7 @@ credentials it needs.
 | `SIGNED_URL_TTL_SECONDS` | `3600` | Bounded to 60…604800, so a signed URL cannot be minted permanent |
 | `MEDIA_DIR` | `assets` | Local storage root |
 | `DEFAULT_VIDEO_PROVIDER` | `mock` | Accepts `mock`/`fake`, `cloud`/`real`, `local`/`wan21`. None of them runs a video model — `cloud` and `local` fetch a still from `IMAGE_ENDPOINT` and pan across it, `mock` serves the bundled clip. A real video provider is still gated by ADR-009 and EXP-005 |
-| `IMAGE_ENDPOINT` | `https://image.pollinations.ai` | Hosted text-to-image endpoint used by the `cloud` and `local` tiers. **User prompts are sent to it.** Set empty to stop that egress; the tiers then fall back to the bundled clip. The response is rejected unless it is `image/jpeg`, `image/png`, or `image/webp` under 16 MB, because it is written to `MEDIA_DIR` and served as user media |
+| `IMAGE_ENDPOINT` | empty | Optional hosted text-to-image endpoint used by the `cloud` and `local` tiers. **Setting it sends user prompts off-platform.** Empty keeps prompt egress disabled and falls back to the bundled clip. When enabled, the response is rejected unless it is `image/jpeg`, `image/png`, or `image/webp` under 16 MB, because it is written to `MEDIA_DIR` and served as user media |
 | `MAX_GENERATION_ATTEMPTS` | `3` | Submissions per project before a retry is refused |
 | `GENERATION_QUOTA_LIMIT` | `10` | Per user per window. This is the spend control (ADR-007) |
 | `GENERATION_QUOTA_WINDOW_HOURS` | `24` | |

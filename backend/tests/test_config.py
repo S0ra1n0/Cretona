@@ -54,3 +54,9 @@ def test_generation_log_retention_defaults_to_the_data_contract() -> None:
     assert settings.generation_log_retention_days == 180
     assert settings.generation_log_retention_interval_seconds == 86400
     assert settings.generation_log_retention_batch_size == 10000
+
+
+def test_third_party_image_endpoint_is_opt_in() -> None:
+    settings = Settings(_env_file=None)
+
+    assert settings.image_endpoint == ""

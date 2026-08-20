@@ -11,6 +11,7 @@ from fastapi.responses import StreamingResponse
 from app.admin_service import AdminService
 from app.auth import current_user_id, require_admin
 from app.errors import AppError
+from app.health import require_database_connection
 from app.metrics import format_prometheus_metrics
 from app.project_service import ProjectService
 from app.prompt_service import PromptEnhancer
@@ -73,20 +74,7 @@ def request_base_url(request: Request) -> str:
 
 @router.get("/health", response_model=HealthResponse)
 def health(request: Request) -> HealthResponse:
-    # Verify underlying database connectivity (P3-Health)
-    db = request.app.state.database
-    try:
-        if hasattr(db, "connect"):
-            with db.connect() as conn:
-                conn.execute("SELECT 1").fetchone()
-        elif hasattr(db, "pool"):
-            with db.pool.connection() as conn:
-                conn.execute("SELECT 1").fetchone()
-    except Exception as ex:
-        raise AppError(
-            503, "SERVICE_UNAVAILABLE", f"Database connectivity check failed: {ex}"
-        ) from ex
-
+    require_database_connection(request.app.state.database)
     return HealthResponse(version=request.app.state.settings_version)
 
 

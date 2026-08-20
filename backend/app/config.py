@@ -105,11 +105,10 @@ class Settings(BaseSettings):
     fake_polls_before_complete: int = Field(default=1, ge=1, le=20)
     fake_video_filename: str = "demo-output.mp4"
 
-    # The hosted text-to-image endpoint the Cloud AI and Local tiers fetch a
-    # still from. User prompts are sent to it, so a deployment that cannot
-    # egress prompts to a third party sets this empty; the providers then fall
-    # back to the bundled clip (T2-2).
-    image_endpoint: str = "https://image.pollinations.ai"
+    # Optional hosted text-to-image endpoint for the Cloud AI and Local tiers.
+    # User prompts are sent to it, so third-party egress must be an explicit
+    # deployment choice. Empty falls back to the bundled clip (T2-2).
+    image_endpoint: str = ""
 
     @model_validator(mode="after")
     def reject_development_auth_in_production(self) -> Settings:

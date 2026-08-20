@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+import re
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -19,6 +20,7 @@ from app.database import Database
 from app.errors import AppError, app_error_handler, error_payload, validation_error_handler
 from app.generation_log_retention import GenerationLogRetentionWorker
 from app.generation_log_service import GenerationLogService
+from app.health import require_database_connection
 from app.jwks import JwksCache
 from app.logging_setup import configure_logging
 from app.poller import JobPoller
@@ -39,6 +41,15 @@ from app.thumbnails import ThumbnailGenerator
 from app.users_service import UsersService
 
 APP_VERSION = "0.1.0"
+HEALTH_PATHS = frozenset({"/health", "/healthz", "/api/v1/health"})
+REQUEST_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
+
+
+def safe_request_id(candidate: str | None) -> str:
+    """Accept compact correlation IDs; replace unsafe input with a UUID."""
+    if candidate and REQUEST_ID_PATTERN.fullmatch(candidate):
+        return candidate
+    return str(uuid4())
 
 
 def build_database(settings: Settings) -> Database | PostgresDatabase:
@@ -178,11 +189,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @api.middleware("http")
     async def request_id_middleware(request: Request, call_next):  # type: ignore[no-untyped-def]
-        request.state.request_id = request.headers.get("X-Request-ID") or str(uuid4())
+        request.state.request_id = safe_request_id(request.headers.get("X-Request-ID"))
         started = perf_counter()
 
         limit_headers: dict[str, str] = {}
-        if active_settings.rate_limit_enabled and request.url.path != "/api/v1/health":
+        if active_settings.rate_limit_enabled and request.url.path not in HEALTH_PATHS:
             key = caller_key(
                 request.headers.get("Authorization"),
                 request.headers.get("X-Debug-User-Id"),
@@ -259,18 +270,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @api.get("/healthz", tags=["health"])
     @api.get("/health", tags=["health"])
     def root_health() -> dict[str, str]:
-        db = api.state.database
-        try:
-            if hasattr(db, "connect"):
-                with db.connect() as conn:
-                    conn.execute("SELECT 1").fetchone()
-            elif hasattr(db, "pool"):
-                with db.pool.connection() as conn:
-                    conn.execute("SELECT 1").fetchone()
-        except Exception as ex:
-            raise AppError(
-                503, "SERVICE_UNAVAILABLE", f"Database connectivity check failed: {ex}"
-            ) from ex
+        require_database_connection(api.state.database)
         return {"status": "ok", "version": APP_VERSION}
 
     api.include_router(router, prefix="/api/v1")

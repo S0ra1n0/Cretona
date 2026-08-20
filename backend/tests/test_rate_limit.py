@@ -199,8 +199,11 @@ def test_refusal_still_carries_the_correlation_id(limited: TestClient) -> None:
 
 def test_health_is_never_rate_limited(limited: TestClient) -> None:
     # A liveness probe that can be throttled reports an outage that is not one.
-    for _ in range(10):
-        assert limited.get("/api/v1/health").status_code == 200
+    for path in ("/health", "/healthz", "/api/v1/health"):
+        for _ in range(10):
+            response = limited.get(path)
+            assert response.status_code == 200
+            assert "X-RateLimit-Limit" not in response.headers
 
 
 def test_limiting_can_be_switched_off(tmp_path: Path) -> None:

@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+from contextlib import contextmanager
+from typing import Any
 
 import httpx
 from fastapi.testclient import TestClient
 
 from app.config import Settings
+from app.main import safe_request_id
 from app.prompt_service import PromptEnhancer
 from app.schemas import PromptEnhanceRequest
 
@@ -24,6 +27,40 @@ def test_request_id_is_echoed(client: TestClient) -> None:
 
     assert response.status_code == 200
     assert response.headers["X-Request-ID"] == "demo-request"
+
+
+def test_unsafe_request_id_is_replaced(client: TestClient) -> None:
+    supplied = "x" * 65
+    response = client.get("/api/v1/health", headers={"X-Request-ID": supplied})
+
+    observed = response.headers["X-Request-ID"]
+    assert response.status_code == 200
+    assert observed != supplied
+    assert safe_request_id(observed) == observed
+
+
+class BrokenDatabase:
+    @contextmanager
+    def connect(self):  # type: ignore[no-untyped-def]
+        raise RuntimeError("postgresql://user:private-password@db.example.test/postgres")
+        yield  # pragma: no cover - keeps this a context manager
+
+
+def test_health_failure_does_not_expose_database_details(client: TestClient) -> None:
+    original: Any = client.app.state.database
+    client.app.state.database = BrokenDatabase()
+    try:
+        for path in ("/health", "/healthz", "/api/v1/health"):
+            response = client.get(path)
+            assert response.status_code == 503
+            assert response.json()["error"] == {
+                "code": "SERVICE_UNAVAILABLE",
+                "message": "Database connectivity check failed.",
+            }
+            assert "private-password" not in response.text
+            assert "db.example.test" not in response.text
+    finally:
+        client.app.state.database = original
 
 
 def test_prompt_enhancement_reports_deterministic_fallback(
