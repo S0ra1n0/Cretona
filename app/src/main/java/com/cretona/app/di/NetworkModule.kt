@@ -28,14 +28,9 @@ annotation class SupabaseHttpClient
 annotation class SupabaseRetrofit
 
 // Fixed local dev identity (app/config.py's dev_user_id default). Used only
-// when nobody has signed in yet, so dev-mode backend testing
-// (scripts/run-dev-backend.ps1) keeps working exactly as before. A deployed
-// profile never consults X-Debug-User-Id, and this token is rejected outright
-// by an ES256/Supabase-configured backend -- see SETUP.md.
+// when nobody has signed in yet, so credential-free local testing keeps
+// working. Production rejects this header before it reaches repository code.
 private const val DEV_USER_ID = "00000000-0000-4000-8000-000000000001"
-
-private const val DEV_BEARER_TOKEN =
-    "eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJzdWIiOiAiMGYyY2EyNmQtYzBjYy00MDkzLTljODAtYzQwNDYwMTc2ZDgzIiwgImF1ZCI6ICJhdXRoZW50aWNhdGVkIiwgInJvbGUiOiAiYXV0aGVudGljYXRlZCIsICJpc3MiOiAiaHR0cHM6Ly9maXNud2R6aHl1aWl1cnNsamJsdy5zdXBhYmFzZS5jby9hdXRoL3YxIiwgImlhdCI6IDE3ODY2OTM1NTUsICJleHAiOiAyMTAyMDUzNTU1LCAiZW1haWwiOiAidXNlckBjcmV0b25hLnRlc3QifQ.jR8N8QAwB8CzulImrW0kTtM_HYt-j_3s-mwAXZrX-5E"
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -69,7 +64,6 @@ object NetworkModule {
                 // Nobody has signed in: fall back to the fixed local identity
                 // so the credential-free dev backend still works.
                 requestBuilder.header("X-Debug-User-Id", DEV_USER_ID)
-                requestBuilder.header("Authorization", "Bearer $DEV_BEARER_TOKEN")
             }
             chain.proceed(requestBuilder.build())
         }
@@ -77,9 +71,9 @@ object NetworkModule {
             if (BuildConfig.DEBUG) {
                 addInterceptor(
                     HttpLoggingInterceptor().apply {
-                        level = HttpLoggingInterceptor.Level.BODY
-                        // Auth headers must never reach logcat.
-                        redactHeader("Authorization")
+                        // BASIC records method, URL and status only. BODY would
+                        // leak prompts, signed media URLs and upload payloads.
+                        level = HttpLoggingInterceptor.Level.BASIC
                     },
                 )
             }
@@ -108,9 +102,8 @@ object NetworkModule {
             if (BuildConfig.DEBUG) {
                 addInterceptor(
                     HttpLoggingInterceptor().apply {
-                        level = HttpLoggingInterceptor.Level.BODY
-                        redactHeader("Authorization")
-                        redactHeader("apikey")
+                        // Supabase Auth bodies contain plaintext passwords.
+                        level = HttpLoggingInterceptor.Level.BASIC
                     },
                 )
             }
