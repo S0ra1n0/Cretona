@@ -1,6 +1,6 @@
 # Cretona configuration and secret boundary
 
-Status: accepted baseline on 2026-08-10; FastAPI variables added 2026-08-12.
+Status: active configuration contract; reconciled with source on 2026-08-20.
 
 ## Authoritative configuration
 
@@ -119,7 +119,9 @@ the team does not rewrite working identity, data, and storage boundaries at the
 same time. Runway remains disabled; zero-cost local video providers may be
 added only behind the provider interface after `EXP-005` passes.
 
-As of 2026-08-12 that migration is behaviourally complete: identity,
+As of 2026-08-20 that migration is behaviourally complete in `backend/`: identity,
 persistence, storage, authorization, quota, logging, rate limiting, and the job
-runner all exist in `backend-fastapi/`. None of it has run against live
-Supabase, so the credentials above are configured but unexercised.
+runner all exist. The disposable PostgreSQL 17.6 parity run passed the complete
+backend suite against the schema model through migration 012. Do not infer the
+current live Supabase state from this local result: run the read-only migration
+`status` gate before any live verification or apply action.

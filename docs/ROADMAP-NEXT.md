@@ -1,5 +1,14 @@
 # Cretona — next roadmap
 
+> **Historical review log, not the current release checklist.** The detailed
+> entries below preserve what was known on 2026-08-15 through 2026-08-17.
+> Current source truth as of local commit `048d737` on 2026-08-20: 103 Android
+> JVM tests pass; 365 backend tests pass in the default profile; all 396 pass
+> with 31 Postgres gates enabled on disposable PostgreSQL 17.6; source
+> migrations extend through 012; persisted Supabase Android sessions and
+> cursor pagination are implemented. Live remote/Supabase state was not
+> refreshed in this audit. The temporal-video provider remains open.
+
 Written 2026-08-15 after reviewing the 23 commits that landed on `main`, and
 verifying the branch directly rather than trusting its documentation. Updated
 2026-08-17 after Tier 2, migration 009, and full live verification including an
@@ -32,8 +41,9 @@ cancel, refund, re-fetch — on the real profile (`postgres` + `supabase` storag
 has access, and the round trip — upload, sign, fetch, delete — was run and
 confirmed by hand.
 
-Nothing in this project remains unverified against live at the level this file
-tracks. `backend-fastapi/` is deleted (T2-3). The rate limiter's round-trip
+The following was the 2026-08-17 conclusion and is retained as historical
+evidence, not a current assertion: nothing then tracked in this file remained
+unverified against live. `backend-fastapi/` is deleted (T2-3). The rate limiter's round-trip
 cost is fixed and verified live (T3-3), and the latency floor behind it is now
 fully characterized rather than merely observed (T3-5). The demo/report
 wording is agreed and the docs that contradicted it are corrected (T0-2). The

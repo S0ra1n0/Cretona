@@ -1,24 +1,30 @@
 # Software Requirements Specification — Cretona
 
-**Version:** 1.0 · **Status:** Accepted Baseline · **Last updated:** 2026-08-16
+**Version:** 1.1 · **Status:** Implemented Baseline with Open AI Output Gap · **Last updated:** 2026-08-20
 
 ---
 
 ## 1. Introduction
 
 ### 1.1 Purpose
-Cretona is a native Android application designed to produce short AI-generated videos from text prompts and reference images through high-performance cloud/local AI adapters. The application provides complete end-to-end functionality including authentication, role-based access control (RBAC), creative prompt engineering, live progress streaming, media playback, local gallery downloads, and 1-tap remixing.
+Cretona is a native Android application for creating short video artifacts from text prompts and optional reference images through provider-neutral FastAPI adapters. Authentication, role-based access control (RBAC), prompt enhancement, project lifecycle management, playback, gallery downloads, sharing, and remixing are implemented. The accepted zero-spend output is not temporal AI video: cloud/local tiers generate or retrieve one still and apply camera motion with ffmpeg. A frame-to-frame video model is an open product requirement.
+
+Implementation truth boundary: the backend exposes an SSE endpoint, while the
+current Android client observes progress through REST polling. Android JVM,
+lint, build, and compile gates have passed; device runtime was not executed in
+the 2026-08-20 audit. Desired requirements below must not be read as proof of a
+temporal model or an Android SSE client.
 
 ### 1.2 System Boundary & Scope
 The Cretona architecture consists of three integrated components:
 
 | Component | Responsibility | Technology Stack |
 |---|---|---|
-| **Android Client** (`app/`) | Native user interface, Supabase authentication, creative studio controls, real-time SSE progress visualization, Media3 playback, MediaStore gallery integration, and Social Share sheets. | Kotlin 2.3, Jetpack Compose, Material 3, Hilt, Retrofit/OkHttp, Media3 ExoPlayer, Coil. |
+| **Android Client** (`app/`) | Native user interface, persisted Supabase authentication, creative studio controls, REST progress polling, cursor-paginated history/admin lists, Media3 playback, MediaStore gallery integration, and Share sheets. | Kotlin 2.4.10, Jetpack Compose, Material 3, Hilt, Retrofit/OkHttp, Media3 ExoPlayer, Coil. |
 | **Production Backend** (`backend/`) | API routing, JWT verification (ES256/JWKS), generation lifecycle management, quota enforcement, background poller, prompt enhancer, SSE streaming, and AI provider adapters. | Python 3.12, FastAPI, Uvicorn, psycopg, Pydantic, Starlette SSE. |
-| **Data & Storage** (`supabase/`) | User identity, PostgreSQL data layer with Row Level Security (RLS), and private object storage buckets (`uploads`, `videos`). | PostgreSQL 16 (Supabase), Supabase Auth & Storage. |
+| **Data & Storage** (`supabase/`) | User identity, PostgreSQL data layer with Row Level Security (RLS), and private object storage buckets (`uploads`, `videos`). | PostgreSQL 17 (Supabase), Supabase Auth & Storage. |
 
-Third-party AI video providers are isolated behind the server-side provider boundary. The Android client never possesses provider credentials.
+Third-party AI/media providers are isolated behind the server-side provider boundary. The Android client never possesses provider credentials.
 
 ### 1.3 Actors & Roles
 - **Guest**: Unauthenticated user; may register a new account or log into an existing account.
@@ -36,7 +42,7 @@ Third-party AI video providers are isolated behind the server-side provider boun
 - **FR-AUTH-004**: Administrative endpoints shall require the `admin` role enforced by the backend (`FORBIDDEN`).
 
 ### 2.2 Creative Studio & Video Generation
-- **FR-GEN-001 (Text-to-Video)**: The user shall be able to enter a text prompt (1–1000 characters) to initiate video generation.
+- **FR-GEN-001 (Text-to-Video Workflow)**: The user shall be able to enter a text prompt (1–1000 characters) to initiate a provider-neutral video project. Temporal synthesis remains open; the accepted zero-spend implementation renders camera motion over one generated/retrieved still.
 - **FR-GEN-002 (Prompt Enhancement)**: The user shall be able to request AI prompt enhancement to expand a concise idea into a detailed prompt with clear confirmation.
 - **FR-GEN-003 (Style Presets)**: The user shall be able to select from curated artistic styles:
   - `🌸 Anime`: Japanese animation aesthetic, vibrant colors, stylized lighting.
@@ -44,22 +50,22 @@ Third-party AI video providers are isolated behind the server-side provider boun
   - `🧸 3D Pixar`: 3D animated character style, warm ambient lighting, expressive depth.
   - `🎞️ Vintage Film`: 35mm grain, retro color palette, classic cinematic framing.
   - `📸 Photorealistic`: Natural lighting, 8k documentary detail, authentic textures.
-- **FR-GEN-004 (Camera Motion)**: The user shall be able to specify cinematic camera movements:
+- **FR-GEN-004 (Camera Motion Intent)**: The user shall be able to add a camera-motion directive to the generation prompt. The placeholder renderer does not guarantee a distinct physical path for every choice:
   - `⬅️ Pan Left` / `➡️ Pan Right`: Horizontal camera panning.
   - `🔍 Zoom In` / `🔎 Zoom Out`: Focal distance transitions.
   - `🔄 Orbit`: 360-degree circling motion around the subject.
 - **FR-GEN-005 (Aspect Ratios)**: The user shall be able to choose output dimensions: `9:16` (Vertical/Reels/TikTok), `16:9` (Widescreen/Cinematic), or `1:1` (Square).
-- **FR-GEN-006 (Multi-Provider Selection)**: The user shall be able to select the target video engine:
-  - `Fake`: Instant mock generation for development and offline testing.
-  - `Real AI`: Generic Cloud AI Router (Fal.ai / Replicate / Cloud GPU).
-  - `Wan 2.1`: Advanced open-source diffusion model adapter.
-- **FR-GEN-007 (Real-Time Progress Streaming)**: The backend shall expose an SSE stream (`GET /api/v1/projects/{id}/events`) delivering real-time percentage progress (0–100%) and descriptive step messages (`"Synthesizing prompt..."`, `"Generating frames..."`, `"Encoding video..."`).
+- **FR-GEN-006 (Multi-Provider Selection)**: The user shall be able to select a stable provider tier without receiving raw model identifiers:
+  - `Mock`: bundled zero-spend clip for deterministic development/testing.
+  - `Cloud`: optional hosted still generation followed by ffmpeg pan/zoom; no temporal model currently runs.
+  - `Local`: reserved local tier; currently the same still-plus-pan path and no local weights.
+- **FR-GEN-007 (Progress Observation)**: The backend shall expose an SSE stream (`GET /api/v1/projects/{id}/events`) with percentage and step messages. The implemented Android client may use bounded REST polling until direct SSE consumption is accepted and device-tested.
 - **FR-GEN-008 (Job Cancellation)**: The user shall be able to cancel an in-flight video generation job via `POST /api/v1/projects/{id}/cancel`.
 
 ### 2.3 Media & Project Operations
 - **FR-MEDIA-001 (1-Tap Save to Gallery)**: The user shall be able to download the generated MP4 video directly into the device's public `Movies/Cretona` gallery via `MediaStore.Video.Media`.
 - **FR-MEDIA-002 (1-Tap Social Share)**: The user shall be able to share the video file to external apps (WhatsApp, Telegram, YouTube, etc.) via Android `FileProvider` and system Share Sheet.
-- **FR-MEDIA-003 (1-Tap Remix)**: The user shall be able to tap **"✨ Remix"** on any completed project in their history to instantly populate the prompt, style preset, camera motion, and aspect ratio into the creation studio.
+- **FR-MEDIA-003 (1-Tap Remix)**: The implemented remix action repopulates the prompt and aspect ratio. Persisting and restoring style preset and camera-motion metadata remains open because project responses do not currently return those creation options.
 - **FR-MEDIA-004 (In-App Playback)**: The user shall be able to play generated videos seamlessly within the app using AndroidX Media3 (ExoPlayer).
 
 ### 2.4 Quota & Spend Controls

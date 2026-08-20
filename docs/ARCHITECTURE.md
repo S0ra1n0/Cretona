@@ -1,6 +1,6 @@
 # Architecture — Cretona
 
-**Version:** 1.0 · **Status:** Accepted Baseline · **Last updated:** 2026-08-16
+**Version:** 1.1 · **Status:** Implemented Baseline · **Last updated:** 2026-08-20
 
 ---
 
@@ -25,10 +25,10 @@ flowchart LR
     end
 
     subgraph Cloud ["Database & External Services"]
-        DB[(Supabase PostgreSQL 16)]
+        DB[(Supabase PostgreSQL 17)]
         ST[Supabase Storage Buckets]
         AUTH[Supabase Auth - ES256/JWKS]
-        AI[Cloud AI / Wan2.1 / Fal.ai Router]
+        AI[Hosted image endpoint / future temporal provider]
     end
 
     UI --> VM
@@ -49,7 +49,7 @@ flowchart LR
 ### 1.1 Key Architectural Decisions
 1. **Direct Auth Token Verification**: The Android app signs in directly with Supabase Auth. The FastAPI backend verifies the resulting ES256/HS256 JWT against Supabase's JWKS endpoint ([ADR-002](adr/ADR-002-auth-strategy.md)).
 2. **Server-Side AI Gateway**: AI provider API keys, model endpoints, and secret tokens never touch the client ([NFR-SEC-001](SRS.md)). The backend enforces daily rolling quotas, manages async job polling leases, and saves permanent media copies to Supabase Storage before returning signed URLs.
-3. **Reactive Real-Time Streaming**: Live generation status and progress percentages (0–100%) are streamed via Server-Sent Events (SSE) from `GET /api/v1/projects/{id}/events`, delivering an instantaneous, fluid UX on mobile.
+3. **Progress Boundary**: FastAPI exposes Server-Sent Events at `GET /api/v1/projects/{id}/events`. The current Android integration uses bounded REST polling; direct Android SSE consumption remains a future optimization and must not be presented as implemented.
 
 ---
 
@@ -59,7 +59,7 @@ Cretona uses a unified monorepo whose **root is the Android Gradle project**:
 
 ```text
 Cretona/
-├── app/                        Android application module (Kotlin 2.3 + Jetpack Compose)
+├── app/                        Android application module (Kotlin 2.4.10 + Jetpack Compose)
 │   └── src/main/java/com/cretona/app/
 │       ├── core/               Base utilities, network interceptors, Result models
 │       ├── data/               DTOs, Retrofit services, Repository implementations
@@ -68,13 +68,13 @@ Cretona/
 │       └── ui/                 Compose screens (HomeScreen, AuthScreen), ViewModels
 ├── backend/                    Production FastAPI backend (Python 3.12)
 │   ├── app/                    API routers, schemas, services, providers, database
-│   ├── tests/                  Unit & integration test suite (302 tests passing)
+│   ├── tests/                  Unit & integration suite (365 default + 31 Postgres gates)
 │   ├── pyproject.toml          Python package & dependencies configuration
 │   └── README.md
 ├── docs/                       Architecture, SRS, API Contract, Data Model, Roadmaps
 ├── gradle/                     Gradle version catalog & wrapper
 ├── scripts/                    Setup & execution scripts (`run-fastapi.ps1`, etc.)
-├── supabase/                   PostgreSQL migration files (001 - 009)
+├── supabase/                   PostgreSQL migration files (002 - 012 plus bootstrap)
 ├── build.gradle.kts            Root Android build configuration
 └── settings.gradle.kts
 ```
@@ -116,4 +116,10 @@ Class names corrected 2026-08-17 (T0-2) to match `backend/app/providers.py`; see
 `docs/AI_PROVIDER_SPEC.md` for what each tier's output actually is.
 - `MockVideoProvider` (alias `fake`): Zero-spend mock provider for lightning-fast testing and offline demonstrations.
 - `CloudAiVideoProvider` (aliases `real`, `wan21`): Fetches one AI-generated still and pans across it with ffmpeg. No video model runs.
-- `LocalModelVideoProvider` (alias `local`): Reserved for a local model; nothing local runs yet. No Wan 2.1 or other model is integrated — it calls the identical still-plus-pan path as the cloud tier.
+- `LocalModelVideoProvider` (alias `local`): Reserved for a local model; no temporal model or local weights run yet. It currently calls the same hosted-still-plus-pan path as the cloud tier.
+
+### 4.3 Observed evidence boundary
+
+- Android source gates: 103 JVM tests, lint, debug APK, minified unsigned release APK, and instrumented-test compilation pass. No physical device/emulator was attached for this 2026-08-20 audit, so Keystore and UI runtime are not device-proven here.
+- Backend source gates: 365 tests pass in the credential-free default profile; the full 396-test suite passes when the 31 Postgres gates target disposable PostgreSQL 17.6.
+- Provider output: `mock` serves a bundled clip; `cloud` and `local` can generate one still and render camera motion with ffmpeg. A temporal text/image-to-video model remains unimplemented.

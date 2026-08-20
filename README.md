@@ -27,12 +27,12 @@ weight-license gates in `EXP-005`.
 
 ```text
 Cretona/             open this folder in Android Studio
-├── app/             Android application (Kotlin + Jetpack Compose)
-├── backend/         Production FastAPI backend (port 8000, Supabase Postgres & Auth)
-├── docs/            Requirements, contracts, decisions, ADRs, and evidence
-├── scripts/         Repeatable toolchain and local-runtime entry points
-├── supabase/        Database migrations and bootstrap artifacts
-└── gradle/          Android version catalog and wrapper
+|-- app/             Android application (Kotlin + Jetpack Compose)
+|-- backend/         Production FastAPI backend (port 8000, Supabase Postgres & Auth)
+|-- docs/            Requirements, contracts, decisions, ADRs, and evidence
+|-- scripts/         Repeatable toolchain and local-runtime entry points
+|-- supabase/        Database migrations and bootstrap artifacts
+`-- gradle/          Android version catalog and wrapper
 ```
 
 ## Documentation
