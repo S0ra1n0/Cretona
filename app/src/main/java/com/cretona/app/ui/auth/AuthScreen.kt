@@ -220,9 +220,15 @@ fun AuthScreen(
 private fun authFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedTextColor = Color.White,
     unfocusedTextColor = Color.White,
+    errorTextColor = Color.White,
     focusedLabelColor = Color.White,
     unfocusedLabelColor = Color.White.copy(alpha = 0.7f),
+    errorLabelColor = Color(0xFFFF8E8E),
     focusedBorderColor = GalaxyBrightAccent,
     unfocusedBorderColor = Color.White.copy(alpha = 0.5f),
+    errorBorderColor = Color(0xFFFF6B6B),
     cursorColor = GalaxyBrightAccent,
+    errorCursorColor = Color(0xFFFF8E8E),
+    errorLeadingIconColor = Color.White.copy(alpha = 0.8f),
+    errorTrailingIconColor = Color.White.copy(alpha = 0.8f),
 )

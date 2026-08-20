@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -234,7 +235,7 @@ fun ProfileSetupScreen(
                         text = state.usernameError
                             ?: "${state.username.length}/${UsernameRules.MAX_LENGTH}",
                         color = if (state.usernameError != null) {
-                            MaterialTheme.colorScheme.error
+                            Color(0xFFFF8E8E)
                         } else {
                             Color.White.copy(alpha = 0.7f)
                         },
@@ -245,15 +246,7 @@ fun ProfileSetupScreen(
                     imeAction = ImeAction.Done,
                 ),
                 modifier = Modifier.fillMaxWidth(),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = Color.White,
-                    unfocusedTextColor = Color.White,
-                    focusedLabelColor = Color.White,
-                    unfocusedLabelColor = Color.White.copy(alpha = 0.7f),
-                    focusedBorderColor = GalaxyBrightAccent,
-                    unfocusedBorderColor = Color.White.copy(alpha = 0.5f),
-                    cursorColor = GalaxyBrightAccent,
-                ),
+                colors = galaxySetupFieldColors(),
             )
 
             Spacer(modifier = Modifier.height(18.dp))
@@ -318,7 +311,7 @@ fun ProfileSetupScreen(
                     Text(
                         text = state.birthdayError ?: "Not answered. You can choose later.",
                         color = if (state.birthdayError != null) {
-                            MaterialTheme.colorScheme.error
+                            Color(0xFFFF8E8E)
                         } else {
                             Color.White.copy(alpha = 0.7f)
                         },
@@ -349,15 +342,7 @@ fun ProfileSetupScreen(
                     imeAction = ImeAction.Done,
                 ),
                 modifier = Modifier.fillMaxWidth(),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = Color.White,
-                    unfocusedTextColor = Color.White,
-                    focusedLabelColor = Color.White,
-                    unfocusedLabelColor = Color.White.copy(alpha = 0.7f),
-                    focusedBorderColor = GalaxyBrightAccent,
-                    unfocusedBorderColor = Color.White.copy(alpha = 0.5f),
-                    cursorColor = GalaxyBrightAccent,
-                ),
+                colors = galaxySetupFieldColors(),
             )
 
             if (state.showDatePicker) {
@@ -372,7 +357,7 @@ fun ProfileSetupScreen(
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
                     text = state.errorMessage.orEmpty(),
-                    color = MaterialTheme.colorScheme.error,
+                    color = Color(0xFFFF8E8E),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -382,8 +367,16 @@ fun ProfileSetupScreen(
             Button(
                 onClick = viewModel::submit,
                 enabled = state.canSubmit,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = GalaxyBrightAccent),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = GalaxyBrightAccent,
+                    contentColor = Color.White,
+                    disabledContainerColor = Color.White.copy(alpha = 0.12f),
+                    disabledContentColor = Color.White.copy(alpha = 0.45f),
+                ),
             ) {
                 if (state.isSubmitting) {
                     CircularProgressIndicator(
@@ -392,7 +385,10 @@ fun ProfileSetupScreen(
                         strokeWidth = 2.dp,
                     )
                 } else {
-                    Text(if (isEdit) "Save changes" else "Confirm")
+                    Text(
+                        text = if (isEdit) "Save changes" else "Confirm",
+                        fontWeight = FontWeight.Bold,
+                    )
                 }
             }
 
@@ -479,3 +475,20 @@ private fun BirthdayPickerDialog(
         DatePicker(state = state, title = null)
     }
 }
+
+@Composable
+private fun galaxySetupFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = Color.White,
+    unfocusedTextColor = Color.White,
+    errorTextColor = Color.White, // Always crisp white text when typing!
+    focusedLabelColor = Color.White,
+    unfocusedLabelColor = Color.White.copy(alpha = 0.7f),
+    errorLabelColor = Color(0xFFFF8E8E),
+    focusedBorderColor = GalaxyBrightAccent,
+    unfocusedBorderColor = Color.White.copy(alpha = 0.5f),
+    errorBorderColor = Color(0xFFFF6B6B),
+    cursorColor = GalaxyBrightAccent,
+    errorCursorColor = Color(0xFFFF8E8E),
+    errorLeadingIconColor = Color.White.copy(alpha = 0.8f),
+    errorTrailingIconColor = Color.White.copy(alpha = 0.8f),
+)
