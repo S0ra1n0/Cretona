@@ -1,6 +1,7 @@
 # ADR-009: Gate the zero-spend video provider on local evidence
 
 **Status:** Accepted · **Date:** 2026-08-10 · **Supersedes:** ADR-004
+· **Amended:** 2026-08-19 (host recheck — see §Update)
 
 ## Context
 
@@ -14,6 +15,11 @@ Open-weight model quality and low-VRAM feasibility are different questions.
 The measured laptop has an RTX 3070 Ti Laptop GPU with 8 GB VRAM and about
 16 GB system RAM. Repository/model claims alone cannot establish whether a
 pipeline is stable, fast enough for the demo, or visibly better on this host.
+
+> These host figures were correct on 2026-08-10 and are now out of date. The
+> machine has since gained RAM and a second pagefile, and the GPU is a 3070
+> Laptop rather than a 3070 Ti. See §Update (2026-08-19) below; the decision
+> itself is unchanged.
 
 ## Decision
 
@@ -65,3 +71,56 @@ source revision, file hashes, weight license, parameters, physical and virtual
 memory measurements, two consecutive run results, H.264 playback proof, and
 blind quality scores. The current pinned evidence lives in
 `docs/experiments/EXP-005/MODEL_RUNTIME_MANIFEST.json`.
+
+## Update — 2026-08-19: host recheck clears the FramePack blocker
+
+Evidence: `docs/evidence/EXP-005_HOST_RECHECK_2026-08-19.md` (measurement only;
+no inference has run).
+
+The Context section above describes a host with about 16 GB system RAM and a
+43.26 GiB commit limit, which is what made the FramePack F1 preflight
+unreachable — the 48 GiB virtual-memory gate exceeded the machine's total.
+Remeasured on 2026-08-19:
+
+| Gate | 2026-08-11 | 2026-08-19 | Threshold |
+|---|---:|---:|---:|
+| Free physical RAM | 4.30 GiB | **12.81 GiB** | 6 GiB |
+| Free VRAM | 5.96 GiB | **6.59 GiB** | 6 GiB |
+| Free virtual memory | 14.62 GiB | **65.80 GiB** | 48 GiB |
+
+System RAM is now 31.73 GiB and the commit limit 91.16 GiB, after a 44.92 GiB
+pagefile was added on drive D. `scripts/check-exp005-preflight.ps1` reports
+`"passed": true` on every check.
+
+Two corrections to the Context above:
+
+- The GPU is an **RTX 3070 Laptop**, not a 3070 Ti. FramePack's published
+  timings reference a 3070 Ti laptop, so expect this host to be slower than
+  that figure rather than equal to it.
+- The system-RAM ceiling that excluded HunyuanVideo 1.5 as "high-risk" no
+  longer describes this machine.
+
+### What does not change
+
+- **The decision stands.** `FakeVideoProvider` remains the only active adapter.
+  A cleared preflight is permission to run EXP-005, not a selection: the
+  version, hash, license, two-consecutive-run, playback and blind-quality gates
+  in `FREE-LOCAL-BEST-OUTPUT.md` §8 are all still unmet.
+- **LTX-Video 2B stays rejected.** That was a VRAM and architecture call —
+  about 10 GiB documented and Ada-oriented acceleration against 8 GiB of
+  Ampere. Neither RAM nor pagefile changes it.
+- **Paid providers remain a separate budget decision** under the same terms as
+  the original decision, and must not silently replace the free profile.
+- **Output labelling is unchanged.** Until a candidate passes, clips remain
+  synthetic fake-provider output and must be labelled as such.
+
+### Residual risk
+
+Free VRAM measured 6.59 GiB against a 6 GiB gate — a margin of 0.59 GiB. VRAM
+is transient, and a browser or a running emulator can erase it. Remeasure
+immediately before any run rather than relying on this record.
+
+`scripts/check-exp005-preflight.ps1` sets `minimumFreeVirtualGiB` to `0` while
+this ADR and `FREE-LOCAL-BEST-OUTPUT.md` §8 state 48 GiB. The measured 65.80
+GiB clears the documented gate regardless, but the script and the documents
+disagree and should be reconciled before the bake-off.

@@ -2,9 +2,10 @@
 
 - **Document ID:** `CRETONA-FREE-LOCAL-001`
 - **Mode:** Landscape/select
-- **Observation date:** 2026-08-11
+- **Observation date:** 2026-08-11 · host figures rechecked 2026-08-19
 - **Decision owner:** Bruce and S0ra1n0
-- **Status:** EXP-005 active; Qwen passed, LTX pre-screen rejected, FramePack installed but inference blocked
+- **Status:** EXP-005 active; Qwen passed, LTX pre-screen rejected, **FramePack unblocked 2026-08-19 — preflight now passes, bake-off not yet run**
+- **Host recheck:** `docs/evidence/EXP-005_HOST_RECHECK_2026-08-19.md`
 
 ## 1. Decision and definition of free
 
@@ -20,16 +21,22 @@ without making the final demonstration dependent on an unowned cloud quota.
 
 ## 2. Measured host constraint
 
-| Resource | Read-only observation | Consequence |
-|---|---|---|
-| GPU | NVIDIA RTX 3070 Ti Laptop, 8 GB VRAM, compute capability 8.6 | Ampere CUDA is supported, but 12-24 GB reference paths do not fit directly |
-| System RAM | 15,629 MB total; about 1,959 MB available at observation time | Heavy CPU offload is the dominant risk; other applications must be closed before a spike |
-| Storage | About 483.5 GB free on drive D | Enough for model weights, caches, intermediate frames and outputs |
-| Operating system | Windows | Prefer maintained Windows packages and reversible local workers |
+Rechecked 2026-08-19. The 2026-08-11 column is kept because the model
+exclusions below were reasoned against it.
 
-The GPU observation came from `nvidia-smi`; RAM and disk came from read-only
-Windows system commands. Available RAM is transient and must be remeasured
-immediately before testing.
+| Resource | 2026-08-11 | 2026-08-19 | Consequence |
+|---|---|---|---|
+| GPU | "RTX 3070 Ti Laptop", 8 GB VRAM, cc 8.6 | **RTX 3070 Laptop** (non-Ti), 8 GB VRAM, cc 8.6 | Unchanged and still binding: 12-24 GB reference paths do not fit. The Ti/non-Ti correction matters when citing FramePack's published 3070 Ti timings |
+| VRAM free | 5.96 GiB | 6.59 GiB | Clears the 6 GiB gate by 0.59 GiB only; transient |
+| System RAM | 15,629 MB total; ~1,959 MB available | **31.73 GiB total; 12.81 GiB free** | Roughly doubled. CPU offload is no longer the dominant risk |
+| Virtual memory | 43.26 GiB total; 14.62 GiB free | **91.16 GiB total; 65.80 GiB free** | A 44.92 GiB pagefile on D lifted the commit limit; the 48 GiB gate is now reachable |
+| Storage | About 483.5 GB free on drive D | 104.19 GiB free on drive D | Weights and caches now occupy most of it; still sufficient |
+| Operating system | Windows | Windows | Prefer maintained Windows packages and reversible local workers |
+
+The GPU observation came from `nvidia-smi`; RAM, pagefile and disk came from
+read-only Windows system commands. **Available RAM and VRAM are transient and
+must be remeasured immediately before testing** — the VRAM margin above is
+under a gigabyte, and a browser or a running emulator can erase it.
 
 ## 3. Current model landscape bounded by this hardware
 
@@ -41,19 +48,37 @@ on this laptop.
 |---|---|---|---|---|
 | MiniMax H3 | Ranked first among open-source text-to-video entries in the current Arena view; native video/audio claims | Fresh community reports start around 12 GB VRAM for a pruned path | Below known minimum and too new for a course-critical dependency | Exclude now |
 | Kandinsky 5 Video Lite | Ranked second in the current open-source Arena view; 2B T2V/I2V family | Official repository says generation can run at 12 GB after optimization | 8 GB is below the documented path | Exclude now |
-| HunyuanVideo 1.5 | Ranked third in the current open-source Arena view; official 8.3B T2V/I2V with 720p and a 1080p super-resolution stage | Official minimum is 14 GB VRAM with offload; the official repo links a community Wan2GP route reported as low as 6 GB | Best quality ceiling among plausible low-VRAM hacks, but 16 GB system RAM makes offload/paging high-risk | Challenger only; do not make it the MVP dependency |
+| HunyuanVideo 1.5 | Ranked third in the current open-source Arena view; official 8.3B T2V/I2V with 720p and a 1080p super-resolution stage | Official minimum is 14 GB VRAM with offload; the official repo links a community Wan2GP route reported as low as 6 GB | Best quality ceiling among plausible low-VRAM hacks, the 16 GB system-RAM objection no longer applies at 31.73 GiB, but 8 GB VRAM still is | Challenger only; do not make it the MVP dependency |
 | LTX-2 19B | Ranked fourth in the current open-source Arena view; synchronized audio/video and strong controls | Current LTX Desktop guidance treats Windows systems below 16 GB VRAM as API-only | Does not fit the zero-paid local boundary | Exclude now |
 | Wan2.2 A14B/5B | Strong current open-weight benchmark history; T2V/I2V/TI2V variants | Practical 5B path is normally associated with about 24 GB VRAM; larger variants need more | Does not fit 8 GB without an unverified extreme-offload workflow | Exclude now |
-| FramePack F1 | 13B Hunyuan-based I2V with anti-drifting; official implementation explicitly supports 6 GB VRAM, Windows and RTX 30-series laptops | Official author reports a 3070 Ti laptop at roughly 4-8 times the per-frame time of a 4090 | Exact official runtime and 42.9 GB pinned model cache are installed; current RAM/VRAM/virtual-memory preflight blocks inference | First executable **reference-image** candidate; not selected |
+| FramePack F1 | 13B Hunyuan-based I2V with anti-drifting; official implementation explicitly supports 6 GB VRAM, Windows and RTX 30-series laptops | Official author reports a 3070 Ti laptop at roughly 4-8 times the per-frame time of a 4090 | Exact official runtime and 42.9 GB pinned model cache are installed; preflight passed 2026-08-19 (see recheck) | **Primary candidate.** First executable reference-image path; bake-off still required before selection |
 | LTX-Video 2B v0.9.8 distilled | T2V and I2V; official model/config plus version-specific open-weight license | Raw dependencies total about 25.9 GB and the runner moves the T5 encoder and video components to the device before useful offload; current Diffusers memory example is about 10 GB VRAM; Q8/FP8 acceleration is Ada-oriented | RTX 3070 Ti is Ampere with 8 GB VRAM and 16 GB RAM; no pinned official path fits the measured envelope | Reject for this host before weight download; reopen only with new measured Ampere evidence |
 | CogVideoX 2B | Apache-2.0 2B path and mature Diffusers support | Designed for older/smaller GPUs | Feasible but older and lower in independent open-video comparisons than stronger families | Fallback challenger |
-| Wan2.1 T2V 1.3B | Apache-2.0 T2V model, 480p-class output, published 8.19 GB VRAM requirement | CPU offload is needed because the laptop exposes 8,192 MiB | Feasible only with tuning; text-only and not the best product fit | Baseline challenger, not the recommendation |
+| Wan2.1 T2V 1.3B | Apache-2.0 T2V model, 480p-class output, published 8.19 GB VRAM requirement | CPU offload is needed because the laptop exposes 8,192 MiB | Feasible only with tuning; text-only and not the best product fit | **Secondary/backup candidate** — covers the text-only path FramePack structurally cannot |
 
 ## 4. Recommended free architecture
 
 The original two-profile recommendation did not survive the exact runtime
 pre-screen. Keep the provider-neutral architecture, but do not assign product
 profile names until a model has executed and passed.
+
+> **Updated 2026-08-19.** The host recheck cleared FramePack's preflight, so
+> the two slots below now have named candidates. Neither is selected: a passing
+> preflight is permission to run the §8 bake-off, not a result.
+>
+> | Slot | Candidate | Covers | Why |
+> |---|---|---|---|
+> | **Primary** | FramePack F1 I2V | Image-conditioned | Weights already installed (42.9 GB pinned); official 6 GB VRAM support on RTX 30-series Windows laptops; the only candidate whose gate passes today |
+> | **Secondary** | Wan2.1 T2V 1.3B | Text-only | Apache-2.0, published 8.19 GB VRAM with CPU offload, 480p-class. Covers FR-2.1, which FramePack structurally cannot |
+>
+> They are complementary rather than ranked alternatives: FramePack cannot
+> serve a text-only request and Wan2.1 cannot serve a reference image. Running
+> only the primary leaves FR-2.1 unproven.
+>
+> Prerequisite for the primary, in the application rather than the model: every
+> provider's `submit` currently begins `del image_path`, so the uploaded
+> reference image is discarded. Image-conditioned generation cannot be
+> demonstrated until that is wired through.
 
 ### Text-capable local profile
 
@@ -262,11 +287,21 @@ architecture. They remain optional benchmark tools, not Cretona's backend.
 - Qwen was installed and proven through FastAPI. FramePack runtime and exact
   pinned weights were installed, but no video inference has run; video quality,
   time and peak memory remain unverified on this exact Windows image.
-- Current FramePack preflight observes 4.30 GiB free physical RAM, 5.96 GiB
+- ~~Current FramePack preflight observes 4.30 GiB free physical RAM, 5.96 GiB
   free VRAM and 14.62 GiB free virtual memory against 6/6/48 GiB gates. Closing
   applications can improve physical RAM/VRAM, but total virtual memory is only
   43.26 GiB and therefore requires a separate Windows pagefile decision before
-  the conservative committed-memory gate can pass.
+  the conservative committed-memory gate can pass.~~
+  **Resolved 2026-08-19.** The pagefile decision was made — a 44.92 GiB file on
+  drive D lifted the commit limit to 91.16 GiB — and system RAM roughly doubled
+  to 31.73 GiB. Preflight now reports 12.81 / 6.59 / 65.80 GiB and passes every
+  check. See `docs/evidence/EXP-005_HOST_RECHECK_2026-08-19.md`.
+- The free-VRAM margin is the remaining hardware risk: 6.59 GiB against a 6 GiB
+  gate is 0.59 GiB of headroom, and VRAM is transient. Remeasure immediately
+  before each run; close the browser and any running Android emulator first.
+- `scripts/check-exp005-preflight.ps1` sets `minimumFreeVirtualGiB` to `0`
+  while §8 and ADR-009 state 48 GiB. The measured value clears the documented
+  gate either way, but the script and the documents disagree.
 - Independent leaderboards do not include all quantized/distilled variants and
   do not measure this laptop.
 - Model repositories, weights, licenses and recommended workflows can change.
