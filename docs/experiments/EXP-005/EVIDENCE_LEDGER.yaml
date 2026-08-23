@@ -282,3 +282,36 @@ entries:
     limitations:
       - "Schema and cross-document consistency do not prove video inference, output quality, or release license clearance."
     blocker_class: null
+  - id: "EVD-EXP005-010"
+    claim: "A current open-weight text-to-video model can generate a clip on free Kaggle hardware."
+    requirement_ids: ["FR-2.1"]
+    decision_ids: ["DEC-004"]
+    contract_ids: ["CRETONA-PERF-EXP-005"]
+    specialist_artifact_ids: []
+    task_ids: ["EXP-005-T2V-KAGGLE"]
+    release_candidate_id: null
+    evidence_type: "live model execution"
+    observation_method: "EXP-005_T2V_bakeoff.ipynb on Kaggle; 2 models, 5 memory configurations, 2 prompts x 2 seeds each."
+    evidence_level: "observed runtime"
+    tool_and_version: "diffusers @ git main; HunyuanVideo15Pipeline and WanPipeline; torch CUDA on 2x Tesla T4"
+    policy_standard_or_target_revision: "hunyuanvideo-community/HunyuanVideo-1.5-Diffusers-480p_t2v@286be7ce72277246578a3e3cc2487e95ddae5bcf; Wan-AI/Wan2.1-T2V-1.3B-Diffusers@0fad780a534b6463e45facd96134c9f345acfa5b"
+    status: "disconfirmed"
+    command: "Run All; MODEL_CHOICE toggled between 'hunyuan' and 'wan21'"
+    working_directory: "/kaggle/working"
+    environment: "Kaggle; 2x NVIDIA T4 14.56 GiB VRAM each; ~30 GB system RAM"
+    executed_at: "2026-08-23"
+    exit_code: 1
+    result_summary: "0 of 4 clips in all five configurations. Binding constraint is system RAM, not VRAM: the final attempt failed with CUBLAS_STATUS_ALLOC_FAILED at cublasCreate while both GPUs reported 14.46 of 14.56 GiB free, reproduced on a clean kernel. Every offload strategy trades VRAM for host RAM, and ~30 GB cannot hold a ~25-32 GB pipeline plus CUDA host allocations. No clip was produced, so no quality claim is made about either model."
+    artifact_or_log: "docs/evidence/EXP-005_KAGGLE_T2V_DISCONFIRMED_2026-08-23.md"
+    source_revision: "working tree, uncommitted"
+    artifact_digest: null
+    workflow_or_deployment_run: "Kaggle interactive session"
+    executed_by: "S0ra1n0 on Kaggle, notebook authored by Claude"
+    independently_verified_by: null
+    receiver_verified_by: null
+    blocker_class: "environment-resource-headroom"
+    limitations:
+      - "No clip was produced, so this carries no quality evidence about either model in either direction."
+      - "This is a host result. It disconfirms free Kaggle T4 x2 with ~30 GB RAM, not the models themselves."
+      - "Quantized checkpoints were not attempted; fp8 or GGUF roughly halves resident size and is the plausible route back onto constrained hardware."
+      - "Peak RAM was not sampled at the moment of failure: the kernel is killed by the host watchdog, which leaves no process alive to record it."

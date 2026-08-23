@@ -3,9 +3,25 @@
 - **Document ID:** `CRETONA-KAGGLE-WORKER-001`
 - **Mode:** Design proposal; nothing here is built
 - **Written:** 2026-08-19
-- **Status:** Proposal — **do not build until EXP-005 produces a scored clip**
+- **Status:** **BLOCKED 2026-08-23 — do not build.** The premise failed:
+  free Kaggle cannot run a current text-to-video pipeline. See
+  `docs/evidence/EXP-005_KAGGLE_T2V_DISCONFIRMED_2026-08-23.md`.
 - **Related:** `ADR-009`, `FREE-LOCAL-BEST-OUTPUT.md` §11,
   `EXP-005_HOST_RECHECK_2026-08-19.md`
+
+> **Blocked, 2026-08-23.** This plan assumed Kaggle supplies the compute the
+> laptop cannot. That assumption was tested and is false: two models and five
+> memory configurations produced zero clips. The binding constraint turned out
+> to be **system RAM, not VRAM** — the final attempt failed to allocate a cuBLAS
+> handle while both GPUs sat at 14.46 of 14.56 GiB free, because ~25 GB of
+> offloaded weights left no pinned host memory in a ~30 GB budget.
+>
+> **W1-W3 must not be started.** W4 (`del image_path`) is unaffected: it is
+> app-side and needed by any provider that ever ships.
+>
+> The architecture below is still sound and worth keeping. It becomes live again
+> the moment a host exists that can actually generate — see §8 of the evidence
+> document for the reopening conditions.
 
 ## 1. The problem this solves
 

@@ -6,6 +6,8 @@
 - **Decision owner:** Bruce and S0ra1n0
 - **Status:** EXP-005 active; Qwen passed, LTX pre-screen rejected, **FramePack unblocked 2026-08-19 — preflight now passes, bake-off not yet run**
 - **Host recheck:** `docs/evidence/EXP-005_HOST_RECHECK_2026-08-19.md`
+- **Kaggle result:** `docs/evidence/EXP-005_KAGGLE_T2V_DISCONFIRMED_2026-08-23.md`
+  — HunyuanVideo 1.5 and Wan2.1 T2V 1.3B both disconfirmed on free Kaggle
 
 ## 1. Decision and definition of free
 
@@ -39,6 +41,20 @@ must be remeasured immediately before testing** — the VRAM margin above is
 under a gigabyte, and a browser or a running emulator can erase it.
 
 ## 3. Current model landscape bounded by this hardware
+
+> **Correction, 2026-08-23.** The table below ranks feasibility by **VRAM
+> alone**, and that framing is wrong. On the 2026-08-23 Kaggle run, system RAM
+> decided every outcome: offloading trades VRAM for host RAM, so a model too
+> large for VRAM becomes a RAM problem rather than a solved one.
+>
+> The Wan2.1 row is also misleading. Its published 8.19 GB figure describes the
+> **transformer**, not the pipeline — with its UMT5-XXL text encoder the whole
+> thing is ~25 GB in fp16 and downloads 28.4 GB. A parameter count in a model
+> name is not evidence of resident size.
+>
+> Read every row below as "VRAM only, unverified" until the whole pipeline —
+> text encoder included — has been measured.
+
 
 Quality ranks below are not interchangeable with local feasibility. Arena
 scores describe human preference across outputs, not whether a model can run

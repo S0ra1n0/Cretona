@@ -49,12 +49,15 @@ Measures one text-to-video model against the EXP-005 gate on a Kaggle GPU.
    separate file, so scoring cannot be biased by filenames.
 5. Emits a ready-to-paste ledger entry.
 
-**One cell needs your attention: `[VERIFY]  Model adapter`.**
-Everything else is standard Python and should run as-is. The model's install
-and inference API changes between releases, so that cell must be reconciled
-against the current official model card before the first run.
+The model adapter was verified against the official Diffusers documentation on
+2026-08-19. If an argument name raises `TypeError`, re-check that page — the
+pipeline is new and its API can still move.
 
-**Before running:** Kaggle -> Settings -> Accelerator -> GPU, and Internet -> On.
+**Before running:** Kaggle -> Settings -> Accelerator -> **GPU T4 x2**, and
+Internet -> **On** (weights download at runtime).
+
+The first run installs diffusers from git and pulls tens of GB of weights, on
+the same GPU-hour quota as generation. Budget for it.
 
 **Scope:** text-to-video only. Image-to-video waits on backend work item W4
 (`del image_path` currently discards the reference image).
@@ -63,18 +66,86 @@ against the current official model card before the first run.
 CELLS.append(md("## 1. Configuration"))
 
 CELLS.append(code(r'''
-import os, pathlib, datetime
+import os
+
+# Must be set before torch initialises its CUDA allocator, i.e. before any
+# other cell imports torch. Setting it later in a live session does nothing:
+# the allocator reads it once. Fragmentation is what turns a 200 MiB
+# allocation into an OOM on a card that reports 14.4 of 14.56 GiB in use.
+os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True"
+
+import pathlib, datetime
 
 # --- what is under test -----------------------------------------------------
-MODEL_LABEL    = "HunyuanVideo-1.5"     # free text, recorded in the ledger
-MODEL_REPO     = "tencent/HunyuanVideo-1.5"  # VERIFY against the model card
-MODEL_REVISION = ""                     # pin a commit/revision; "" = unpinned
+# One switch. The harness below is model-agnostic; only the adapter branches.
+#
+#   "wan21"    Wan2.1 T2V 1.3B, Apache-2.0. The name is the transformer
+#              only: with its UMT5-XXL text encoder the pipeline is ~25 GB in
+#              fp16 and downloads 28.4 GB, so it needs CPU offload on a T4.
+#              Still ~7 GB lighter than Hunyuan, which is the difference
+#              between fitting and not.
+#
+#   "hunyuan"  HunyuanVideo-1.5 480p. Better quality rank, but ~32 GB in fp16
+#              (8.3B DiT + Qwen2.5-VL-7B + T5) against 29 GB VRAM and ~30 GB
+#              RAM. Disconfirmed on free Kaggle 2026-08-19: three
+#              configurations, three different out-of-memory walls. Kept here
+#              so it runs unchanged on a 24 GB card or a quantized checkpoint.
+MODEL_CHOICE = "wan21"
 
-# --- generation settings ----------------------------------------------------
-NUM_FRAMES   = 121          # ~5s at 24fps; match the app's 5s default
-FPS          = 24
-WIDTH, HEIGHT = 1280, 720   # 16:9, the app's default aspect ratio
-SEEDS        = [1234, 5678] # two consecutive runs per prompt -> repeatability
+PRESETS = {
+    "wan21": {
+        "label": "Wan2.1 T2V 1.3B",
+        "repo": "Wan-AI/Wan2.1-T2V-1.3B-Diffusers",
+        "revision": "0fad780a534b6463e45facd96134c9f345acfa5b",
+        # 81 frames at 16fps is the documented default: a ~5.1s clip, which
+        # happens to match the app's 5s default almost exactly.
+        "num_frames": 81,
+        "fps": 16,
+        "steps": 50,
+        "guidance_scale": 5.0,
+    },
+    "hunyuan": {
+        "label": "HunyuanVideo-1.5 Diffusers 480p t2v",
+        "repo": "hunyuanvideo-community/HunyuanVideo-1.5-Diffusers-480p_t2v",
+        "revision": "286be7ce72277246578a3e3cc2487e95ddae5bcf",
+        # 61 rather than the pipeline default of 121: activation memory scales
+        # with frame count. ~2.5s at 24fps, short of the app's 5s -- a real
+        # deviation the ledger records rather than glosses over.
+        "num_frames": 61,
+        "fps": 24,
+        "steps": 50,
+        # Not a call argument on this pipeline; it lives on a guider object.
+        "guidance_scale": None,
+    },
+}
+
+_P = PRESETS[MODEL_CHOICE]
+MODEL_LABEL    = _P["label"]
+MODEL_REPO     = _P["repo"]
+MODEL_REVISION = _P["revision"]
+NUM_FRAMES     = _P["num_frames"]
+FPS            = _P["fps"]
+STEPS          = _P["steps"]
+GUIDANCE       = _P["guidance_scale"]
+
+# None lets the checkpoint use its native resolution. Forcing a size the
+# checkpoint was not trained for asks it for something it cannot produce.
+WIDTH, HEIGHT = None, None
+SEEDS = [1234, 5678]   # two consecutive runs per prompt -> repeatability
+
+# Shared negative prompt. Wan's own documented example uses one; Hunyuan
+# accepts the same argument, so both benefit from suppressing the artefacts
+# the quality rubric penalises.
+NEGATIVE_PROMPT = (
+    "bright tones, overexposed, static, blurred details, subtitles, "
+    "worst quality, low quality, JPEG compression residue, ugly, deformed, "
+    "disfigured, misshapen limbs, still picture, messy background, watermark, "
+    "text, logo"
+)
+
+print(f"model  : {MODEL_LABEL}")
+print(f"repo   : {MODEL_REPO}")
+print(f"clip   : {NUM_FRAMES} frames at {FPS}fps = ~{NUM_FRAMES / FPS:.1f}s")
 
 RUN_ID  = f"exp005-t2v-{datetime.datetime.now(datetime.UTC):%Y%m%dT%H%M%SZ}"
 OUT_DIR = pathlib.Path("/kaggle/working") / RUN_ID
@@ -252,9 +323,12 @@ print("sampler ready")
 '''))
 
 CELLS.append(md(r"""
-## 5. `[VERIFY]` Model adapter
+## 5. Model adapter
 
-**This is the cell to reconcile against the official model card before running.**
+Verified 2026-08-19 against the official Diffusers pipeline documentation
+(`huggingface.co/docs/diffusers/main/en/api/pipelines/hunyuan_video15`).
+The API can still move between releases: if a call below raises `TypeError` on
+an argument name, re-check that page first.
 
 Everything else in this notebook talks to the model through one function:
 
@@ -266,73 +340,173 @@ It must write a playable video file to `out_path`. Nothing outside this cell
 knows which model is being used, so swapping in Wan2.1, LTX, or anything else
 means editing only here.
 
-Install and inference APIs move between releases, and a wrong guess costs a GPU
-session. Check the current model card for: the package/version to install, the
-pipeline class, the argument names, and whether the output needs a separate
-encode step.
+**Four things that differ from a generic Diffusers pipeline.** Each is a
+`TypeError` or an OOM if reverted:
+
+1. `HunyuanVideo15Pipeline`, not `DiffusionPipeline`. Needs diffusers from git
+   — the pipeline is newer than the last release.
+2. **No `guidance_scale` argument.** It lives on a guider object; change it
+   with `pipe.guider = pipe.guider.new(guidance_scale=...)`.
+3. **`float16`, not `bfloat16`.** T4 and P100 are pre-Ampere with no usable
+   bf16. The docs example assumes a newer card.
+4. **`device_map="balanced"`, not `enable_model_cpu_offload()`.** The offload
+   path is single-GPU and keeps the whole model in system RAM: ~32 GB in fp16
+   against Kaggle's ~30 GB. It restarts the kernel mid-load, *after* the ~48 GB
+   download is already spent. `balanced` spreads components across both T4s
+   instead (~30 GB VRAM) and is faster besides.
+
+**If it still runs out of memory**, the documented next step is group
+offloading to disk rather than to RAM — replace the `device_map` entry with:
+
+```py
+pipe = HunyuanVideo15Pipeline.from_pretrained(MODEL_REPO, dtype=torch.float16)
+pipe.transformer.enable_group_offload(
+    onload_device=torch.device("cuda"),
+    offload_device=torch.device("cpu"),
+    offload_type="leaf_level",
+    offload_to_disk_path="/kaggle/temp/offload",
+)
+```
+
+That is slow, but it bounds system RAM instead of the model size dictating it.
 """))
 
 CELLS.append(code(r'''
 # ---------------------------------------------------------------------------
-# [VERIFY] Install. Confirm package names/versions on the official model card.
+# Install. HunyuanVideo15Pipeline is newer than the last diffusers release, so
+# this installs from git. Run once per session; it is slow.
 # ---------------------------------------------------------------------------
-# !pip install -q "diffusers>=0.36" transformers accelerate imageio imageio-ffmpeg safetensors
+# !pip install -q "git+https://github.com/huggingface/diffusers.git" transformers accelerate sentencepiece ftfy imageio imageio-ffmpeg safetensors
+#
+# ftfy is required by the Wan pipeline specifically.
 
 import pathlib
 
 _PIPE = None
 
+def _load_wan21():
+    """Wan2.1 T2V 1.3B. Verified against the Diffusers Wan pipeline docs."""
+    import torch
+    from diffusers import AutoModel, WanPipeline
+    from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
+
+    rev = {"revision": MODEL_REVISION} if MODEL_REVISION else {}
+
+    # The Wan VAE is loaded separately and stays float32 -- the docs are
+    # explicit about it, and running it in fp16 degrades the decode.
+    vae = AutoModel.from_pretrained(
+        MODEL_REPO, subfolder="vae", dtype=torch.float32, **rev
+    )
+    # float16, not the bfloat16 in the docs example: T4 and P100 are
+    # pre-Ampere and have no usable bf16.
+    pipe = WanPipeline.from_pretrained(
+        MODEL_REPO, vae=vae, dtype=torch.float16, **rev
+    )
+    pipe.scheduler = UniPCMultistepScheduler.from_config(
+        pipe.scheduler.config, flow_shift=5.0
+    )
+
+    # NOT pipe.to("cuda"). The "1.3B" names the transformer only -- Wan2.1
+    # pairs it with a UMT5-XXL text encoder of roughly 11B, so the pipeline
+    # is about 25 GB in fp16 and downloads 28.4 GB. Moving all of it onto one
+    # 14.56 GB card OOMs before the first step.
+    #
+    # Offload is what Wan's own documented example uses: the text encoder
+    # stays in CPU RAM and only the active component occupies the GPU. It
+    # costs speed, which the recorded latency reflects honestly.
+    pipe.enable_model_cpu_offload()
+
+    # AutoencoderKLWan supports neither tiling nor slicing; calling them raises.
+    return pipe
+
+
+def _load_hunyuan():
+    """HunyuanVideo-1.5. Does not fit free Kaggle -- see the config cell.
+
+    Left runnable for a 24 GB card or a quantized checkpoint. On 2x T4 every
+    split failed: whole-model CPU offload exhausted RAM, plain balanced
+    packed GPU 0 and died on activations, and capping GPU 0 pushed enough
+    back to CPU to exhaust RAM again.
+    """
+    import torch
+    from diffusers import HunyuanVideo15Pipeline
+
+    kwargs = {
+        "dtype": torch.float16,
+        "device_map": "balanced",
+        "max_memory": {0: "10GiB", 1: "13GiB", "cpu": "22GiB"},
+    }
+    if MODEL_REVISION:
+        kwargs["revision"] = MODEL_REVISION
+
+    pipe = HunyuanVideo15Pipeline.from_pretrained(MODEL_REPO, **kwargs)
+    # No .to("cuda"): device_map already placed every component.
+    pipe.vae.enable_tiling()
+    return pipe
+
+
 def load_model():
-    """Load once and cache. VERIFY the pipeline class and loading arguments."""
+    """Load once and cache."""
     global _PIPE
     if _PIPE is not None:
         return _PIPE
 
     import torch
-    # ---- VERIFY BLOCK -----------------------------------------------------
-    # The class name below is a placeholder. Replace with the pipeline the
-    # model card documents, and keep the memory-saving calls that apply.
-    from diffusers import DiffusionPipeline  # noqa: F401
 
-    kwargs = {"torch_dtype": torch.float16}
-    if MODEL_REVISION:
-        kwargs["revision"] = MODEL_REVISION
+    _PIPE = _load_wan21() if MODEL_CHOICE == "wan21" else _load_hunyuan()
 
-    pipe = DiffusionPipeline.from_pretrained(MODEL_REPO, **kwargs)
-    pipe = pipe.to("cuda")
-    # Kaggle GPUs are 16 GB-class; enable offload only if you hit OOM, since it
-    # slows generation considerably and distorts the latency measurement.
-    # pipe.enable_model_cpu_offload()
-    if hasattr(pipe, "vae") and hasattr(pipe.vae, "enable_tiling"):
-        pipe.vae.enable_tiling()
-    # ---- END VERIFY BLOCK -------------------------------------------------
+    try:
+        print("device map:", _PIPE.hf_device_map)
+    except Exception:
+        pass
 
-    _PIPE = pipe
+    # Free VRAM per card after loading. A card already near full here will
+    # fail on activations whatever the prompt is -- better to see it now than
+    # after a five minute load.
+    try:
+        for i in range(torch.cuda.device_count()):
+            free_b, total_b = torch.cuda.mem_get_info(i)
+            print(f"  gpu{i}: {free_b / 1024**3:.2f} GiB free of "
+                  f"{total_b / 1024**3:.2f} GiB")
+    except Exception:
+        pass
+
+    # The docs recommend `sage_hub` for GPUs that are not H100/A100/4090.
+    # Needs sageattention installed; skipped cleanly when unavailable.
+    try:
+        _PIPE.transformer.set_attention_backend("sage_hub")
+        print("attention backend: sage_hub")
+    except Exception as ex:
+        print(f"attention backend: default ({type(ex).__name__})")
+
     return _PIPE
 
 
 def generate(prompt: str, seed: int, out_path: pathlib.Path) -> None:
     """Generate one clip. The only function the rest of the notebook calls."""
     import torch
+    from diffusers.utils import export_to_video
+
     pipe = load_model()
     generator = torch.Generator(device="cuda").manual_seed(seed)
 
-    # ---- VERIFY BLOCK -----------------------------------------------------
-    # Argument names vary by pipeline (num_frames / video_length / frames).
-    result = pipe(
-        prompt=prompt,
-        num_frames=NUM_FRAMES,
-        height=HEIGHT,
-        width=WIDTH,
-        generator=generator,
-    )
-    frames = result.frames[0]
-    # ---- END VERIFY BLOCK -------------------------------------------------
+    call = {
+        "prompt": prompt,
+        "negative_prompt": NEGATIVE_PROMPT,
+        "num_frames": NUM_FRAMES,
+        "num_inference_steps": STEPS,
+        "generator": generator,
+    }
+    # Hunyuan takes guidance from a guider object and rejects the argument.
+    if GUIDANCE is not None:
+        call["guidance_scale"] = GUIDANCE
+    if WIDTH and HEIGHT:
+        call["height"], call["width"] = HEIGHT, WIDTH
 
-    from diffusers.utils import export_to_video
+    frames = pipe(**call).frames[0]
     export_to_video(frames, str(out_path), fps=FPS)
 
-print("adapter defined — VERIFY the two blocks above before running section 6")
+print("adapter ready — the model loads lazily on the first generate() call")
 '''))
 
 CELLS.append(md(r"""
@@ -422,6 +596,7 @@ for r in RESULTS:
     dur = info.get("duration", "?")
     playable = codec.lower() in {"h264", "avc1"}
     r["codec"] = codec
+    r["dims"] = dims if "?" not in dims else None
     r["playable_h264"] = playable
     print(f"{r['file']:28} {codec:10} {dims:12} {str(dur)[:6]:>7}  {'YES' if playable else 'NO'}")
 
@@ -474,6 +649,12 @@ times     = [r["seconds"] for r in ok if "seconds" in r]
 avg       = round(sum(times) / len(times), 2) if times else None
 all_h264  = bool(ok) and all(r.get("playable_h264") for r in ok)
 
+# Resolution comes from ffprobe on a real output, not from the request: the
+# checkpoint chooses its own when WIDTH/HEIGHT are left as None.
+_dims = next((r.get("dims") for r in ok if r.get("dims")), None)
+_res = _dims or (f"{WIDTH}x{HEIGHT}" if WIDTH and HEIGHT else "native resolution")
+_secs = round(NUM_FRAMES / FPS, 1)
+
 summary = (
     f"{len(ok)}/{len(RESULTS)} clips generated; "
     f"peak VRAM {peak_vram}{' GiB' if _vram else ''}; "
@@ -483,7 +664,7 @@ summary = (
 )
 
 entry = f"""  - id: "EVD-EXP005-XXX"
-    claim: "{MODEL_LABEL} generates a {NUM_FRAMES}-frame {WIDTH}x{HEIGHT} clip from text on a Kaggle GPU."
+    claim: "{MODEL_LABEL} generates a {NUM_FRAMES}-frame {_res} clip from text on a Kaggle GPU (~{_secs}s at {FPS}fps; the app default is 5s)."
     requirement_ids: ["FR-2.1"]
     decision_ids: ["DEC-004"]
     contract_ids: ["CRETONA-PERF-EXP-005"]
@@ -518,10 +699,44 @@ print("  quality            : not measured here — blind scoring decides")
 '''))
 
 CELLS.append(md(r"""
-## 10. After the run
+## 10. Download before the session ends
 
-1. **Download `blind/` and `BLIND_KEY.json`** — Kaggle wipes `/kaggle/working`
-   when the session ends.
+`/kaggle/working` is **wiped when the session ends**. Nothing below is
+recoverable afterwards, so run this cell and download the archive before you
+stop the session or switch the accelerator off.
+
+The archive holds everything the scoring step and the ledger need: the blind
+clips, the key, the raw named clips, `results.json`, `environment.json` and
+`ledger_entry.yaml`.
+"""))
+
+CELLS.append(code(r'''
+import shutil
+from IPython.display import FileLink, display
+
+archive = shutil.make_archive(str(OUT_DIR), "zip", root_dir=OUT_DIR)
+size_mib = round(pathlib.Path(archive).stat().st_size / 1024**2, 1)
+
+print(f"archive : {archive}")
+print(f"size    : {size_mib} MiB")
+print()
+print("contents:")
+for item in sorted(OUT_DIR.rglob("*")):
+    if item.is_file():
+        rel = item.relative_to(OUT_DIR)
+        print(f"  {str(rel):34} {item.stat().st_size:>12,} bytes")
+
+print()
+print("Click the link below, or use the Output panel in the right sidebar.")
+print("Then stop the session -- idle time bills against the same GPU quota.")
+display(FileLink(pathlib.Path(archive).name))
+'''))
+
+CELLS.append(md(r"""
+## 11. After the run
+
+1. **Download the archive from section 10** if you have not already. Kaggle
+   wipes `/kaggle/working` when the session ends.
 2. **Score the clips** in `QUALITY_SCORECARD.md`. Bruce and S0ra1n0 score
    independently, from `blind/` only, without opening the key.
 3. **Reveal the key**, paste `ledger_entry.yaml` into `EVIDENCE_LEDGER.yaml`
