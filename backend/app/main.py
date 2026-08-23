@@ -105,6 +105,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         video_filename=active_settings.fake_video_filename,
         media_dir=active_settings.resolved_media_dir(),
         ffmpeg_path=active_settings.ffmpeg_path,
+        read_image=storage.read_image_bytes,
     )
     local_provider = LocalModelVideoProvider(
         endpoint=active_settings.local_model_endpoint,
@@ -112,6 +113,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         video_filename=active_settings.fake_video_filename,
         media_dir=active_settings.resolved_media_dir(),
         ffmpeg_path=active_settings.ffmpeg_path,
+        read_image=storage.read_image_bytes,
     )
     providers = ProviderRegistry(
         [mock_provider, cloud_provider, local_provider],

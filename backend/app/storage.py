@@ -147,6 +147,8 @@ class StorageBackend(Protocol):
 
     def store_video(self, user_id: str, project_id: str, source: str) -> str: ...
 
+    def read_image_bytes(self, path: str | None) -> bytes | None: ...
+
     def remove_objects(self, image_path: str | None, video_path: str | None) -> None: ...
 
     def local_video_path(self, stored_path: str) -> Path | None:
@@ -244,6 +246,22 @@ class LocalStorage:
                 candidate.unlink(missing_ok=True)
             except OSError:
                 continue
+
+    def read_image_bytes(self, path: str | None) -> bytes | None:
+        """Read back an uploaded image, or None when it cannot be read.
+
+        Goes through `_resolve`, so a stored path that tries to escape the
+        media directory is refused rather than read. Returning None instead of
+        raising keeps a missing reference image from failing a generation that
+        can still proceed from the prompt alone.
+        """
+        resolved = self._resolve(path)
+        if resolved is None or not resolved.is_file():
+            return None
+        try:
+            return resolved.read_bytes()
+        except OSError:
+            return None
 
     def _resolve(self, path: str | None) -> Path | None:
         """Map a stored path onto a file inside the media directory, or None.
@@ -494,6 +512,26 @@ class SupabaseStorage:
                 )
             except httpx.HTTPError:
                 continue
+
+    def read_image_bytes(self, path: str | None) -> bytes | None:
+        """Download an uploaded image from the uploads bucket, or None.
+
+        Uses the service key rather than a signed URL: this is a server-side
+        read of an object the server already owns, and minting a signed URL to
+        immediately consume it would be a pointless round trip.
+        """
+        if not path or path.startswith(("http://", "https://")):
+            return None
+        try:
+            response = self._client.get(
+                f"{self.api}/object/{self.uploads_bucket}/{path}",
+                headers=self._headers,
+            )
+        except httpx.HTTPError:
+            return None
+        if response.status_code >= 400 or not response.content:
+            return None
+        return response.content
 
     def _absolute(self, signed: str) -> str:
         if signed.startswith(("http://", "https://")):

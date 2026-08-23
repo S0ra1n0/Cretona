@@ -287,3 +287,110 @@ def test_a_refused_still_falls_back_rather_than_failing(tmp_path: Path) -> None:
     assert result is None
     # And nothing half-written was left in the directory served as user media.
     assert list(tmp_path.iterdir()) == []
+
+
+# --- W4: the uploaded reference image reaches the renderer -------------------
+
+
+def _png_bytes() -> bytes:
+    """A minimal but genuinely PNG-signed blob."""
+    import base64
+
+    return base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQ"
+        "DwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+    )
+
+
+def test_a_reference_image_is_used_instead_of_generating_a_still(tmp_path: Path) -> None:
+    """The whole point of W4: the account's own image becomes the frame."""
+    calls = []
+
+    def endpoint_must_not_be_called(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url)
+        return httpx.Response(200, content=b"generated", headers={"content-type": "image/png"})
+
+    client = httpx.Client(transport=httpx.MockTransport(endpoint_must_not_be_called))
+    try:
+        _render_kenburns_from_ai_still(
+            "a lantern",
+            "job.mp4",
+            tmp_path,
+            "definitely-not-ffmpeg",  # render fails; we only assert on the fetch
+            "https://images.example",
+            client,
+            source_still=(_png_bytes(), "image/png"),
+        )
+    finally:
+        client.close()
+
+    # No text-to-image request was made, so the user's prompt never left the
+    # machine either -- which matters for the third-party disclosure in T2-2.
+    assert calls == []
+
+
+def test_without_a_reference_image_the_still_is_still_generated(tmp_path: Path) -> None:
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url)
+        return httpx.Response(200, content=_png_bytes(), headers={"content-type": "image/png"})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    try:
+        _render_kenburns_from_ai_still(
+            "a lantern", "job.mp4", tmp_path, "definitely-not-ffmpeg",
+            "https://images.example", client,
+        )
+    finally:
+        client.close()
+
+    assert len(calls) == 1
+
+
+def test_an_unrecognisable_upload_is_refused_rather_than_written(tmp_path: Path) -> None:
+    result = _render_kenburns_from_ai_still(
+        "a lantern", "job.mp4", tmp_path, "ffmpeg", "https://images.example",
+        source_still=(b"<html>not an image</html>", "application/octet-stream"),
+    )
+
+    assert result is None
+    # Nothing unnamed was written into the directory served as user media.
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_a_reference_image_alone_is_enough(tmp_path: Path) -> None:
+    """An image-only request has no prompt, and must not be refused for it."""
+    result = _render_kenburns_from_ai_still(
+        None, "job.mp4", tmp_path, "definitely-not-ffmpeg", "https://images.example",
+        source_still=(_png_bytes(), "image/png"),
+    )
+
+    # ffmpeg is bogus so the render fails, but it got far enough to try --
+    # before W4 this returned None on the `not prompt` guard instead.
+    assert result is None
+
+
+@pytest.mark.parametrize(
+    ("blob", "expected"),
+    [
+        (bytes.fromhex("ffd8ffe000104a464946"), "image/jpeg"),
+        (b"RIFF\x00\x00\x00\x00WEBP", "image/webp"),
+        (b"<html>", "application/octet-stream"),
+    ],
+)
+def test_upload_type_comes_from_magic_bytes(blob: bytes, expected: str) -> None:
+    from app.providers import _sniff_still_type
+
+    # Not from a client-declared content type, which can claim anything.
+    assert _sniff_still_type(blob) == expected
+
+
+def test_providers_no_longer_discard_the_image_path() -> None:
+    """Every provider's poll() must accept image_path, or the row's value is lost."""
+    import inspect
+
+    from app.providers import CloudAiVideoProvider, LocalModelVideoProvider, MockVideoProvider
+
+    for cls in (MockVideoProvider, CloudAiVideoProvider, LocalModelVideoProvider):
+        assert "image_path" in inspect.signature(cls.poll).parameters, cls.__name__

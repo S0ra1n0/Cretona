@@ -379,6 +379,10 @@ class ProjectService:
             job_id=row["provider_job_id"],
             prompt=row["prompt"],
             poll_count=poll_count,
+            # The reference image the account uploaded. Providers that cannot
+            # use it ignore it; the ones that render a frame pan across it
+            # instead of a generated still.
+            image_path=row["image_path"],
         )
         self.generation_log.record(
             project_id=row["id"],

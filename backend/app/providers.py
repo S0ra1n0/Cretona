@@ -4,6 +4,7 @@ import logging
 import re
 import subprocess
 import urllib.parse
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar, Literal, Protocol
@@ -46,7 +47,14 @@ class VideoProvider(Protocol):
 
     def submit(self, *, prompt: str | None, image_path: str | None) -> SubmitResult: ...
 
-    def poll(self, *, job_id: str, prompt: str | None, poll_count: int) -> PollResult: ...
+    def poll(
+        self,
+        *,
+        job_id: str,
+        prompt: str | None,
+        poll_count: int,
+        image_path: str | None = None,
+    ) -> PollResult: ...
 
     def verify_webhook(
         self,
@@ -70,6 +78,28 @@ DEFAULT_IMAGE_ENDPOINT = "https://image.pollinations.ai"
 ALLOWED_STILL_TYPES = ("image/jpeg", "image/png", "image/webp")
 MAX_STILL_BYTES = 16 * 1024 * 1024
 STILL_EXTENSION = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
+
+
+# Image magic numbers, as hex so no layer of quoting can mangle them.
+_MAGIC_JPEG = bytes.fromhex('ffd8ff')
+_MAGIC_PNG = bytes.fromhex('89504e470d0a1a0a')
+
+
+def _sniff_still_type(data: bytes) -> str:
+    """Identify an uploaded image by its magic bytes.
+
+    The stored content type is not carried on the project row, and a
+    client-declared one could name itself anything. The leading bytes are
+    the only thing here that cannot be talked out of the truth. Anything
+    unrecognised returns a type the renderer refuses rather than writes.
+    """
+    if data.startswith(_MAGIC_JPEG):
+        return "image/jpeg"
+    if data.startswith(_MAGIC_PNG):
+        return "image/png"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return "application/octet-stream"
 
 
 class StillFetchError(RuntimeError):
@@ -152,6 +182,7 @@ def _render_kenburns_from_ai_still(
     ffmpeg_bin: str = "ffmpeg",
     image_endpoint: str = DEFAULT_IMAGE_ENDPOINT,
     client: httpx.Client | None = None,
+    source_still: tuple[bytes, str] | None = None,
 ) -> str | None:
     """Fetch one AI-generated still and pan across it for five seconds.
 
@@ -165,10 +196,18 @@ def _render_kenburns_from_ai_still(
     the gate for that (ADR-009). Do not describe its output as AI-generated
     video.
 
-    Returns the media path, or None if the still could not be fetched or
+    `source_still` is an optional `(bytes, content_type)` pair. When present it
+    is used as the frame and no text-to-image call is made at all -- that is
+    the image-to-video path, where the still is the account's own uploaded
+    reference rather than a generated one. Nothing about the result becomes
+    more "AI video" either way; the caveats above apply identically.
+
+    Returns the media path, or None if the still could not be obtained or
     ffmpeg is unavailable — callers fall back to the bundled demo clip.
     """
-    if not media_dir or not prompt:
+    # A reference image is enough on its own: the prompt only ever fed the
+    # text-to-image call, which is skipped when the caller supplies the frame.
+    if not media_dir or (not prompt and source_still is None):
         return None
     try:
         media_dir.mkdir(parents=True, exist_ok=True)
@@ -176,8 +215,15 @@ def _render_kenburns_from_ai_still(
         if target_mp4.exists() and target_mp4.stat().st_size > 1024:
             return f"/media/{output_filename}"
 
-        clean_prompt = _clean_prompt_for_diffusion(prompt)
-        data, content_type = _fetch_ai_still_typed(clean_prompt, image_endpoint, client)
+        if source_still is not None:
+            data, content_type = source_still
+            if content_type not in STILL_EXTENSION:
+                # An upload the renderer cannot name a file for. Falling back
+                # is better than writing an unknown type into media.
+                return None
+        else:
+            clean_prompt = _clean_prompt_for_diffusion(prompt or "")
+            data, content_type = _fetch_ai_still_typed(clean_prompt, image_endpoint, client)
         temp_img = media_dir / f"temp_{target_mp4.stem}.{STILL_EXTENSION[content_type]}"
         temp_img.write_bytes(data)
 
@@ -231,11 +277,22 @@ class MockVideoProvider:
         self.video_filename = video_filename
 
     def submit(self, *, prompt: str | None, image_path: str | None) -> SubmitResult:
+        # Deliberately ignored: this tier returns a bundled clip and has no
+        # way to honour either input. Ignoring them is the honest behaviour
+        # for a demo provider; silently accepting a reference image and
+        # producing an unrelated video would not be.
         del prompt, image_path
         return SubmitResult(job_id=f"fake_{uuid4()}")
 
-    def poll(self, *, job_id: str, prompt: str | None, poll_count: int) -> PollResult:
-        del job_id
+    def poll(
+        self,
+        *,
+        job_id: str,
+        prompt: str | None,
+        poll_count: int,
+        image_path: str | None = None,
+    ) -> PollResult:
+        del job_id, image_path
         normalized_prompt = (prompt or "").lower()
         if normalized_prompt.startswith("fail:"):
             requested = normalized_prompt.removeprefix("fail:").split(maxsplit=1)[0]
@@ -314,7 +371,9 @@ class CloudAiVideoProvider:
         video_filename: str = "demo-output.mp4",
         media_dir: Path | None = None,
         ffmpeg_path: str = "ffmpeg",
+        read_image: Callable[[str], bytes | None] | None = None,
     ) -> None:
+        self.read_image = read_image
         self.api_key = api_key
         self.endpoint = endpoint or "https://text.pollinations.ai"
         self.image_endpoint = image_endpoint
@@ -322,12 +381,39 @@ class CloudAiVideoProvider:
         self.media_dir = media_dir
         self.ffmpeg_path = ffmpeg_path
 
+    def _reference_still(self, image_path: str | None) -> tuple[bytes, str] | None:
+        """Load the account's uploaded reference image, or None.
+
+        None means "generate a still from the prompt instead", which is what
+        a text-only request has always done. A read failure degrades to that
+        same path rather than failing the generation: a missing reference is
+        a worse picture, not a broken job.
+        """
+        if not image_path or self.read_image is None:
+            return None
+        try:
+            data = self.read_image(image_path)
+        except Exception:
+            return None
+        if not data:
+            return None
+        return data, _sniff_still_type(data)
+
     def submit(self, *, prompt: str | None, image_path: str | None) -> SubmitResult:
+        # image_path is not consumed here: the render happens in poll(), which
+        # receives it from the project row. Nothing is dropped.
         del image_path
         job_id = f"real_{uuid4()}"
         return SubmitResult(job_id=job_id)
 
-    def poll(self, *, job_id: str, prompt: str | None, poll_count: int) -> PollResult:
+    def poll(
+        self,
+        *,
+        job_id: str,
+        prompt: str | None,
+        poll_count: int,
+        image_path: str | None = None,
+    ) -> PollResult:
         normalized_prompt = (prompt or "").lower()
         if normalized_prompt.startswith("fail:"):
             return PollResult(status="failed", failure="provider_error", progress_percent=0)
@@ -341,9 +427,16 @@ class CloudAiVideoProvider:
                 step_message="Generating image, then rendering camera move...",
             )
 
-        # Synthesize or retrieve the real AI video asset for this prompt
+        # A reference image, when the account supplied one, is the frame we pan
+        # across; otherwise a still is generated from the prompt. Either way
+        # this is a camera move over one frame, not video synthesis.
         live_video = _render_kenburns_from_ai_still(
-            prompt, f"{job_id}.mp4", self.media_dir, self.ffmpeg_path, self.image_endpoint
+            prompt,
+            f"{job_id}.mp4",
+            self.media_dir,
+            self.ffmpeg_path,
+            self.image_endpoint,
+            source_still=self._reference_still(image_path),
         )
 
         return PollResult(
@@ -398,19 +491,47 @@ class LocalModelVideoProvider:
         video_filename: str = "demo-output.mp4",
         media_dir: Path | None = None,
         ffmpeg_path: str = "ffmpeg",
+        read_image: Callable[[str], bytes | None] | None = None,
     ) -> None:
+        self.read_image = read_image
         self.endpoint = endpoint
         self.image_endpoint = image_endpoint
         self.video_filename = video_filename
         self.media_dir = media_dir
         self.ffmpeg_path = ffmpeg_path
 
+    def _reference_still(self, image_path: str | None) -> tuple[bytes, str] | None:
+        """Load the account's uploaded reference image, or None.
+
+        None means "generate a still from the prompt instead", which is what
+        a text-only request has always done. A read failure degrades to that
+        same path rather than failing the generation: a missing reference is
+        a worse picture, not a broken job.
+        """
+        if not image_path or self.read_image is None:
+            return None
+        try:
+            data = self.read_image(image_path)
+        except Exception:
+            return None
+        if not data:
+            return None
+        return data, _sniff_still_type(data)
+
     def submit(self, *, prompt: str | None, image_path: str | None) -> SubmitResult:
+        # Consumed in poll(), which receives it from the project row.
         del image_path
         job_id = f"local_{uuid4()}"
         return SubmitResult(job_id=job_id)
 
-    def poll(self, *, job_id: str, prompt: str | None, poll_count: int) -> PollResult:
+    def poll(
+        self,
+        *,
+        job_id: str,
+        prompt: str | None,
+        poll_count: int,
+        image_path: str | None = None,
+    ) -> PollResult:
         normalized_prompt = (prompt or "").lower()
         if normalized_prompt.startswith("fail:"):
             return PollResult(status="failed", failure="provider_error", progress_percent=0)
@@ -428,7 +549,12 @@ class LocalModelVideoProvider:
             )
 
         live_video = _render_kenburns_from_ai_still(
-            prompt, f"{job_id}.mp4", self.media_dir, self.ffmpeg_path, self.image_endpoint
+            prompt,
+            f"{job_id}.mp4",
+            self.media_dir,
+            self.ffmpeg_path,
+            self.image_endpoint,
+            source_still=self._reference_still(image_path),
         )
 
         return PollResult(
