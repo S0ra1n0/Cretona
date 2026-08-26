@@ -49,21 +49,69 @@ Measures one text-to-video model against the EXP-005 gate on a Kaggle GPU.
    separate file, so scoring cannot be biased by filenames.
 5. Emits a ready-to-paste ledger entry.
 
-The model adapter was verified against the official Diffusers documentation on
-2026-08-19. If an argument name raises `TypeError`, re-check that page — the
-pipeline is new and its API can still move.
+The model adapters were verified against the official Diffusers documentation
+on 2026-08-19. If an argument name raises `TypeError`, re-check that page —
+these pipelines are new and their APIs can still move.
 
 **Before running:** Kaggle -> Settings -> Accelerator -> **GPU T4 x2**, and
 Internet -> **On** (weights download at runtime).
 
-The first run installs diffusers from git and pulls tens of GB of weights, on
-the same GPU-hour quota as generation. Budget for it.
+**Section 1 is the install and runs once per session.** Everything after it can
+be re-run freely. The first run also pulls tens of GB of weights, on the same
+GPU-hour quota as generation — budget for it.
 
-**Scope:** text-to-video only. Image-to-video waits on backend work item W4
-(`del image_path` currently discards the reference image).
+Memory is the whole difficulty here, so section 6 splits the work in two: the
+text encoder is loaded, used, and freed before the transformer is loaded at
+all. Five configurations that held both at once all ran out of memory on
+2026-08-23 (`docs/evidence/EXP-005_KAGGLE_T2V_DISCONFIRMED_2026-08-23.md`).
+
+**Scope:** text-to-video only. The backend can now pass a reference image
+through to a provider (work item W4, done 2026-08-23), but no image-to-video
+model has been selected, so this notebook does not exercise that path.
 """))
 
-CELLS.append(md("## 1. Configuration"))
+CELLS.append(md(r"""
+## 1. Install — run once per session
+
+Separate from everything else so the rest of the notebook can be re-run freely
+without reinstalling. **The pip line is commented out on purpose.**
+
+- **First run in a session:** uncomment it, run this cell, wait, then comment it
+  back out.
+- **Every run after that:** skip this cell. Run All skips it too, since it does
+  nothing while commented.
+
+If the install upgrades a package that is already imported, restart the kernel
+afterwards (**Run menu -> Restart kernel**, not the toolbar's Factory reset,
+which would also wipe the downloaded weights).
+"""))
+
+CELLS.append(code(r'''
+# Uncomment for the first run in a session, then comment it back out.
+# HunyuanVideo15Pipeline and the Wan pipelines are newer than the last diffusers
+# release, so diffusers comes from git. ftfy is required by Wan specifically.
+
+# !pip install -q "git+https://github.com/huggingface/diffusers.git" transformers accelerate sentencepiece ftfy imageio imageio-ffmpeg safetensors
+
+import importlib.util
+
+_missing = [
+    name
+    for name in ("torch", "diffusers", "transformers", "accelerate", "ftfy", "imageio")
+    if importlib.util.find_spec(name) is None
+]
+if _missing:
+    print("MISSING:", ", ".join(_missing))
+    print("Uncomment the pip line above and run this cell.")
+else:
+    import diffusers, torch
+
+    print(f"torch      {torch.__version__}")
+    print(f"diffusers  {diffusers.__version__}")
+    print("dependencies present - leave the pip line commented")
+'''))
+
+CELLS.append(md("## 2. Configuration"))
 
 CELLS.append(code(r'''
 import os
@@ -133,6 +181,25 @@ GUIDANCE       = _P["guidance_scale"]
 WIDTH, HEIGHT = None, None
 SEEDS = [1234, 5678]   # two consecutive runs per prompt -> repeatability
 
+# --- smoke test -------------------------------------------------------------
+# True: one prompt, one seed, 8 steps, 25 frames. Roughly 90 seconds instead
+# of 45 minutes, and it exercises every line the full run does. Use it to find
+# out whether the pipeline works at all; the output is far too coarse to judge
+# quality and must never be scored.
+SMOKE_TEST = True
+
+if SMOKE_TEST:
+    STEPS = 8
+    NUM_FRAMES = 25
+    SEEDS = [1234]
+    print("*** SMOKE TEST: 1 clip, 8 steps, 25 frames. NOT scoreable. ***")
+
+# --- resuming ---------------------------------------------------------------
+# Leave empty for a fresh run. Paste a previous run id here to write into that
+# directory again: clips already present are skipped, so a failure in clip 4
+# does not cost the three that worked.
+RESUME_RUN_ID = ""
+
 # Shared negative prompt. Wan's own documented example uses one; Hunyuan
 # accepts the same argument, so both benefit from suppressing the artefacts
 # the quality rubric penalises.
@@ -147,8 +214,16 @@ print(f"model  : {MODEL_LABEL}")
 print(f"repo   : {MODEL_REPO}")
 print(f"clip   : {NUM_FRAMES} frames at {FPS}fps = ~{NUM_FRAMES / FPS:.1f}s")
 
-RUN_ID  = f"exp005-t2v-{datetime.datetime.now(datetime.UTC):%Y%m%dT%H%M%SZ}"
+RUN_ID = RESUME_RUN_ID or (
+    f"exp005-t2v{'-smoke' if SMOKE_TEST else ''}-"
+    f"{datetime.datetime.now(datetime.UTC):%Y%m%dT%H%M%SZ}"
+)
 OUT_DIR = pathlib.Path("/kaggle/working") / RUN_ID
+
+# Survives between runs in a session, unlike OUT_DIR which is per-run. Holds
+# the encoded prompts so phase 1 is paid for once.
+CACHE_DIR = pathlib.Path("/kaggle/working/_cache")
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
 RAW_DIR = OUT_DIR / "raw"        # named by prompt+seed; NOT for reviewers
 BLIND_DIR = OUT_DIR / "blind"    # A1/A2/B1/B2; this is what gets scored
 for d in (RAW_DIR, BLIND_DIR):
@@ -159,7 +234,7 @@ print("output :", OUT_DIR)
 '''))
 
 CELLS.append(md(r"""
-## 2. Bench prompts
+## 3. Bench prompts
 
 **Prompt A** is the canonical EXP-005 scene, rebuilt for text-to-video from
 `inputs/reference-image-generation-prompt.txt` (scene) and
@@ -196,7 +271,7 @@ for key, text in PROMPTS.items():
     print(f"--- prompt {key} ({len(text)} chars) ---\n{text}\n")
 '''))
 
-CELLS.append(md("## 3. Environment capture (for the evidence ledger)"))
+CELLS.append(md("## 4. Environment capture (for the evidence ledger)"))
 
 CELLS.append(code(r'''
 import subprocess, sys, platform, json, shutil
@@ -240,7 +315,7 @@ if "NO CUDA" in str(ENV.get("gpu_torch", "")) or not ENV["gpu"]:
 '''))
 
 CELLS.append(md(r"""
-## 4. Resource sampler
+## 5. Resource sampler
 
 EXP-005 section 8 requires peak RAM/VRAM and wall-clock time per run. Peak is
 sampled on a background thread, because the interesting number is the spike
@@ -323,194 +398,308 @@ print("sampler ready")
 '''))
 
 CELLS.append(md(r"""
-## 5. Model adapter
+## 6. Model adapter — two phases
 
-Verified 2026-08-19 against the official Diffusers pipeline documentation
-(`huggingface.co/docs/diffusers/main/en/api/pipelines/hunyuan_video15`).
-The API can still move between releases: if a call below raises `TypeError` on
-an argument name, re-check that page first.
+Every out-of-memory failure on 2026-08-23 came from holding the text encoder
+and the transformer at the same time. For Wan2.1 that is a ~22 GB UMT5-XXL
+encoder next to a 2.6 GB transformer; the encoder is two thirds of the
+pipeline and it runs **once**, before the first denoising step.
 
-Everything else in this notebook talks to the model through one function:
+So it is never loaded next to the transformer here:
 
-```python
-generate(prompt: str, seed: int, out_path: pathlib.Path) -> None
-```
+| Phase | Loads | Frees |
+|---|---|---|
+| 1 | text encoder + tokenizer | encoder, before phase 2 starts |
+| 2 | transformer + VAE, `text_encoder=None` | — |
 
-It must write a playable video file to `out_path`. Nothing outside this cell
-knows which model is being used, so swapping in Wan2.1, LTX, or anything else
-means editing only here.
+Peak memory becomes `max(encoder, transformer)` rather than their sum. The
+pipeline accepts `prompt_embeds` in place of `prompt`, which is what makes the
+split possible without touching the model.
 
-**Four things that differ from a generic Diffusers pipeline.** Each is a
-`TypeError` or an OOM if reverted:
-
-1. `HunyuanVideo15Pipeline`, not `DiffusionPipeline`. Needs diffusers from git
-   — the pipeline is newer than the last release.
-2. **No `guidance_scale` argument.** It lives on a guider object; change it
-   with `pipe.guider = pipe.guider.new(guidance_scale=...)`.
-3. **`float16`, not `bfloat16`.** T4 and P100 are pre-Ampere with no usable
-   bf16. The docs example assumes a newer card.
-4. **`device_map="balanced"`, not `enable_model_cpu_offload()`.** The offload
-   path is single-GPU and keeps the whole model in system RAM: ~32 GB in fp16
-   against Kaggle's ~30 GB. It restarts the kernel mid-load, *after* the ~48 GB
-   download is already spent. `balanced` spreads components across both T4s
-   instead (~30 GB VRAM) and is faster besides.
-
-**If it still runs out of memory**, the documented next step is group
-offloading to disk rather than to RAM — replace the `device_map` entry with:
-
-```py
-pipe = HunyuanVideo15Pipeline.from_pretrained(MODEL_REPO, dtype=torch.float16)
-pipe.transformer.enable_group_offload(
-    onload_device=torch.device("cuda"),
-    offload_device=torch.device("cpu"),
-    offload_type="leaf_level",
-    offload_to_disk_path="/kaggle/temp/offload",
-)
-```
-
-That is slow, but it bounds system RAM instead of the model size dictating it.
+Phase 1 puts the encoder on GPU when both cards are visible (~29 GB of VRAM,
+plenty) and falls back to CPU otherwise. Phase 2 needs one card and very
+little of it.
 """))
 
 CELLS.append(code(r'''
-# ---------------------------------------------------------------------------
-# Install. HunyuanVideo15Pipeline is newer than the last diffusers release, so
-# this installs from git. Run once per session; it is slow.
-# ---------------------------------------------------------------------------
-# !pip install -q "git+https://github.com/huggingface/diffusers.git" transformers accelerate sentencepiece ftfy imageio imageio-ffmpeg safetensors
-#
-# ftfy is required by the Wan pipeline specifically.
-
+import gc
 import pathlib
+
+
+def _free() -> None:
+    """Drop anything unreferenced and hand the VRAM back."""
+    import torch
+
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+
+
+def _report_memory(tag: str) -> None:
+    import torch
+
+    try:
+        parts = []
+        for i in range(torch.cuda.device_count()):
+            free_b, total_b = torch.cuda.mem_get_info(i)
+            parts.append(f"gpu{i} {free_b / 1024**3:.1f}/{total_b / 1024**3:.1f} GiB free")
+        ram = ""
+        try:
+            import psutil
+
+            ram = f" | ram {psutil.virtual_memory().available / 1024**3:.1f} GiB free"
+        except Exception:
+            pass
+        print(f"  [{tag}] " + ", ".join(parts) + ram)
+    except Exception:
+        pass
+
+
+# --- phase 1 ---------------------------------------------------------------
+
+def _embeds_cache_path(prompts: dict, negative: str) -> pathlib.Path:
+    """A cache file keyed by everything that changes the embeddings."""
+    import hashlib
+
+    material = "|".join([MODEL_REPO, MODEL_REVISION, negative]
+                        + [f"{k}={v}" for k, v in sorted(prompts.items())])
+    digest = hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
+    return CACHE_DIR / f"embeds-{digest}.pt"
+
+
+def encode_all_prompts(prompts: dict, negative: str) -> dict:
+    """Encode every prompt, then free the text encoder before returning.
+
+    Returns {key: (prompt_embeds, negative_prompt_embeds)} as CPU tensors.
+    They are small -- a sequence of hidden states, not weights -- so keeping
+    all of them costs far less than keeping the encoder that made them.
+
+    Cached to disk. Loading a 22.7 GB encoder to re-encode two unchanged
+    prompts costs five minutes and buys nothing; the cache key covers the
+    model, the revision and the prompt text, so editing a prompt invalidates
+    it automatically.
+    """
+    import torch
+
+    cache = _embeds_cache_path(prompts, negative)
+    if cache.exists():
+        print(f"[phase 1] SKIPPED -- reusing {cache.name}")
+        loaded = torch.load(cache, map_location="cpu")
+        for key in sorted(loaded):
+            print(f"  cached {key}: {tuple(loaded[key][0].shape)}")
+        return loaded
+
+    if MODEL_CHOICE != "wan21":
+        raise NotImplementedError(
+            "Two-phase encoding is wired for wan21. The Hunyuan pipeline takes "
+            "four embedding tensors rather than two; see its __call__ signature."
+        )
+
+    from diffusers import WanPipeline
+
+    rev = {"revision": MODEL_REVISION} if MODEL_REVISION else {}
+
+    print("[phase 1] loading text encoder only")
+
+    # Drop whatever a previous attempt left resident before measuring. Phase 1
+    # no longer needs the GPU, but phase 2 does, and a card still holding an
+    # earlier encoder is worth seeing in the line below.
+    _free()
+    _report_memory("before")
+
+    # Phase 1 runs on the CPU, deliberately.
+    #
+    # The encoder is ~22.7 GB and a T4 is 14.6 GB, so it never fits on one
+    # card. Splitting it across both with device_map="balanced" does fit the
+    # weights, but balanced claims all available VRAM by default and leaves
+    # nothing for activations or cuBLAS handles -- both cards end at zero free
+    # and the first matmul dies with CUBLAS_STATUS_ALLOC_FAILED.
+    #
+    # RAM has room the GPUs do not, this runs once for a handful of prompts,
+    # and it is immune to anything a previous attempt left resident on a card.
+    # Slower, and worth it.
+    #
+    # bfloat16 rather than float16: CPU fp16 matmul support is patchy and
+    # raises "addmm_impl_cpu_ not implemented for 'Half'" on some builds,
+    # while bf16 is supported. Same memory either way.
+    device = "cpu"
+    pipe = WanPipeline.from_pretrained(
+        MODEL_REPO, transformer=None, dtype=torch.bfloat16, **rev
+    )
+    _report_memory("encoder loaded (cpu)")
+
+    # Repair the tied embedding.
+    #
+    # The load report prints:
+    #     encoder.embed_tokens.weight | MISSING | newly initialized
+    # while `shared.weight` loads fine. UMT5 ties those two, but the tie is
+    # not re-applied here, so embed_tokens keeps random values and every token
+    # embeds to noise. The model then denoises toward the dataset mean: a flat
+    # grey clip, identical for every prompt, which is what the 2026-08-23 run
+    # produced four of.
+    te = getattr(pipe, "text_encoder", None)
+    try:
+        if te is not None and hasattr(te, "shared") and hasattr(te, "encoder"):
+            shared_w = te.shared.weight
+            embed_w = te.encoder.embed_tokens.weight
+            if embed_w.data_ptr() != shared_w.data_ptr():
+                te.encoder.embed_tokens.weight = shared_w
+                print("  tied encoder.embed_tokens.weight -> shared.weight")
+            else:
+                print("  embed_tokens already tied")
+    except Exception as ex:
+        print(f"  could not inspect the embedding tie ({type(ex).__name__})")
+
+    # Self-test before spending an hour of GPU time.
+    #
+    # The 2026-08-23 run produced two distinct clips from four, because both
+    # prompts reached the transformer as the same embedding -- the output
+    # tracked the seed and nothing else. That is indistinguishable from
+    # success in every log line the harness prints, so it is checked here
+    # instead: two obviously unrelated strings must not encode alike.
+    probe_a, _ = pipe.encode_prompt(
+        prompt="a red cube on a table",
+        negative_prompt="",
+        do_classifier_free_guidance=True,
+        device=torch.device(device),
+        dtype=torch.bfloat16,
+    )
+    probe_b, _ = pipe.encode_prompt(
+        prompt="an astronaut riding a horse on mars",
+        negative_prompt="",
+        do_classifier_free_guidance=True,
+        device=torch.device(device),
+        dtype=torch.bfloat16,
+    )
+    delta = (probe_a.float() - probe_b.float()).abs().mean().item()
+    print(f"  encoder self-test: mean |A-B| = {delta:.6f}")
+    if delta < 1e-6:
+        raise RuntimeError(
+            "the text encoder returns the same embedding for unrelated "
+            "prompts, so nothing downstream can be prompt-driven. Check the "
+            "UMT5 load report above for a MISSING weight -- a randomly "
+            "initialised or zeroed embed_tokens produces exactly this."
+        )
+    del probe_a, probe_b
+
+    out = {}
+    for key, text in prompts.items():
+        pos, neg = pipe.encode_prompt(
+            prompt=text,
+            negative_prompt=negative,
+            do_classifier_free_guidance=True,
+            device=torch.device(device),
+            dtype=torch.bfloat16,
+        )
+        # Cast to fp16 for phase 2, which runs the transformer in fp16, and
+        # keep them on the CPU so they pin no VRAM while it loads.
+        out[key] = (pos.to("cpu", torch.float16), neg.to("cpu", torch.float16))
+        print(f"  encoded {key}: {tuple(pos.shape)}")
+
+    del pipe
+    _free()
+    _report_memory("encoder freed")
+
+    # The bench prompts themselves must also be distinguishable, not just the
+    # self-test pair.
+    keys = sorted(out)
+    for i, ka in enumerate(keys):
+        for kb in keys[i + 1:]:
+            d = (out[ka][0].float() - out[kb][0].float()).abs().mean().item()
+            print(f"  prompt {ka} vs {kb}: mean |diff| = {d:.6f}")
+            if d < 1e-6:
+                raise RuntimeError(
+                    f"prompts {ka} and {kb} encode identically; the clips "
+                    f"would differ only by seed."
+                )
+
+    # Only cached once the checks above pass, so a broken encode is never
+    # persisted and silently reused.
+    torch.save(out, cache)
+    print(f"  cached embeddings -> {cache.name}")
+    return out
+
+
+# --- phase 2 ---------------------------------------------------------------
 
 _PIPE = None
 
-def _load_wan21():
-    """Wan2.1 T2V 1.3B. Verified against the Diffusers Wan pipeline docs."""
+
+def load_generator():
+    """Load the transformer and VAE with no text encoder at all."""
+    global _PIPE
+    if _PIPE is not None:
+        return _PIPE
+
     import torch
     from diffusers import AutoModel, WanPipeline
     from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
 
     rev = {"revision": MODEL_REVISION} if MODEL_REVISION else {}
 
-    # The Wan VAE is loaded separately and stays float32 -- the docs are
-    # explicit about it, and running it in fp16 degrades the decode.
+    print("[phase 2] loading transformer + vae, text_encoder=None")
+    _report_memory("before")
+
+    # The Wan VAE stays float32; the docs are explicit and fp16 degrades decode.
     vae = AutoModel.from_pretrained(
         MODEL_REPO, subfolder="vae", dtype=torch.float32, **rev
     )
-    # float16, not the bfloat16 in the docs example: T4 and P100 are
-    # pre-Ampere and have no usable bf16.
+    # text_encoder=None is the point of the exercise: ~22 GB never loads.
     pipe = WanPipeline.from_pretrained(
-        MODEL_REPO, vae=vae, dtype=torch.float16, **rev
+        MODEL_REPO,
+        vae=vae,
+        text_encoder=None,
+        tokenizer=None,
+        dtype=torch.float16,
+        **rev,
     )
     pipe.scheduler = UniPCMultistepScheduler.from_config(
         pipe.scheduler.config, flow_shift=5.0
     )
+    pipe.to("cuda")   # ~4 GB total; no offload needed once the encoder is gone
 
-    # NOT pipe.to("cuda"). The "1.3B" names the transformer only -- Wan2.1
-    # pairs it with a UMT5-XXL text encoder of roughly 11B, so the pipeline
-    # is about 25 GB in fp16 and downloads 28.4 GB. Moving all of it onto one
-    # 14.56 GB card OOMs before the first step.
-    #
-    # Offload is what Wan's own documented example uses: the text encoder
-    # stays in CPU RAM and only the active component occupies the GPU. It
-    # costs speed, which the recorded latency reflects honestly.
-    pipe.enable_model_cpu_offload()
-
-    # AutoencoderKLWan supports neither tiling nor slicing; calling them raises.
-    return pipe
-
-
-def _load_hunyuan():
-    """HunyuanVideo-1.5. Does not fit free Kaggle -- see the config cell.
-
-    Left runnable for a 24 GB card or a quantized checkpoint. On 2x T4 every
-    split failed: whole-model CPU offload exhausted RAM, plain balanced
-    packed GPU 0 and died on activations, and capping GPU 0 pushed enough
-    back to CPU to exhaust RAM again.
-    """
-    import torch
-    from diffusers import HunyuanVideo15Pipeline
-
-    kwargs = {
-        "dtype": torch.float16,
-        "device_map": "balanced",
-        "max_memory": {0: "10GiB", 1: "13GiB", "cpu": "22GiB"},
-    }
-    if MODEL_REVISION:
-        kwargs["revision"] = MODEL_REVISION
-
-    pipe = HunyuanVideo15Pipeline.from_pretrained(MODEL_REPO, **kwargs)
-    # No .to("cuda"): device_map already placed every component.
-    pipe.vae.enable_tiling()
-    return pipe
-
-
-def load_model():
-    """Load once and cache."""
-    global _PIPE
-    if _PIPE is not None:
-        return _PIPE
-
-    import torch
-
-    _PIPE = _load_wan21() if MODEL_CHOICE == "wan21" else _load_hunyuan()
-
-    try:
-        print("device map:", _PIPE.hf_device_map)
-    except Exception:
-        pass
-
-    # Free VRAM per card after loading. A card already near full here will
-    # fail on activations whatever the prompt is -- better to see it now than
-    # after a five minute load.
-    try:
-        for i in range(torch.cuda.device_count()):
-            free_b, total_b = torch.cuda.mem_get_info(i)
-            print(f"  gpu{i}: {free_b / 1024**3:.2f} GiB free of "
-                  f"{total_b / 1024**3:.2f} GiB")
-    except Exception:
-        pass
-
-    # The docs recommend `sage_hub` for GPUs that are not H100/A100/4090.
-    # Needs sageattention installed; skipped cleanly when unavailable.
-    try:
-        _PIPE.transformer.set_attention_backend("sage_hub")
-        print("attention backend: sage_hub")
-    except Exception as ex:
-        print(f"attention backend: default ({type(ex).__name__})")
-
+    _PIPE = pipe
+    _report_memory("generator ready")
     return _PIPE
 
 
-def generate(prompt: str, seed: int, out_path: pathlib.Path) -> None:
-    """Generate one clip. The only function the rest of the notebook calls."""
+def generate_from_embeds(embeds, seed: int, out_path: pathlib.Path) -> None:
+    """Generate one clip from pre-computed embeddings."""
     import torch
     from diffusers.utils import export_to_video
 
-    pipe = load_model()
+    pipe = load_generator()
+    pos, neg = embeds
     generator = torch.Generator(device="cuda").manual_seed(seed)
 
-    call = {
-        "prompt": prompt,
-        "negative_prompt": NEGATIVE_PROMPT,
-        "num_frames": NUM_FRAMES,
-        "num_inference_steps": STEPS,
-        "generator": generator,
-    }
-    # Hunyuan takes guidance from a guider object and rejects the argument.
-    if GUIDANCE is not None:
-        call["guidance_scale"] = GUIDANCE
-    if WIDTH and HEIGHT:
-        call["height"], call["width"] = HEIGHT, WIDTH
-
-    frames = pipe(**call).frames[0]
+    frames = pipe(
+        prompt_embeds=pos.to("cuda"),
+        negative_prompt_embeds=neg.to("cuda"),
+        num_frames=NUM_FRAMES,
+        num_inference_steps=STEPS,
+        guidance_scale=GUIDANCE,
+        generator=generator,
+    ).frames[0]
     export_to_video(frames, str(out_path), fps=FPS)
 
-print("adapter ready — the model loads lazily on the first generate() call")
+
+print("adapter ready - phase 1 encodes, phase 2 generates, neither holds both")
 '''))
 
 CELLS.append(md(r"""
-## 6. Run the bake-off
+## 7. Run the bake-off
+
+Three checkpoints make retrying cheap:
+
+| Checkpoint | Saves |
+|---|---|
+| `SMOKE_TEST = True` in section 2 | the whole run: ~90s instead of ~45min |
+| Encoded prompts cached to disk | ~5 min of encoder loading per retry |
+| Existing clips skipped | ~10 min per clip already generated |
+
+Set `RESUME_RUN_ID` in section 2 to a previous run id to write into that same
+directory, and any clip already there is left alone.
 
 4 clips: 2 prompts x 2 seeds. The two seeds per prompt are the *two consecutive
 runs* the gate asks for — they show whether the model is repeatable or whether
@@ -532,7 +721,11 @@ def sha256_of(path: pathlib.Path) -> str:
 
 RESULTS = []
 
-for prompt_key, prompt_text in PROMPTS.items():
+# Phase 1 for every prompt, once. If this fails there is no point loading the
+# transformer, so it is deliberately outside the per-clip error handling.
+EMBEDS = encode_all_prompts(PROMPTS, NEGATIVE_PROMPT)
+
+for prompt_key in PROMPTS:
     for run_index, seed in enumerate(SEEDS, start=1):
         name = f"{prompt_key}{run_index}_seed{seed}.mp4"
         target = RAW_DIR / name
@@ -542,9 +735,22 @@ for prompt_key, prompt_text in PROMPTS.items():
             "prompt_key": prompt_key, "run_index": run_index, "seed": seed,
             "file": name, "status": "failed",
         }
+
+        # Resume. A clip that already exists is 10 minutes already spent.
+        if target.exists() and target.stat().st_size > 1024:
+            record.update(
+                status="ok",
+                bytes=target.stat().st_size,
+                sha256=sha256_of(target),
+                reused=True,
+            )
+            print(f"  reused existing file ({record['bytes']:,} bytes)")
+            RESULTS.append(record)
+            continue
+
         try:
             with ResourceSampler() as rs:
-                generate(prompt_text, seed, target)
+                generate_from_embeds(EMBEDS[prompt_key], seed, target)
             record.update(
                 status="ok",
                 seconds=rs.seconds,
@@ -568,7 +774,7 @@ print(f"\n{len(ok)}/{len(RESULTS)} clips generated")
 '''))
 
 CELLS.append(md(r"""
-## 7. Playback proof
+## 8. Playback proof
 
 The gate requires H.264 playback proof. A file that exists is not a clip that
 plays — this reads the actual stream with `ffprobe` and reports codec, duration
@@ -606,7 +812,7 @@ if any(r.get("status") == "ok" and not r.get("playable_h264") for r in RESULTS):
 '''))
 
 CELLS.append(md(r"""
-## 8. Blind relabel
+## 9. Blind relabel
 
 `QUALITY_SCORECARD.md` scores clips `A1 A2 B1 B2`, and section 8 requires
 scoring **without model labels**. Filenames carrying the model name or seed
@@ -637,7 +843,7 @@ print("blind clips :", sorted(p.name for p in BLIND_DIR.glob("*.mp4")))
 print("key written :", OUT_DIR / "BLIND_KEY.json", "(do not open until scored)")
 '''))
 
-CELLS.append(md("## 9. Ledger entry and summary"))
+CELLS.append(md("## 10. Ledger entry and summary"))
 
 CELLS.append(code(r'''
 ok = [r for r in RESULTS if r["status"] == "ok"]
@@ -649,6 +855,17 @@ times     = [r["seconds"] for r in ok if "seconds" in r]
 avg       = round(sum(times) / len(times), 2) if times else None
 all_h264  = bool(ok) and all(r.get("playable_h264") for r in ok)
 
+# Distinct outputs. Four files that are two videos is a failed experiment
+# wearing a successful one's clothes: every count, timing and memory figure
+# looks right while the prompts were never in play.
+_digests = [r["sha256"] for r in ok if r.get("sha256")]
+_distinct = len(set(_digests))
+_all_distinct = _distinct == len(_digests) and bool(_digests)
+if not _all_distinct:
+    print(f"\n*** {_distinct} distinct clips from {len(_digests)} files ***")
+    print("*** Identical outputs mean the prompts did not reach the model. ***")
+    print("*** This run is NOT scoreable. Do not fill in the scorecard. ***\n")
+
 # Resolution comes from ffprobe on a real output, not from the request: the
 # checkpoint chooses its own when WIDTH/HEIGHT are left as None.
 _dims = next((r.get("dims") for r in ok if r.get("dims")), None)
@@ -656,7 +873,7 @@ _res = _dims or (f"{WIDTH}x{HEIGHT}" if WIDTH and HEIGHT else "native resolution
 _secs = round(NUM_FRAMES / FPS, 1)
 
 summary = (
-    f"{len(ok)}/{len(RESULTS)} clips generated; "
+    f"{len(ok)}/{len(RESULTS)} clips generated, {_distinct} distinct; "
     f"peak VRAM {peak_vram}{' GiB' if _vram else ''}; "
     f"peak RAM {peak_ram}{' GiB' if _ram else ''}; "
     f"mean {avg}s per {NUM_FRAMES}-frame clip; "
@@ -674,7 +891,7 @@ entry = f"""  - id: "EVD-EXP005-XXX"
     evidence_level: "observed runtime"
     tool_and_version: "{MODEL_LABEL}; torch {ENV.get('torch')}; cuda {ENV.get('cuda')}"
     policy_standard_or_target_revision: "{MODEL_REPO}@{MODEL_REVISION or 'UNPINNED — pin before selection'}"
-    status: "{'passed' if ok and all_h264 else 'failed'}"
+    status: "{'passed' if ok and all_h264 and _all_distinct else 'failed'}"
     environment: "Kaggle; {ENV.get('gpu')}; {ENV.get('total_ram_gib')} GiB RAM"
     executed_at: "{datetime.datetime.now(datetime.UTC):%Y-%m-%d}"
     exit_code: {0 if len(ok) == len(RESULTS) else 1}
@@ -694,12 +911,14 @@ print("=== gate reference (EXP-005 section 8) ===")
 print(f"  peak VRAM observed : {peak_vram}{' GiB' if _vram else ''}")
 print(f"  peak RAM observed  : {peak_ram}{' GiB' if _ram else ''}")
 print(f"  repeatable         : {'yes' if len(ok) == len(RESULTS) else 'NO — a run failed'}")
+print(f"  distinct outputs   : {_distinct}/{len(_digests)}"
+      f"{'' if _all_distinct else '  <-- prompts did not reach the model'}")
 print(f"  H.264 playback     : {'yes' if all_h264 else 'NO'}")
 print("  quality            : not measured here — blind scoring decides")
 '''))
 
 CELLS.append(md(r"""
-## 10. Download before the session ends
+## 11. Download before the session ends
 
 `/kaggle/working` is **wiped when the session ends**. Nothing below is
 recoverable afterwards, so run this cell and download the archive before you
@@ -733,9 +952,9 @@ display(FileLink(pathlib.Path(archive).name))
 '''))
 
 CELLS.append(md(r"""
-## 11. After the run
+## 12. After the run
 
-1. **Download the archive from section 10** if you have not already. Kaggle
+1. **Download the archive from section 11** if you have not already. Kaggle
    wipes `/kaggle/working` when the session ends.
 2. **Score the clips** in `QUALITY_SCORECARD.md`. Bruce and S0ra1n0 score
    independently, from `blind/` only, without opening the key.
