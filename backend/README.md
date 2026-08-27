@@ -57,3 +57,22 @@ The request uses a 4K context, a bounded 180-token response, and
 .\.venv\Scripts\python.exe -m ruff check .
 .\.venv\Scripts\python.exe -m pytest
 ```
+
+That leaves **31 tests skipped**: `test_postgres_parity.py` needs a real
+Postgres, and production runs Postgres. Everything with a second implementation
+in `postgres.py` — the credit ledger especially — is unexercised until you run
+them.
+
+```powershell
+docker run -d --rm --name cretona-pg-test -e POSTGRES_PASSWORD=test `
+  -e POSTGRES_DB=cretona_test -p 55433:5432 postgres:17-alpine
+
+$env:CRETONA_TEST_DATABASE_URL = "postgresql://postgres:test@127.0.0.1:55433/cretona_test"
+.\.venv\Scripts\python.exe -m pytest
+
+docker stop cretona-pg-test
+```
+
+Expect **468 passed, 0 skipped**. `tests/db_safety.py` refuses to apply the
+destructive test schema to anything but a local host, so this cannot be pointed
+at Supabase by accident.

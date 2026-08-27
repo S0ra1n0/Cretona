@@ -19,6 +19,7 @@ import pytest
 from fastapi.testclient import TestClient
 from psycopg.rows import dict_row
 
+from app.errors import AppError
 from app.postgres import SELECTED_COLUMNS, PostgresDatabase, SchemaMismatchError
 from tests.conftest import USER_A, USER_B
 
@@ -670,3 +671,232 @@ def test_retry_rules_match_the_reference(
     response = postgres_client.post(f"/api/v1/projects/{created['id']}/retry", headers=headers)
 
     assert response.status_code == expected
+
+
+# --- credits (S-04/S-05) -----------------------------------------------------
+#
+# The whole point of this section: every credit method has a second
+# implementation in app/postgres.py that the sqlite suite never touches.
+# `%s` placeholders, `FILTER (WHERE ...)`, `::timestamptz` casts and the
+# uuid -> str normalisation in `_to_credit_row` are all Postgres-only code, and
+# a mistake in any of them would only ever surface in production.
+
+
+def credit_service(client: TestClient):
+    return client.app.state.credit_service
+
+
+def test_credits_grant_and_charge_on_postgres(postgres_client: TestClient) -> None:
+    credits = credit_service(postgres_client)
+    start = credits.balance(USER_A)
+
+    row, created = credits.charge(USER_A, 3, ref_type="project", ref_id="p1")
+
+    assert created is True
+    assert row["delta"] == -3
+    assert row["balance_after"] == start - 3
+    assert credits.balance(USER_A) == start - 3
+    # uuid columns must arrive as strings, or the service layer would be
+    # holding a different type on each backend.
+    assert isinstance(row["id"], str)
+    assert isinstance(row["user_id"], str)
+    assert isinstance(row["created_at"], str)
+    assert row["created_at"].endswith("Z")
+
+
+def test_a_charge_beyond_the_balance_is_refused_on_postgres(
+    postgres_client: TestClient,
+) -> None:
+    credits = credit_service(postgres_client)
+    balance = credits.balance(USER_A)
+
+    with pytest.raises(AppError) as excinfo:
+        credits.charge(USER_A, balance + 1, ref_type="project", ref_id="p1")
+
+    assert excinfo.value.status_code == 402
+    assert credits.balance(USER_A) == balance
+
+
+def test_the_non_negative_constraint_is_live_on_postgres(
+    postgres_client: TestClient, postgres_url: str
+) -> None:
+    """The guard is a CHECK, not a Python branch. Prove it bites."""
+    with psycopg.connect(postgres_url, autocommit=True) as connection:  # noqa: SIM117
+        with pytest.raises(psycopg.errors.CheckViolation):
+            connection.execute(
+                "UPDATE public.users SET credit_balance = -1 WHERE id = %s", (USER_A,)
+            )
+
+
+def test_a_replayed_key_charges_once_on_postgres(postgres_client: TestClient) -> None:
+    credits = credit_service(postgres_client)
+    start = credits.balance(USER_A)
+
+    first, created_first = credits.charge(USER_A, 1, idempotency_key="PG-KEY")
+    second, created_second = credits.charge(USER_A, 1, idempotency_key="PG-KEY")
+
+    assert created_first is True
+    assert created_second is False
+    assert first["id"] == second["id"]
+    assert credits.balance(USER_A) == start - 1
+
+
+def test_refund_reads_back_the_original_amount_on_postgres(
+    postgres_client: TestClient,
+) -> None:
+    credits = credit_service(postgres_client)
+    start = credits.balance(USER_A)
+    credits.charge(USER_A, 4, ref_type="project", ref_id="pg-refund")
+
+    refund = credits.refund_for(USER_A, ref_type="project", ref_id="pg-refund")
+
+    assert refund is not None
+    assert refund["delta"] == 4
+    assert credits.balance(USER_A) == start
+    assert credits.refund_for(USER_A, ref_type="project", ref_id="pg-refund") is None
+
+
+def test_totals_and_history_on_postgres(postgres_client: TestClient) -> None:
+    credits = credit_service(postgres_client)
+    credits.grant(USER_A, 7, reason="event_grant")
+    credits.charge(USER_A, 2, ref_type="project", ref_id="pg-hist")
+
+    granted, spent = credits.totals(USER_A)
+    assert granted >= 7
+    assert spent >= 2
+
+    rows, cursor = credits.history(USER_A, limit=1)
+    assert len(rows) == 1
+    assert cursor is not None
+
+    page_two, _ = credits.history(USER_A, limit=1, cursor=cursor)
+    assert page_two
+    assert rows[0]["id"] != page_two[0]["id"]
+
+    only_grants, _ = credits.history(USER_A, reason="event_grant")
+    assert all(row["reason"] == "event_grant" for row in only_grants)
+
+
+def test_the_ledger_explains_the_balance_on_postgres(postgres_client: TestClient) -> None:
+    credits = credit_service(postgres_client)
+    credits.charge(USER_A, 2, ref_type="project", ref_id="pg-drift")
+    credits.refund_for(USER_A, ref_type="project", ref_id="pg-drift")
+    credits.grant(USER_B, 5, reason="purchase")
+
+    assert postgres_client.app.state.database.ledger_drift() == []
+
+
+def test_drift_is_detectable_on_postgres(
+    postgres_client: TestClient, postgres_url: str
+) -> None:
+    """Going around CreditService is exactly what the check has to catch."""
+    with psycopg.connect(postgres_url, autocommit=True) as connection:
+        connection.execute(
+            "UPDATE public.users SET credit_balance = credit_balance + 999 WHERE id = %s",
+            (USER_B,),
+        )
+
+    assert postgres_client.app.state.database.ledger_drift() == [USER_B]
+
+
+def test_concurrent_charges_cannot_overspend_on_postgres(
+    postgres_client: TestClient,
+) -> None:
+    """The one that matters, on the backend production actually runs.
+
+    Ten threads race a balance that covers three. The guard is the UPDATE's
+    WHERE clause, so exactly three may win no matter how they interleave.
+    """
+    credits = credit_service(postgres_client)
+    # Spend down to a known, small balance first.
+    credits.charge(USER_A, credits.balance(USER_A) - 3, ref_type="project", ref_id="pg-drain")
+    assert credits.balance(USER_A) == 3
+
+    def spend(index: int) -> bool:
+        try:
+            credits.charge(USER_A, 1, ref_type="project", ref_id=f"pg-race-{index}")
+        except AppError:
+            return False
+        return True
+
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        results = list(pool.map(spend, range(10)))
+
+    assert sum(results) == 3
+    assert credits.balance(USER_A) == 0
+    assert postgres_client.app.state.database.ledger_drift() == []
+
+
+def test_settings_round_trip_on_postgres(postgres_client: TestClient) -> None:
+    database = postgres_client.app.state.database
+    database.set_setting(
+        "generation_cost_credits",
+        "4",
+        updated_by=USER_A,
+        updated_at="2026-08-28T00:00:00Z",
+    )
+
+    assert database.get_setting("generation_cost_credits") == "4"
+    assert credit_service(postgres_client).generation_cost() == 4
+    assert database.get_setting("no_such_key") is None
+
+
+def test_the_auto_grant_event_is_found_on_postgres(
+    postgres_client: TestClient, postgres_url: str
+) -> None:
+    """Drives `find_auto_grant_event`, including its timestamptz comparisons."""
+    with psycopg.connect(postgres_url, autocommit=True) as connection:
+        connection.execute(
+            "INSERT INTO public.events (code, name, kind, bonus_credits, recurrence, "
+            " starts_at, ends_at, auto_grant, is_active) VALUES "
+            "('PG_SIGNUP', 'Welcome', 'grant', 5, 'once', "
+            " now() - interval '1 day', now() + interval '1 day', true, true)"
+        )
+
+    event = postgres_client.app.state.database.find_auto_grant_event(
+        datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    )
+
+    assert event is not None
+    assert event["code"] == "PG_SIGNUP"
+    assert event["bonus_credits"] == 5
+    assert isinstance(event["id"], str)
+
+
+def test_an_expired_auto_grant_event_is_not_found_on_postgres(
+    postgres_client: TestClient, postgres_url: str
+) -> None:
+    with psycopg.connect(postgres_url, autocommit=True) as connection:
+        connection.execute(
+            "INSERT INTO public.events (code, name, kind, bonus_credits, recurrence, "
+            " starts_at, ends_at, auto_grant, is_active) VALUES "
+            "('PG_EXPIRED', 'Old', 'grant', 5, 'once', "
+            " now() - interval '10 day', now() - interval '1 day', true, true)"
+        )
+
+    event = postgres_client.app.state.database.find_auto_grant_event(
+        datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    )
+
+    assert event is None or event["code"] != "PG_EXPIRED"
+
+
+def test_the_signup_bonus_lands_through_the_api_on_postgres(
+    postgres_client: TestClient, bearer: BearerFactory, postgres_url: str
+) -> None:
+    """End to end on Postgres: reading the profile grants the bonus once."""
+    with psycopg.connect(postgres_url, autocommit=True) as connection:
+        connection.execute(
+            "INSERT INTO public.events (code, name, kind, bonus_credits, recurrence, "
+            " starts_at, ends_at, auto_grant, is_active) VALUES "
+            "('PG_WELCOME', 'Welcome', 'grant', 5, 'once', "
+            " now() - interval '1 day', now() + interval '1 day', true, true)"
+        )
+
+    credits = credit_service(postgres_client)
+    before = credits.balance(USER_B)
+
+    for _ in range(3):
+        postgres_client.get("/api/v1/me", headers=bearer(subject=USER_B))
+
+    assert credits.balance(USER_B) == before + 5

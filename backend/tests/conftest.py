@@ -151,6 +151,11 @@ def postgres_client(tmp_path: Path, postgres_url: str) -> Iterator[TestClient]:
         database_url=postgres_url,
     )
     with TestClient(create_app(settings), raise_server_exceptions=False) as test_client:
+        # Same reason as the sqlite fixtures: a generation costs credits (S-05)
+        # and these tests are about repository parity, not billing. Going
+        # through CreditService rather than an INSERT means the Postgres credit
+        # path is exercised on every parity run.
+        _seed_credits(test_client, USER_A, USER_B)
         yield test_client
 
 
