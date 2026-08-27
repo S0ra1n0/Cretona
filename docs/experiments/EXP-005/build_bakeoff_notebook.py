@@ -145,8 +145,14 @@ PRESETS = {
         "label": "Wan2.1 T2V 1.3B",
         "repo": "Wan-AI/Wan2.1-T2V-1.3B-Diffusers",
         "revision": "0fad780a534b6463e45facd96134c9f345acfa5b",
-        # 81 frames at 16fps is the documented default: a ~5.1s clip, which
-        # happens to match the app's 5s default almost exactly.
+        # Frame count must satisfy 4n+1: the Wan VAE compresses time by 4x, so
+        # the latent length is (num_frames - 1) / 4 + 1 and only lands on a
+        # whole number when num_frames - 1 divides by 4. 64 is not valid; 65 is.
+        #
+        #   49 -> 3.1s    65 -> 4.1s    81 -> 5.1s (documented default)
+        #
+        # 81 at 16fps = 5.06s, matching the app's 5s default. Roughly 16 min
+        # per clip on a T4.
         "num_frames": 81,
         "fps": 16,
         "steps": 50,
@@ -182,17 +188,20 @@ WIDTH, HEIGHT = None, None
 SEEDS = [1234, 5678]   # two consecutive runs per prompt -> repeatability
 
 # --- smoke test -------------------------------------------------------------
-# True: one prompt, one seed, 8 steps, 25 frames. Roughly 90 seconds instead
-# of 45 minutes, and it exercises every line the full run does. Use it to find
-# out whether the pipeline works at all; the output is far too coarse to judge
-# quality and must never be scored.
+# True: both prompts, one seed each, 8 steps, 25 frames -- so TWO clips, and
+# `distinct outputs: 2/2` is the correct result here, not 4/4. Both prompts are
+# kept deliberately: one clip could not show whether the prompt reaches the
+# model at all, which is the thing most worth checking cheaply.
+#
+# Roughly 3 minutes instead of 50, exercising every line the full run does.
+# Far too coarse to judge quality; never score it.
 SMOKE_TEST = True
 
 if SMOKE_TEST:
     STEPS = 8
-    NUM_FRAMES = 25
+    NUM_FRAMES = 25   # 4n+1 as above: 25 = 4*6+1
     SEEDS = [1234]
-    print("*** SMOKE TEST: 1 clip, 8 steps, 25 frames. NOT scoreable. ***")
+    print("*** SMOKE TEST: 2 clips, 8 steps, 25 frames. NOT scoreable. ***")
 
 # --- resuming ---------------------------------------------------------------
 # Leave empty for a fresh run. Paste a previous run id here to write into that
@@ -572,14 +581,28 @@ def encode_all_prompts(prompts: dict, negative: str) -> dict:
         device=torch.device(device),
         dtype=torch.bfloat16,
     )
-    delta = (probe_a.float() - probe_b.float()).abs().mean().item()
-    print(f"  encoder self-test: mean |A-B| = {delta:.6f}")
-    if delta < 1e-6:
+    # Measure only where there is content. Both prompts pad to
+    # max_sequence_length (226), and short prompts leave most of that identical
+    # -- averaging over the padding drags the number toward zero and makes a
+    # healthy encoder look broken. 0.001976 on 2026-08-26 was exactly this.
+    _a, _b = probe_a.float()[0], probe_b.float()[0]
+    _live = (_a.abs().sum(-1) > 1e-6) | (_b.abs().sum(-1) > 1e-6)
+    delta_all = (_a - _b).abs().mean().item()
+    delta = (_a[_live] - _b[_live]).abs().mean().item() if int(_live.sum()) else 0.0
+    _cos = torch.nn.functional.cosine_similarity(
+        _a[_live].flatten(), _b[_live].flatten(), dim=0
+    ).item() if int(_live.sum()) else 1.0
+    print(f"  encoder self-test: {int(_live.sum())}/{_a.shape[0]} positions carry content")
+    print(f"    mean |A-B| over content : {delta:.6f}   <-- the number that matters")
+    print(f"    mean |A-B| incl padding : {delta_all:.6f}   (diluted, ignore)")
+    print(f"    cosine similarity       : {_cos:.6f}   (1.0 would mean identical)")
+    if _cos > 0.999:
         raise RuntimeError(
-            "the text encoder returns the same embedding for unrelated "
-            "prompts, so nothing downstream can be prompt-driven. Check the "
-            "UMT5 load report above for a MISSING weight -- a randomly "
-            "initialised or zeroed embed_tokens produces exactly this."
+            f"the text encoder returns near-identical embeddings for unrelated "
+            f"prompts (cosine {_cos:.6f}), so nothing downstream can be "
+            f"prompt-driven. Check the UMT5 load report above for a MISSING "
+            f"weight -- a randomly initialised or zeroed embed_tokens produces "
+            f"exactly this."
         )
     del probe_a, probe_b
 
@@ -606,9 +629,14 @@ def encode_all_prompts(prompts: dict, negative: str) -> dict:
     keys = sorted(out)
     for i, ka in enumerate(keys):
         for kb in keys[i + 1:]:
-            d = (out[ka][0].float() - out[kb][0].float()).abs().mean().item()
-            print(f"  prompt {ka} vs {kb}: mean |diff| = {d:.6f}")
-            if d < 1e-6:
+            _x, _y = out[ka][0].float()[0], out[kb][0].float()[0]
+            _lv = (_x.abs().sum(-1) > 1e-6) | (_y.abs().sum(-1) > 1e-6)
+            d = (_x[_lv] - _y[_lv]).abs().mean().item() if int(_lv.sum()) else 0.0
+            c = torch.nn.functional.cosine_similarity(
+                _x[_lv].flatten(), _y[_lv].flatten(), dim=0
+            ).item() if int(_lv.sum()) else 1.0
+            print(f"  prompt {ka} vs {kb}: mean |diff| = {d:.6f}, cosine = {c:.6f}")
+            if c > 0.999:
                 raise RuntimeError(
                     f"prompts {ka} and {kb} encode identically; the clips "
                     f"would differ only by seed."

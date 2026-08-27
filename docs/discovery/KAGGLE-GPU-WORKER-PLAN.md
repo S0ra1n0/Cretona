@@ -3,25 +3,31 @@
 - **Document ID:** `CRETONA-KAGGLE-WORKER-001`
 - **Mode:** Design proposal; nothing here is built
 - **Written:** 2026-08-19
-- **Status:** **BLOCKED 2026-08-23 — do not build.** The premise failed:
-  free Kaggle cannot run a current text-to-video pipeline. See
-  `docs/evidence/EXP-005_KAGGLE_T2V_DISCONFIRMED_2026-08-23.md`.
+- **Status:** **UNBLOCKED 2026-08-27.** Kaggle generates real text-to-video
+  with Wan2.1 T2V 1.3B via a two-phase load, ~10 min per clip. See
+  `docs/evidence/EXP-005_KAGGLE_T2V_WORKING_2026-08-27.md`. Build order below;
+  still gated on a scored full run.
 - **Related:** `ADR-009`, `FREE-LOCAL-BEST-OUTPUT.md` §11,
   `EXP-005_HOST_RECHECK_2026-08-19.md`
 
-> **Blocked, 2026-08-23.** This plan assumed Kaggle supplies the compute the
-> laptop cannot. That assumption was tested and is false: two models and five
-> memory configurations produced zero clips. The binding constraint turned out
-> to be **system RAM, not VRAM** — the final attempt failed to allocate a cuBLAS
-> handle while both GPUs sat at 14.46 of 14.56 GiB free, because ~25 GB of
-> offloaded weights left no pinned host memory in a ~30 GB budget.
+> **Unblocked, 2026-08-27.** This plan assumed Kaggle could supply the compute
+> the laptop cannot. That was disconfirmed on 2026-08-23 and is now confirmed:
+> the earlier failures were a loading strategy, not a hardware limit. Holding
+> the text encoder and transformer together needs ~25 GB; loading them in two
+> phases needs ~4 GB at peak, and the same T4s generate fine.
 >
-> **W1-W3 must not be started.** W4 (`del image_path`) is unaffected: it is
-> app-side and needed by any provider that ever ships.
+> **Measured:** Wan2.1 T2V 1.3B, 4/4 clips, ~10.4 min each, peak 13.6 GiB
+> VRAM and 25.7 GiB RAM.
 >
-> The architecture below is still sound and worth keeping. It becomes live again
-> the moment a host exists that can actually generate — see §8 of the evidence
-> document for the reopening conditions.
+> **W1 and W2 can start.** W4 is already done (2026-08-23). W3 — the worker —
+> should wait for a full run scored `distinct outputs: 4/4`, because there is
+> no point automating a model the team has not yet agreed is good enough.
+>
+> **One correction to §4 W3 below:** it names HunyuanVideo 1.5 as the model to
+> run. That model is still rejected for this host — its transformer alone is
+> ~16.6 GB in fp16, above a single T4. The worker should run **Wan2.1 T2V
+> 1.3B**, and must use the same two-phase load the notebook uses, keeping the
+> encoder resident between jobs rather than reloading it per request.
 
 ## 1. The problem this solves
 

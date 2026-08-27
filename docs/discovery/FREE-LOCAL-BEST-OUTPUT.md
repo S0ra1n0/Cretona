@@ -4,10 +4,14 @@
 - **Mode:** Landscape/select
 - **Observation date:** 2026-08-11 · host figures rechecked 2026-08-19
 - **Decision owner:** Bruce and S0ra1n0
-- **Status:** EXP-005 active; Qwen passed, LTX pre-screen rejected, **FramePack unblocked 2026-08-19 — preflight now passes, bake-off not yet run**
+- **Status:** EXP-005 active; Qwen passed, LTX pre-screen rejected, FramePack unblocked but never run, **Wan2.1 T2V generating on Kaggle 2026-08-27 — quality not yet scored**
 - **Host recheck:** `docs/evidence/EXP-005_HOST_RECHECK_2026-08-19.md`
-- **Kaggle result:** `docs/evidence/EXP-005_KAGGLE_T2V_DISCONFIRMED_2026-08-23.md`
-  — HunyuanVideo 1.5 and Wan2.1 T2V 1.3B both disconfirmed on free Kaggle
+- **Kaggle result 2026-08-27:** `docs/evidence/EXP-005_KAGGLE_T2V_WORKING_2026-08-27.md`
+  — **Wan2.1 T2V 1.3B generates on free Kaggle**, ~10 min/clip, via a two-phase
+  load that never holds the text encoder and transformer together. Quality not
+  yet scored.
+- **Superseded:** `EXP-005_KAGGLE_T2V_DISCONFIRMED_2026-08-23.md` — its five
+  failed configurations stand as record; its conclusion does not.
 
 ## 1. Decision and definition of free
 
@@ -54,6 +58,12 @@ under a gigabyte, and a browser or a running emulator can erase it.
 >
 > Read every row below as "VRAM only, unverified" until the whole pipeline —
 > text encoder included — has been measured.
+>
+> **2026-08-27:** the constraint is also softer than it looks. Loading the text
+> encoder and transformer in *separate phases* drops peak memory to the larger
+> of the two rather than their sum, which is what made Wan2.1 run on hardware
+> this table implies it cannot. Judge a candidate by its largest single
+> component, not its total.
 
 
 Quality ranks below are not interchangeable with local feasibility. Arena

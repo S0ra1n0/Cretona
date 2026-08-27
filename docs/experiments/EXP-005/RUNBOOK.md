@@ -49,8 +49,10 @@ If it says `MISSING: torch, diffusers, ...` the pip line is still commented.
 **`SMOKE_TEST = True` is the default in cell 4.** Leave it for the first run of
 any session or after any change.
 
-One prompt, one seed, 8 steps, 25 frames: **~90 seconds** instead of ~45
-minutes, exercising every line the full run does.
+Both prompts, one seed each, 8 steps, 25 frames: **~3 minutes** instead of
+~50, exercising every line the full run does. That is **2 clips**, so
+`distinct outputs: 2/2` is the correct result in smoke mode — 4/4 belongs to a
+full run.
 
 Run cells **4 → 22** in order. Skip cell 2.
 
@@ -58,7 +60,7 @@ Run cells **4 → 22** in order. Skip cell 2.
 
 **Cell 4 — configuration**
 ```
-*** SMOKE TEST: 1 clip, 8 steps, 25 frames. NOT scoreable. ***
+*** SMOKE TEST: 2 clips, 8 steps, 25 frames. NOT scoreable. ***
 model  : Wan2.1 T2V 1.3B
 clip   : 25 frames at 16fps = ~1.6s
 ```
@@ -74,7 +76,9 @@ clip   : 25 frames at 16fps = ~1.6s
   [before] gpu0 14.4/14.6 GiB free, gpu1 14.4/14.6 GiB free | ram 29 GiB free
   [encoder loaded (cpu)] ...
   tied encoder.embed_tokens.weight -> shared.weight      <-- 1
-  encoder self-test: mean |A-B| = 0.284531               <-- 2
+  encoder self-test: 120/226 positions carry content
+    mean |A-B| over content : 0.073210                   <-- 2
+    cosine similarity       : 0.153194                   <-- 2
   encoded A: (1, 226, 4096)
   [encoder freed] ...
   cached embeddings -> embeds-a1b2c3d4e5f6a7b8.pt        <-- 3
@@ -87,7 +91,7 @@ clip   : 25 frames at 16fps = ~1.6s
 | # | Line | Must be |
 |---|---|---|
 | 1 | the tie | either message is fine; it reports what it did |
-| 2 | self-test | **not `0.000000`.** Zero means the encoder can't tell prompts apart and it raises |
+| 2 | self-test | **cosine well below 1.0** (0.15 is healthy). The mean is measured over content only — averaging in the ~106 padding rows drags it toward zero and misleads |
 | 3 | cache | written only after the checks pass |
 | 4 | generator | a few GB used, not a card at `0.0` free |
 
@@ -193,7 +197,7 @@ Every row below is a failure that actually happened on 2026-08-23/26.
 | `NameError: PROMPTS is not defined` | Kernel restarted; cell 4 has not run since | Run cells 4 → 22, or Run All |
 | **All clips flat grey** | Text conditioning is meaningless | The `embed_tokens` tie repair addresses this. Check self-test line 2 |
 | **Clips byte-identical** | Prompts never reached the model | Cell 20 now catches it. Check the `distinct outputs` line |
-| `encoder self-test: 0.000000` | Encoder cannot distinguish prompts | Raises on purpose. Do not proceed; the tie repair did not work |
+| `cosine similarity: 0.999+` | Encoder cannot distinguish prompts | Raises on purpose. Do not proceed; the tie repair did not work |
 
 ### Freeing stuck GPU memory without losing the weights
 

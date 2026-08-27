@@ -5,7 +5,21 @@
 - **Observation date:** 2026-08-23
 - **Host:** Kaggle, 2x NVIDIA T4 (14.56 GiB VRAM each), ~30 GB system RAM
 - **Notebook:** `docs/experiments/EXP-005/EXP-005_T2V_bakeoff.ipynb`
-- **Outcome:** **0 of 4 clips generated, in every configuration attempted.**
+- **Outcome:** 0 of 4 clips generated in the five configurations tried here.
+- **Status:** **SUPERSEDED 2026-08-27** — the host does work, via a two-phase load.
+
+> **SUPERSEDED 2026-08-27** by
+> `EXP-005_KAGGLE_T2V_WORKING_2026-08-27.md`.
+>
+> The measurements below are accurate and worth keeping. **The conclusion is
+> not.** Free Kaggle does run a current text-to-video pipeline; every failure
+> recorded here came from loading the text encoder and the transformer into
+> memory together. Splitting them into two phases — encode, free, then load
+> the transformer — drops peak memory from ~25 GB to ~4 GB and the same host
+> generates fine.
+>
+> Read this document as a record of five configurations that do not work, not
+> as a limit of the hardware.
 
 ## 1. Claim tested
 
