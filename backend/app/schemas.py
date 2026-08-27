@@ -376,3 +376,33 @@ class LedgerDriftResponse(ApiModel):
     checked_at: str = Field(alias="checkedAt")
     drifted_user_ids: list[str] = Field(alias="driftedUserIds")
     healthy: bool
+
+
+class EventResponse(ApiModel):
+    id: str
+    code: str
+    name: str
+    description: str | None = None
+    kind: str
+    bonus_credits: int | None = Field(default=None, alias="bonusCredits")
+    discount_percent: int | None = Field(default=None, alias="discountPercent")
+    recurrence: str
+    is_active_now: bool = Field(alias="isActiveNow")
+    active_until: str | None = Field(default=None, alias="activeUntil")
+    next_active_at: str | None = Field(default=None, alias="nextActiveAt")
+    # The one flag the app's button binds to. Computed server-side so the rule
+    # that gives credits away lives in exactly one place.
+    claimable: bool
+    claimed_this_period: bool = Field(alias="claimedThisPeriod")
+    remaining_slots: int | None = Field(default=None, alias="remainingSlots")
+
+
+class EventPage(ApiModel):
+    items: list[EventResponse]
+    next_cursor: str | None = Field(default=None, alias="nextCursor")
+
+
+class EventClaimResponse(ApiModel):
+    credits_granted: int = Field(alias="creditsGranted")
+    balance: int
+    transaction_id: str = Field(alias="transactionId")

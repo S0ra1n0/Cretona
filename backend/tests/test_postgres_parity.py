@@ -993,3 +993,108 @@ def test_an_unknown_package_leaves_nothing_behind_on_postgres(
     with psycopg.connect(postgres_url, row_factory=dict_row) as connection:
         count = connection.execute("SELECT COUNT(*) AS n FROM public.payments").fetchone()
     assert count["n"] == 0
+
+
+# --- events (S-11) -----------------------------------------------------------
+#
+# `claim_event` on Postgres uses `INSERT ... SELECT ... WHERE ... ON CONFLICT
+# DO NOTHING RETURNING *` to enforce the cap and the once-per-period rule in a
+# single statement. That construct shares nothing with the sqlite version, and
+# if it silently inserted nothing the caller would read it as "full" forever.
+
+
+def seed_event(postgres_url: str, *, bonus: int = 10, max_claims: int | None = None) -> str:
+    with psycopg.connect(postgres_url, autocommit=True, row_factory=dict_row) as connection:
+        row = connection.execute(
+            "INSERT INTO public.events (code, name, kind, bonus_credits, recurrence, "
+            " starts_at, ends_at, max_claims, is_active) VALUES "
+            "(%s, 'PG event', 'grant', %s, 'once', now() - interval '1 day', "
+            " now() + interval '30 day', %s, true) RETURNING id",
+            (f"PG_{uuid4().hex[:8]}", bonus, max_claims),
+        ).fetchone()
+    return str(row["id"])
+
+
+def test_claiming_grants_credits_on_postgres(
+    postgres_client: TestClient, postgres_url: str
+) -> None:
+    event_id = seed_event(postgres_url, bonus=12)
+    events = postgres_client.app.state.event_service
+    credits = postgres_client.app.state.credit_service
+    before = credits.balance(USER_A)
+
+    result = events.claim(USER_A, event_id)
+
+    assert result["credits_granted"] == 12
+    assert result["balance"] == before + 12
+    assert isinstance(result["transaction_id"], str)
+
+    rows, _ = credits.history(USER_A, limit=1)
+    assert rows[0]["reason"] == "event_grant"
+    assert rows[0]["ref_id"] == event_id
+    assert postgres_client.app.state.database.ledger_drift() == []
+
+
+def test_claiming_twice_is_refused_on_postgres(
+    postgres_client: TestClient, postgres_url: str
+) -> None:
+    event_id = seed_event(postgres_url)
+    events = postgres_client.app.state.event_service
+    credits = postgres_client.app.state.credit_service
+    events.claim(USER_A, event_id)
+    after_first = credits.balance(USER_A)
+
+    with pytest.raises(AppError) as excinfo:
+        events.claim(USER_A, event_id)
+
+    assert excinfo.value.code == "EVENT_ALREADY_CLAIMED"
+    assert credits.balance(USER_A) == after_first
+
+
+def test_a_full_event_is_refused_on_postgres(
+    postgres_client: TestClient, postgres_url: str
+) -> None:
+    """The cap lives in the INSERT's WHERE clause. Prove it actually bites."""
+    event_id = seed_event(postgres_url, max_claims=1)
+    events = postgres_client.app.state.event_service
+    credits = postgres_client.app.state.credit_service
+    events.claim(USER_B, event_id)
+    before = credits.balance(USER_A)
+
+    with pytest.raises(AppError) as excinfo:
+        events.claim(USER_A, event_id)
+
+    assert excinfo.value.code == "EVENT_FULL"
+    assert credits.balance(USER_A) == before
+
+
+def test_the_listing_resolves_claim_state_on_postgres(
+    postgres_client: TestClient, postgres_url: str
+) -> None:
+    event_id = seed_event(postgres_url, bonus=7, max_claims=5)
+    events = postgres_client.app.state.event_service
+
+    before = next(row for row in events.list_for(USER_A) if row["id"] == event_id)
+    assert before["claimable"] is True
+    assert before["remaining_slots"] == 5
+
+    events.claim(USER_A, event_id)
+
+    after = next(row for row in events.list_for(USER_A) if row["id"] == event_id)
+    assert after["claimable"] is False
+    assert after["claimed_this_period"] is True
+    assert after["remaining_slots"] == 4
+
+
+def test_an_active_discount_is_found_on_postgres(
+    postgres_client: TestClient, postgres_url: str
+) -> None:
+    with psycopg.connect(postgres_url, autocommit=True) as connection:
+        connection.execute(
+            "INSERT INTO public.events (code, name, kind, discount_percent, recurrence, "
+            " starts_at, ends_at, is_active) VALUES "
+            "('PG_DISCOUNT', 'Hot', 'discount', 40, 'once', now() - interval '1 hour', "
+            " now() + interval '1 hour', true)"
+        )
+
+    assert postgres_client.app.state.event_service.discount_percent() == 40

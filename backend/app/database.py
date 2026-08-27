@@ -1046,6 +1046,124 @@ class Database:
             raise RuntimeError("Inserted payment could not be read back.")
         return dict(row), True
 
+    # --- events --------------------------------------------------------------
+
+    def list_events(self, *, active_only: bool = True) -> list[dict[str, Any]]:
+        query = "SELECT * FROM events"
+        if active_only:
+            query += " WHERE is_active = 1"
+        query += " ORDER BY starts_at ASC, code ASC"
+        with self.connect() as connection:
+            rows = connection.execute(query).fetchall()
+        return [_event_row(dict(row)) for row in rows]
+
+    def get_event(self, event_id: str) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM events WHERE id = ?", (event_id,)
+            ).fetchone()
+        return _event_row(dict(row)) if row else None
+
+    def count_event_claims(self, event_id: str) -> int:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT COUNT(*) AS n FROM event_claims WHERE event_id = ?", (event_id,)
+            ).fetchone()
+        return int(row["n"])
+
+    def claimed_periods(self, user_id: str, event_ids: Sequence[str]) -> set[tuple[str, str]]:
+        """Which (event_id, period_key) pairs this user has already claimed."""
+        if not event_ids:
+            return set()
+        placeholders = ", ".join("?" for _ in event_ids)
+        with self.connect() as connection:
+            rows = connection.execute(
+                f"SELECT event_id, period_key FROM event_claims "
+                f"WHERE user_id = ? AND event_id IN ({placeholders})",
+                (user_id, *event_ids),
+            ).fetchall()
+        return {(row["event_id"], row["period_key"]) for row in rows}
+
+    def claim_event(
+        self,
+        *,
+        claim_id: str,
+        transaction_id: str,
+        event_id: str,
+        user_id: str,
+        period_key: str,
+        credits_granted: int,
+        max_claims: int | None,
+        created_at: str,
+    ) -> tuple[dict[str, Any] | None, str]:
+        """Take one claim and grant its credits, atomically.
+
+        Returns `(row, status)` where status is `claimed`, `already` or `full`.
+
+        THE CAP IS ENFORCED IN THE INSERT, not by counting first. A double-tap
+        on a phone is enough to get two requests between a count and a write,
+        and what that race gives away is the campaign budget. The unique index
+        on (event_id, user_id, period_key) does the same job for "once per
+        period".
+        """
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+
+            if max_claims is None:
+                cursor = connection.execute(
+                    "INSERT OR IGNORE INTO event_claims "
+                    "(id, event_id, user_id, period_key, credits_granted, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (claim_id, event_id, user_id, period_key, credits_granted, created_at),
+                )
+            else:
+                cursor = connection.execute(
+                    "INSERT OR IGNORE INTO event_claims "
+                    "(id, event_id, user_id, period_key, credits_granted, created_at) "
+                    "SELECT ?, ?, ?, ?, ?, ? "
+                    "WHERE (SELECT COUNT(*) FROM event_claims WHERE event_id = ?) < ?",
+                    (
+                        claim_id, event_id, user_id, period_key, credits_granted,
+                        created_at, event_id, max_claims,
+                    ),
+                )
+
+            if cursor.rowcount != 1:
+                # Nothing inserted. Which of the two refusals it was decides
+                # what the app tells the user, so the difference is worth a
+                # second query on a path that is already failing.
+                existing = connection.execute(
+                    "SELECT 1 FROM event_claims "
+                    "WHERE event_id = ? AND user_id = ? AND period_key = ?",
+                    (event_id, user_id, period_key),
+                ).fetchone()
+                return None, "already" if existing else "full"
+
+            updated = connection.execute(
+                "UPDATE users SET credit_balance = credit_balance + ? "
+                "WHERE id = ? RETURNING credit_balance",
+                (credits_granted, user_id),
+            ).fetchone()
+            if updated is None:
+                raise UnknownUserError(user_id)
+
+            connection.execute(
+                "INSERT INTO credit_transactions "
+                "(id, user_id, delta, balance_after, reason, ref_type, ref_id, "
+                " note, idempotency_key, created_at) "
+                "VALUES (?, ?, ?, ?, 'event_grant', 'event', ?, ?, ?, ?)",
+                (
+                    transaction_id, user_id, credits_granted,
+                    int(updated["credit_balance"]), event_id, None,
+                    f"claim:{event_id}:{user_id}:{period_key}", created_at,
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM event_claims WHERE id = ?", (claim_id,)
+            ).fetchone()
+
+        return dict(row), "claimed"
+
     def find_auto_grant_event(self, now: str) -> dict[str, Any] | None:
         """The active signup-bonus event, if one is running.
 
@@ -1301,4 +1419,12 @@ class Database:
 def _package_row(row: dict[str, Any]) -> dict[str, Any]:
     """Normalise sqlite's integer booleans onto real ones."""
     row["is_active"] = bool(row["is_active"])
+    return row
+
+
+def _event_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Normalise sqlite's integer booleans."""
+    for key in ("auto_grant", "is_active"):
+        if row.get(key) is not None:
+            row[key] = bool(row[key])
     return row

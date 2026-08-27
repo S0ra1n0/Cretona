@@ -153,18 +153,31 @@ Three integration points, and only three:
 
 ### Day 4 · Mon 08-31
 
-**S-10 · `EventService`** — 4h · *depends: S-04*
-: Window evaluation for `once` / `daily` / `weekly`, in **local Vietnam time
-  (UTC+7)**. `period_key` is `''`, the local date, or the ISO week.
-: `claimable` is computed server-side and is the only flag Android trusts.
-: **Cap and per-period uniqueness enforced in SQL** — an insert guarded by the
-  unique index, not read-count-then-insert. A double-tap must not grant twice.
-: **Done when:** a test fires two concurrent claims and exactly one succeeds.
+**S-10 · `EventService`** — ✅ **DONE 08-28**
+: `app/event_service.py`. Windows for `once` / `daily` / `weekly` in **local
+  Vietnam time (UTC+7)**; `period_key` is `''`, the local date, or the ISO week,
+  which is what makes "once per weekend" mean a weekend.
+: A minute window that **wraps midnight** (22:00–02:00) is two ranges, not one.
+  Treated as one it would never open at all.
+: **Cap and per-period uniqueness enforced in SQL** — the cap is a `WHERE` on
+  the INSERT, the period rule is the unique index. A test races 8 threads at a
+  3-slot event; exactly 3 win.
 
-**S-11 · Event endpoints + discount at charge time** — 2h · *depends: S-10*
-: `GET /events`, `POST /events/{id}/claim`. `effectiveCost = max(1, round(base ×
-  (100 − discount) / 100))`, computed at charge time, recorded in the
-  transaction note. `SIGNUP_BONUS` auto-grants at first sign-in.
+**S-11 · Event endpoints + discount at charge time** — ✅ **DONE 08-28**
+: `GET /events`, `POST /events/{id}/claim`. `_active_discount_percent()` is no
+  longer a stub, so **Hot Hours now actually lowers the price**, resolved at
+  charge time rather than read from the request. `GET /me/credits` reports the
+  live discount so the Create screen can quote the real number.
+: The charge note records the discount, because the ledger has to explain why
+  today's row is 1 when yesterday's was 2. A refund still returns what was
+  taken, not what it would cost now — tested by ending the campaign mid-job.
+: A failure resolving the discount is swallowed: a broken campaign should cost
+  full price, not the ability to generate at all.
+: **32 tests in `test_events.py` + 5 Postgres parity tests.** Every window case
+  is pinned to a fixed instant, so none of them pass or fail depending on when
+  the suite runs.
+
+**Final state: 529 passed, 0 skipped** with a disposable Postgres running.
 
 ### Day 5 · Tue 09-01
 

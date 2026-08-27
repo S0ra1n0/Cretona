@@ -13,12 +13,14 @@ from app.admin_service import AdminService
 from app.auth import current_user_id, require_admin
 from app.credit_service import CreditService
 from app.errors import AppError
+from app.event_service import EventService
 from app.health import require_database_connection
 from app.metrics import format_prometheus_metrics
 from app.payment_service import PaymentService
 from app.project_service import ProjectService
 from app.prompt_service import PromptEnhancer
 from app.schemas import (
+    ActiveDiscount,
     AdminAuditLogPage,
     AdminLogList,
     AdminMetricsResponse,
@@ -31,6 +33,9 @@ from app.schemas import (
     CreditPackageResponse,
     CreditTransactionPage,
     CreditTransactionResponse,
+    EventClaimResponse,
+    EventPage,
+    EventResponse,
     HealthResponse,
     LedgerDriftResponse,
     MeResponse,
@@ -447,16 +452,31 @@ def payment_service(request: Request) -> PaymentService:
 def get_credit_balance(
     user_id: UserId,
     credits: Annotated[CreditService, Depends(credit_service)],
+    events: Annotated[EventService, Depends(event_service)],
 ) -> CreditBalanceResponse:
     granted, spent = credits.totals(user_id)
     base = credits.generation_cost()
-    # No discount source until EventService lands (S-11). Kept as a real field
-    # from the start so the app's banner does not need a second shape later.
+    discount = events.active_discount()
+
     return CreditBalanceResponse(
         balance=credits.balance(user_id),
         generationCost=base,
-        effectiveCost=CreditService.effective_cost(base, None),
-        activeDiscount=None,
+        # What the next generation costs right now. The Create screen shows
+        # this, never `generationCost`: a user quoted 1 and charged 2 has been
+        # misled, and during Hot Hours those are different numbers.
+        effectiveCost=CreditService.effective_cost(
+            base, discount["discount_percent"] if discount else None
+        ),
+        activeDiscount=(
+            ActiveDiscount(
+                eventId=str(discount["id"]),
+                name=discount["name"],
+                discountPercent=int(discount["discount_percent"]),
+                endsAt=events.active_until(discount, datetime.now(UTC)) or "",
+            )
+            if discount
+            else None
+        ),
         lifetimeGranted=granted,
         lifetimeSpent=spent,
     )
@@ -573,4 +593,59 @@ def get_ledger_drift(
         checkedAt=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         driftedUserIds=[str(user_id) for user_id in drifted],
         healthy=not drifted,
+    )
+
+
+def event_service(request: Request) -> EventService:
+    return request.app.state.event_service
+
+
+def _event_response(row: dict) -> EventResponse:
+    return EventResponse(
+        id=str(row["id"]),
+        code=row["code"],
+        name=row["name"],
+        description=row.get("description"),
+        kind=row["kind"],
+        bonusCredits=row.get("bonus_credits"),
+        discountPercent=row.get("discount_percent"),
+        recurrence=row["recurrence"],
+        isActiveNow=row["is_active_now"],
+        activeUntil=row.get("active_until"),
+        nextActiveAt=row.get("next_active_at"),
+        claimable=row["claimable"],
+        claimedThisPeriod=row["claimed_this_period"],
+        remainingSlots=row.get("remaining_slots"),
+    )
+
+
+@router.get("/events", response_model=EventPage)
+def list_events(
+    user_id: UserId,
+    events: Annotated[EventService, Depends(event_service)],
+) -> EventPage:
+    return EventPage(
+        items=[_event_response(row) for row in events.list_for(user_id)],
+        nextCursor=None,
+    )
+
+
+@router.post("/events/{event_id}/claim", response_model=EventClaimResponse)
+def claim_event(
+    event_id: str,
+    user_id: UserId,
+    events: Annotated[EventService, Depends(event_service)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> EventClaimResponse:
+    """Claim a grant event.
+
+    No idempotency key is needed to be safe: the unique index on
+    (event, user, period) already makes a second attempt a refusal rather than
+    a second grant. The header is accepted so the app can send one uniformly.
+    """
+    result = events.claim(user_id, event_id)
+    return EventClaimResponse(
+        creditsGranted=result["credits_granted"],
+        balance=result["balance"],
+        transactionId=result["transaction_id"],
     )

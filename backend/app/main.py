@@ -19,6 +19,7 @@ from app.config import Settings, get_settings
 from app.credit_service import CreditService
 from app.database import Database
 from app.errors import AppError, app_error_handler, error_payload, validation_error_handler
+from app.event_service import EventService
 from app.generation_log_retention import GenerationLogRetentionWorker
 from app.generation_log_service import GenerationLogService
 from app.health import require_database_connection
@@ -168,6 +169,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # through it, which is what makes the ledger invariants checkable.
     api.state.credit_service = CreditService(database)
     api.state.payment_service = PaymentService(database, api.state.credit_service)
+    api.state.event_service = EventService(database, api.state.credit_service)
     api.state.users_service = UsersService(
         database, api.state.quota_service, storage, api.state.credit_service
     )
@@ -194,6 +196,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             seek_seconds=active_settings.thumbnail_seek_seconds,
         ),
         api.state.credit_service,
+        api.state.event_service,
     )
     api.state.prompt_enhancer = PromptEnhancer(active_settings)
     api.state.poller = JobPoller(

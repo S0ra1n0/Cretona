@@ -127,6 +127,7 @@ class ProjectService:
         generation_log: GenerationLogService,
         thumbnails: ThumbnailGenerator,
         credits: CreditService,
+        events: Any = None,
     ) -> None:
         self.thumbnails = thumbnails
         self.database = database
@@ -136,6 +137,7 @@ class ProjectService:
         self.quota = quota
         self.generation_log = generation_log
         self.credits = credits
+        self.events = events
 
     def create(
         self,
@@ -648,7 +650,11 @@ class ProjectService:
             return 0
 
         base = self.credits.generation_cost()
-        cost = CreditService.effective_cost(base, self._active_discount_percent())
+        discount = self._active_discount_percent()
+        cost = CreditService.effective_cost(base, discount)
+        if discount and not note:
+            # The ledger has to explain why this row is 1 and yesterday's was 2.
+            note = f"-{discount}% event"
         self.credits.charge(
             owner_id,
             cost,
@@ -678,10 +684,21 @@ class ProjectService:
     def _active_discount_percent(self) -> int | None:
         """The discount running right now, or None.
 
-        Returns None until EventService lands (S-10/S-11); wired here so the
-        charge site does not have to change when it does.
+        Resolved at charge time, not read from the request. A client that
+        rendered "1 credit" a minute ago does not get to decide what it pays,
+        and a discount that ended in between charges full price
+        (API_CONTRACT.md §10.2).
+
+        A failure here must not stop a generation: a broken campaign should
+        cost the user full price, not the ability to generate at all.
         """
-        return None
+        if self.events is None:
+            return None
+        try:
+            return self.events.discount_percent()
+        except Exception:  # pragma: no cover - defensive
+            logger.exception("Could not resolve the active discount")
+            return None
 
     def _owned(self, owner_id: str, project_id: str) -> dict[str, Any]:
         row = self.database.get_project(project_id, owner_id)

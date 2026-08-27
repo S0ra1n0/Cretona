@@ -1081,6 +1081,125 @@ class PostgresDatabase:
             raise RuntimeError("Inserted payment could not be read back.")
         return _payment_like_row(row), True
 
+    # --- events --------------------------------------------------------------
+
+    def list_events(self, *, active_only: bool = True) -> list[dict[str, Any]]:
+        query = "SELECT * FROM public.events"
+        if active_only:
+            query += " WHERE is_active"
+        query += " ORDER BY starts_at ASC, code ASC"
+        with self.pool.connection() as connection:
+            rows = connection.execute(query).fetchall()
+        return [_event_row_pg(row) for row in rows]
+
+    def get_event(self, event_id: str) -> dict[str, Any] | None:
+        if not _is_uuid(event_id):
+            return None
+        with self.pool.connection() as connection:
+            row = connection.execute(
+                "SELECT * FROM public.events WHERE id = %s", (event_id,)
+            ).fetchone()
+        return _event_row_pg(row) if row else None
+
+    def count_event_claims(self, event_id: str) -> int:
+        if not _is_uuid(event_id):
+            return 0
+        with self.pool.connection() as connection:
+            row = connection.execute(
+                "SELECT COUNT(*) AS n FROM public.event_claims WHERE event_id = %s",
+                (event_id,),
+            ).fetchone()
+        return int(row["n"])
+
+    def claimed_periods(self, user_id: str, event_ids: Sequence[str]) -> set[tuple[str, str]]:
+        ids = [value for value in event_ids if _is_uuid(value)]
+        if not ids or not _is_uuid(user_id):
+            return set()
+        with self.pool.connection() as connection:
+            rows = connection.execute(
+                "SELECT event_id, period_key FROM public.event_claims "
+                "WHERE user_id = %s AND event_id = ANY(%s)",
+                (user_id, ids),
+            ).fetchall()
+        return {(str(row["event_id"]), row["period_key"]) for row in rows}
+
+    def claim_event(
+        self,
+        *,
+        claim_id: str,
+        transaction_id: str,
+        event_id: str,
+        user_id: str,
+        period_key: str,
+        credits_granted: int,
+        max_claims: int | None,
+        created_at: str,
+    ) -> tuple[dict[str, Any] | None, str]:
+        """Take one claim and grant its credits, atomically.
+
+        Returns `(row, status)`; status is `claimed`, `already` or `full`.
+        The cap lives in the INSERT and the per-period rule in the unique
+        index, because counting first and writing second loses a race that
+        costs campaign budget.
+        """
+        if not _is_uuid(user_id) or not _is_uuid(event_id):
+            raise UnknownUserError(user_id)
+
+        with self.pool.connection() as connection, connection.transaction():
+            if max_claims is None:
+                cursor = connection.execute(
+                    "INSERT INTO public.event_claims "
+                    "(id, event_id, user_id, period_key, credits_granted, created_at) "
+                    "VALUES (%s, %s, %s, %s, %s, %s::timestamptz) "
+                    "ON CONFLICT DO NOTHING RETURNING *",
+                    (claim_id, event_id, user_id, period_key, credits_granted, created_at),
+                )
+            else:
+                cursor = connection.execute(
+                    "INSERT INTO public.event_claims "
+                    "(id, event_id, user_id, period_key, credits_granted, created_at) "
+                    "SELECT %s, %s, %s, %s, %s, %s::timestamptz "
+                    "WHERE (SELECT COUNT(*) FROM public.event_claims "
+                    "       WHERE event_id = %s) < %s "
+                    "ON CONFLICT DO NOTHING RETURNING *",
+                    (
+                        claim_id, event_id, user_id, period_key, credits_granted,
+                        created_at, event_id, max_claims,
+                    ),
+                )
+            row = cursor.fetchone()
+
+            if row is None:
+                existing = connection.execute(
+                    "SELECT 1 FROM public.event_claims "
+                    "WHERE event_id = %s AND user_id = %s AND period_key = %s",
+                    (event_id, user_id, period_key),
+                ).fetchone()
+                return None, "already" if existing else "full"
+
+            updated = connection.execute(
+                "UPDATE public.users SET credit_balance = credit_balance + %s "
+                "WHERE id = %s RETURNING credit_balance",
+                (credits_granted, user_id),
+            ).fetchone()
+            if updated is None:
+                raise UnknownUserError(user_id)
+
+            connection.execute(
+                "INSERT INTO public.credit_transactions "
+                "(id, user_id, delta, balance_after, reason, ref_type, ref_id, "
+                " idempotency_key, created_at) "
+                "VALUES (%s, %s, %s, %s, 'event_grant', 'event', %s, %s, "
+                "        %s::timestamptz)",
+                (
+                    transaction_id, user_id, credits_granted,
+                    int(updated["credit_balance"]), event_id,
+                    f"claim:{event_id}:{user_id}:{period_key}", created_at,
+                ),
+            )
+
+        return _payment_like_row(row), "claimed"
+
     def find_auto_grant_event(self, now: str) -> dict[str, Any] | None:
         """The active signup-bonus event, if one is running."""
         with self.pool.connection() as connection:
@@ -1248,6 +1367,18 @@ def _payment_like_row(row: dict[str, Any]) -> dict[str, Any]:
         if value is not None and not isinstance(value, str):
             out[key] = str(value)
     for key in ("created_at", "completed_at"):
+        value = out.get(key)
+        if value is not None and not isinstance(value, str):
+            out[key] = value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    return out
+
+
+def _event_row_pg(row: dict[str, Any]) -> dict[str, Any]:
+    """Normalise an event row onto the sqlite spelling."""
+    out = dict(row)
+    if out.get("id") is not None:
+        out["id"] = str(out["id"])
+    for key in ("starts_at", "ends_at", "created_at"):
         value = out.get(key)
         if value is not None and not isinstance(value, str):
             out[key] = value.astimezone(UTC).isoformat().replace("+00:00", "Z")
