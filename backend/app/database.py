@@ -331,6 +331,21 @@ class Database:
             "INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
             ("generation_cost_credits", "1", "1970-01-01T00:00:00Z"),
         )
+        # Mirrors supabase/seed_credits_and_events.sql. That file is the
+        # source of truth for prices; these exist so a local demo has something
+        # to buy rather than an empty screen. `test_sqlite_defaults_match_the_seed`
+        # fails if the two drift apart.
+        for package_id, name, credits, price, order in (
+            ("00000000-0000-4000-8000-00000000p001", "Starter", 10, 20000, 1),
+            ("00000000-0000-4000-8000-00000000p002", "Creator", 50, 90000, 2),
+            ("00000000-0000-4000-8000-00000000p003", "Studio", 150, 250000, 3),
+        ):
+            connection.execute(
+                "INSERT OR IGNORE INTO credit_packages "
+                "(id, name, credits, price_vnd, sort_order, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (package_id, name, credits, price, order, "1970-01-01T00:00:00Z"),
+            )
         connection.execute(
             "INSERT OR IGNORE INTO events "
             "(id, code, name, description, kind, bonus_credits, recurrence, "
@@ -934,6 +949,103 @@ class Database:
             raise RuntimeError("Inserted credit transaction could not be read back.")
         return dict(row), True
 
+    # --- packages and payments -----------------------------------------------
+
+    def list_credit_packages(self, *, active_only: bool = True) -> list[dict[str, Any]]:
+        query = "SELECT * FROM credit_packages"
+        if active_only:
+            query += " WHERE is_active = 1"
+        query += " ORDER BY sort_order ASC, credits ASC"
+        with self.connect() as connection:
+            rows = connection.execute(query).fetchall()
+        return [_package_row(dict(row)) for row in rows]
+
+    def get_credit_package(self, package_id: str) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM credit_packages WHERE id = ?", (package_id,)
+            ).fetchone()
+        return _package_row(dict(row)) if row else None
+
+    def find_payment_by_key(
+        self, user_id: str, idempotency_key: str
+    ) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM payments WHERE user_id = ? AND idempotency_key = ?",
+                (user_id, idempotency_key),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def record_payment(
+        self,
+        *,
+        payment_id: str,
+        transaction_id: str,
+        user_id: str,
+        package_id: str,
+        amount_vnd: int,
+        credits_granted: int,
+        method: str,
+        idempotency_key: str | None,
+        created_at: str,
+    ) -> tuple[dict[str, Any], bool]:
+        """Complete a purchase and grant its credits in one transaction.
+
+        Contract §8.2. A payment that completed without granting credits, or
+        credits granted with no payment behind them, are both states no
+        reconciliation could untangle -- so neither is reachable.
+
+        Returns `(payment, created)`; `created` is False when the idempotency
+        key had already been used, and nothing moved.
+        """
+        try:
+            with self.connect() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                updated = connection.execute(
+                    "UPDATE users SET credit_balance = credit_balance + ? "
+                    "WHERE id = ? RETURNING credit_balance",
+                    (credits_granted, user_id),
+                ).fetchone()
+                if updated is None:
+                    raise UnknownUserError(user_id)
+
+                connection.execute(
+                    "INSERT INTO payments (id, user_id, package_id, amount_vnd, "
+                    " credits_granted, method, status, idempotency_key, created_at, "
+                    " completed_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?)",
+                    (
+                        payment_id, user_id, package_id, amount_vnd, credits_granted,
+                        method, idempotency_key, created_at, created_at,
+                    ),
+                )
+                connection.execute(
+                    "INSERT INTO credit_transactions "
+                    "(id, user_id, delta, balance_after, reason, ref_type, ref_id, "
+                    " note, idempotency_key, created_at) "
+                    "VALUES (?, ?, ?, ?, 'purchase', 'payment', ?, ?, ?, ?)",
+                    (
+                        transaction_id, user_id, credits_granted,
+                        int(updated["credit_balance"]), payment_id, None,
+                        f"purchase:{payment_id}", created_at,
+                    ),
+                )
+                row = connection.execute(
+                    "SELECT * FROM payments WHERE id = ?", (payment_id,)
+                ).fetchone()
+        except sqlite3.IntegrityError:
+            if not idempotency_key:
+                raise
+            existing = self.find_payment_by_key(user_id, idempotency_key)
+            if existing is None:
+                raise
+            return existing, False
+
+        if row is None:  # pragma: no cover - just inserted
+            raise RuntimeError("Inserted payment could not be read back.")
+        return dict(row), True
+
     def find_auto_grant_event(self, now: str) -> dict[str, Any] | None:
         """The active signup-bonus event, if one is running.
 
@@ -1184,3 +1296,9 @@ class Database:
                 row["details"] = _from_json(row["details"])
 
         return rows, next_cursor
+
+
+def _package_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Normalise sqlite's integer booleans onto real ones."""
+    row["is_active"] = bool(row["is_active"])
+    return row

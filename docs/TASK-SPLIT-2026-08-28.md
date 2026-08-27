@@ -123,10 +123,22 @@ Three integration points, and only three:
 
 ### Day 3 · Sun 08-30
 
-**S-07 · User credit + package + payment endpoints** — 3h · *depends: S-04*
+**S-07 · User credit + package + payment endpoints** — ✅ **DONE 08-28**
 : `GET /me/credits`, `GET /me/credits/transactions`, `GET /credit-packages`,
-  `POST /payments`. Contract §6, §8.
-: Payment row + credit transaction in **one** database transaction.
+  `POST /payments`, plus `GET /admin/credits/drift`. `PaymentService` in
+  `app/payment_service.py`; `record_payment` on both adapters writes the
+  payment row, the ledger row and the balance in **one** transaction.
+: `Idempotency-Key` is **required** on `POST /payments`, not optional as it is
+  on project creation: a replayed generation wastes a slot, a replayed purchase
+  grants credits twice.
+: `GET /admin/credits/drift` closes the gap where a silently-swallowed refund
+  failure was invisible. Tested both ways — healthy after a full cycle, and
+  detecting a balance written behind `CreditService`.
+: **20 endpoint tests + 4 Postgres payment parity tests.** One of them,
+  `test_sqlite_defaults_match_the_seed`, parses the Supabase seed file and fails
+  if the sqlite package prices drift from it — the duplication is deliberate so
+  a local demo has something to buy, and that test is what keeps it honest.
+: **492 passed, 0 skipped** with a disposable Postgres running.
 
 **S-08 · Generation modes** — 2h
 : `prompt` nullable; at least one of `prompt`/`imagePath` required; server

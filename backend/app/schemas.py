@@ -293,3 +293,86 @@ class WebhookResponse(ApiModel):
 class UploadResponse(ApiModel):
     storage_path: str = Field(alias="storagePath")
     image_url: str | None = Field(default=None, alias="imageUrl")
+
+
+# --- credits, packages and payments (API_CONTRACT.md Part II) ----------------
+
+
+class ActiveDiscount(ApiModel):
+    event_id: str = Field(alias="eventId")
+    name: str
+    discount_percent: int = Field(alias="discountPercent")
+    ends_at: str = Field(alias="endsAt")
+
+
+class CreditBalanceResponse(ApiModel):
+    balance: int
+    # The configured base price, before any event.
+    generation_cost: int = Field(alias="generationCost")
+    # What the next generation actually costs right now. This is the number the
+    # Create screen shows: a user told "1" and charged "2" has been misled.
+    effective_cost: int = Field(alias="effectiveCost")
+    active_discount: ActiveDiscount | None = Field(default=None, alias="activeDiscount")
+    lifetime_granted: int = Field(default=0, alias="lifetimeGranted")
+    lifetime_spent: int = Field(default=0, alias="lifetimeSpent")
+
+
+class CreditTransactionResponse(ApiModel):
+    id: str
+    delta: int
+    balance_after: int = Field(alias="balanceAfter")
+    reason: str
+    ref_type: str | None = Field(default=None, alias="refType")
+    ref_id: str | None = Field(default=None, alias="refId")
+    note: str | None = None
+    created_at: str = Field(alias="createdAt")
+
+
+class CreditTransactionPage(ApiModel):
+    items: list[CreditTransactionResponse]
+    next_cursor: str | None = Field(default=None, alias="nextCursor")
+
+
+class CreditPackageResponse(ApiModel):
+    id: str
+    name: str
+    credits: int
+    price_vnd: int = Field(alias="priceVnd")
+    sort_order: int = Field(default=0, alias="sortOrder")
+
+
+class CreditPackageList(ApiModel):
+    items: list[CreditPackageResponse]
+
+
+class PaymentCreate(ApiModel):
+    # No default. `encodeDefaults = false` on the client drops any field still
+    # equal to its default, so a defaulted package id would never be sent.
+    package_id: str = Field(alias="packageId", min_length=1)
+
+
+class PaymentResponse(ApiModel):
+    id: str
+    status: str
+    package_id: str = Field(alias="packageId")
+    amount_vnd: int = Field(alias="amountVnd")
+    credits_granted: int = Field(alias="creditsGranted")
+    balance: int
+    # Always "simulated" today. Recorded rather than assumed, so the data says
+    # what happened without anyone having to read ADR-010 first.
+    method: str
+    created_at: str = Field(alias="createdAt")
+    completed_at: str | None = Field(default=None, alias="completedAt")
+
+
+class LedgerDriftResponse(ApiModel):
+    """Accounts whose cached balance disagrees with their ledger.
+
+    `_refund_generation` deliberately swallows its own failures so a refund
+    that fails cannot turn a failed generation into a 500. This is how that
+    would otherwise-invisible failure becomes visible.
+    """
+
+    checked_at: str = Field(alias="checkedAt")
+    drifted_user_ids: list[str] = Field(alias="driftedUserIds")
+    healthy: bool

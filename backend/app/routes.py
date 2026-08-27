@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -10,9 +11,11 @@ from fastapi.responses import StreamingResponse
 
 from app.admin_service import AdminService
 from app.auth import current_user_id, require_admin
+from app.credit_service import CreditService
 from app.errors import AppError
 from app.health import require_database_connection
 from app.metrics import format_prometheus_metrics
+from app.payment_service import PaymentService
 from app.project_service import ProjectService
 from app.prompt_service import PromptEnhancer
 from app.schemas import (
@@ -23,9 +26,17 @@ from app.schemas import (
     AdminUserPage,
     AdminUserUpdate,
     BackfillResponse,
+    CreditBalanceResponse,
+    CreditPackageList,
+    CreditPackageResponse,
+    CreditTransactionPage,
+    CreditTransactionResponse,
     HealthResponse,
+    LedgerDriftResponse,
     MeResponse,
     MeUpdate,
+    PaymentCreate,
+    PaymentResponse,
     ProjectCancelResponse,
     ProjectCreate,
     ProjectPage,
@@ -418,4 +429,148 @@ async def handle_provider_webhook(
         headers,
         body,
         request_base_url(request),
+    )
+
+
+# --- credits, packages and payments (API_CONTRACT.md Part II) ----------------
+
+
+def credit_service(request: Request) -> CreditService:
+    return request.app.state.credit_service
+
+
+def payment_service(request: Request) -> PaymentService:
+    return request.app.state.payment_service
+
+
+@router.get("/me/credits", response_model=CreditBalanceResponse)
+def get_credit_balance(
+    user_id: UserId,
+    credits: Annotated[CreditService, Depends(credit_service)],
+) -> CreditBalanceResponse:
+    granted, spent = credits.totals(user_id)
+    base = credits.generation_cost()
+    # No discount source until EventService lands (S-11). Kept as a real field
+    # from the start so the app's banner does not need a second shape later.
+    return CreditBalanceResponse(
+        balance=credits.balance(user_id),
+        generationCost=base,
+        effectiveCost=CreditService.effective_cost(base, None),
+        activeDiscount=None,
+        lifetimeGranted=granted,
+        lifetimeSpent=spent,
+    )
+
+
+@router.get("/me/credits/transactions", response_model=CreditTransactionPage)
+def list_credit_transactions(
+    user_id: UserId,
+    credits: Annotated[CreditService, Depends(credit_service)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    cursor: str | None = None,
+) -> CreditTransactionPage:
+    rows, next_cursor = credits.history(user_id, limit=limit, cursor=cursor)
+    return CreditTransactionPage(
+        items=[
+            CreditTransactionResponse(
+                id=str(row["id"]),
+                delta=row["delta"],
+                balanceAfter=row["balance_after"],
+                reason=row["reason"],
+                refType=row.get("ref_type"),
+                refId=row.get("ref_id"),
+                note=row.get("note"),
+                createdAt=row["created_at"],
+            )
+            for row in rows
+        ],
+        nextCursor=next_cursor,
+    )
+
+
+@router.get("/credit-packages", response_model=CreditPackageList)
+def list_credit_packages(
+    _user_id: UserId,
+    payments: Annotated[PaymentService, Depends(payment_service)],
+) -> CreditPackageList:
+    return CreditPackageList(
+        items=[
+            CreditPackageResponse(
+                id=str(row["id"]),
+                name=row["name"],
+                credits=row["credits"],
+                priceVnd=row["price_vnd"],
+                sortOrder=row.get("sort_order", 0),
+            )
+            for row in payments.list_packages()
+        ]
+    )
+
+
+@router.post(
+    "/payments",
+    response_model=PaymentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_payment(
+    payload: PaymentCreate,
+    user_id: UserId,
+    payments: Annotated[PaymentService, Depends(payment_service)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> PaymentResponse:
+    """Buy a credit package. No real money moves -- see ADR-010.
+
+    The key is required, not optional as it is on project creation: a replayed
+    generation wastes a slot, a replayed purchase grants credits twice.
+    """
+    if not idempotency_key:
+        raise AppError(
+            400,
+            "VALIDATION_ERROR",
+            "Idempotency-Key is required so a retried purchase cannot grant twice.",
+            [{"field": "header.Idempotency-Key", "issue": "required"}],
+        )
+    try:
+        UUID(idempotency_key)
+    except ValueError as exc:
+        raise AppError(
+            400,
+            "VALIDATION_ERROR",
+            "Idempotency-Key must be a UUID.",
+            [{"field": "header.Idempotency-Key", "issue": "invalid_uuid"}],
+        ) from exc
+
+    payment = payments.purchase(user_id, payload.package_id, idempotency_key)
+    return PaymentResponse(
+        id=str(payment["id"]),
+        status=payment["status"],
+        packageId=str(payment["package_id"]),
+        amountVnd=payment["amount_vnd"],
+        creditsGranted=payment["credits_granted"],
+        balance=payment["balance"],
+        method=payment["method"],
+        createdAt=payment["created_at"],
+        completedAt=payment.get("completed_at"),
+    )
+
+
+@router.get("/admin/credits/drift", response_model=LedgerDriftResponse)
+def get_ledger_drift(
+    request: Request,
+    _admin_id: Annotated[str, Depends(require_admin)],
+) -> LedgerDriftResponse:
+    """Accounts whose cached balance no longer matches their ledger.
+
+    The ledger is the truth and `users.credit_balance` is a cache kept in the
+    same transaction, so this should always be empty. It exists because
+    `_refund_generation` swallows its own errors on purpose -- a refund that
+    raised would turn a failed generation into a 500 and strand the project --
+    which means a failed refund is otherwise silent. This is the only thing
+    that would surface one.
+    """
+    drifted = request.app.state.database.ledger_drift()
+    return LedgerDriftResponse(
+        checkedAt=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        driftedUserIds=[str(user_id) for user_id in drifted],
+        healthy=not drifted,
     )

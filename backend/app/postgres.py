@@ -984,6 +984,103 @@ class PostgresDatabase:
             raise RuntimeError("Inserted credit transaction could not be read back.")
         return _to_credit_row(row), True
 
+    # --- packages and payments -----------------------------------------------
+
+    def list_credit_packages(self, *, active_only: bool = True) -> list[dict[str, Any]]:
+        query = "SELECT * FROM public.credit_packages"
+        if active_only:
+            query += " WHERE is_active"
+        query += " ORDER BY sort_order ASC, credits ASC"
+        with self.pool.connection() as connection:
+            rows = connection.execute(query).fetchall()
+        return [_payment_like_row(row) for row in rows]
+
+    def get_credit_package(self, package_id: str) -> dict[str, Any] | None:
+        if not _is_uuid(package_id):
+            return None
+        with self.pool.connection() as connection:
+            row = connection.execute(
+                "SELECT * FROM public.credit_packages WHERE id = %s", (package_id,)
+            ).fetchone()
+        return _payment_like_row(row) if row else None
+
+    def find_payment_by_key(
+        self, user_id: str, idempotency_key: str
+    ) -> dict[str, Any] | None:
+        if not _is_uuid(user_id):
+            return None
+        with self.pool.connection() as connection:
+            row = connection.execute(
+                "SELECT * FROM public.payments "
+                "WHERE user_id = %s AND idempotency_key = %s",
+                (user_id, idempotency_key),
+            ).fetchone()
+        return _payment_like_row(row) if row else None
+
+    def record_payment(
+        self,
+        *,
+        payment_id: str,
+        transaction_id: str,
+        user_id: str,
+        package_id: str,
+        amount_vnd: int,
+        credits_granted: int,
+        method: str,
+        idempotency_key: str | None,
+        created_at: str,
+    ) -> tuple[dict[str, Any], bool]:
+        """Complete a purchase and grant its credits in one transaction.
+
+        Contract §8.2. Neither half can land without the other.
+        """
+        if not _is_uuid(user_id):
+            raise UnknownUserError(user_id)
+        try:
+            with self.pool.connection() as connection, connection.transaction():
+                updated = connection.execute(
+                    "UPDATE public.users SET credit_balance = credit_balance + %s "
+                    "WHERE id = %s RETURNING credit_balance",
+                    (credits_granted, user_id),
+                ).fetchone()
+                if updated is None:
+                    raise UnknownUserError(user_id)
+
+                row = connection.execute(
+                    "INSERT INTO public.payments (id, user_id, package_id, amount_vnd, "
+                    " credits_granted, method, status, idempotency_key, created_at, "
+                    " completed_at) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, 'completed', %s, "
+                    "        %s::timestamptz, %s::timestamptz) RETURNING *",
+                    (
+                        payment_id, user_id, package_id, amount_vnd, credits_granted,
+                        method, idempotency_key, created_at, created_at,
+                    ),
+                ).fetchone()
+                connection.execute(
+                    "INSERT INTO public.credit_transactions "
+                    "(id, user_id, delta, balance_after, reason, ref_type, ref_id, "
+                    " idempotency_key, created_at) "
+                    "VALUES (%s, %s, %s, %s, 'purchase', 'payment', %s, %s, "
+                    "        %s::timestamptz)",
+                    (
+                        transaction_id, user_id, credits_granted,
+                        int(updated["credit_balance"]), payment_id,
+                        f"purchase:{payment_id}", created_at,
+                    ),
+                )
+        except pg_errors.UniqueViolation:
+            if not idempotency_key:
+                raise
+            existing = self.find_payment_by_key(user_id, idempotency_key)
+            if existing is None:
+                raise
+            return existing, False
+
+        if row is None:  # pragma: no cover - just inserted
+            raise RuntimeError("Inserted payment could not be read back.")
+        return _payment_like_row(row), True
+
     def find_auto_grant_event(self, now: str) -> dict[str, Any] | None:
         """The active signup-bonus event, if one is running."""
         with self.pool.connection() as connection:
@@ -1135,4 +1232,23 @@ def _to_credit_row(row: dict[str, Any]) -> dict[str, Any]:
     created = out.get("created_at")
     if created is not None and not isinstance(created, str):
         out["created_at"] = created.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    return out
+
+
+def _payment_like_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Normalise uuid and timestamptz columns onto the sqlite spelling.
+
+    The service layer is written against strings so it never learns which
+    database it is talking to; without this a package id would be a UUID object
+    on one backend and a string on the other.
+    """
+    out = dict(row)
+    for key in ("id", "user_id", "package_id"):
+        value = out.get(key)
+        if value is not None and not isinstance(value, str):
+            out[key] = str(value)
+    for key in ("created_at", "completed_at"):
+        value = out.get(key)
+        if value is not None and not isinstance(value, str):
+            out[key] = value.astimezone(UTC).isoformat().replace("+00:00", "Z")
     return out

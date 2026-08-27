@@ -24,6 +24,7 @@ from app.generation_log_service import GenerationLogService
 from app.health import require_database_connection
 from app.jwks import JwksCache
 from app.logging_setup import configure_logging
+from app.payment_service import PaymentService
 from app.poller import JobPoller
 from app.postgres import PostgresDatabase
 from app.project_service import ProjectService
@@ -166,6 +167,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # The only writer of a credit balance. Everything that moves credits goes
     # through it, which is what makes the ledger invariants checkable.
     api.state.credit_service = CreditService(database)
+    api.state.payment_service = PaymentService(database, api.state.credit_service)
     api.state.users_service = UsersService(
         database, api.state.quota_service, storage, api.state.credit_service
     )

@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import psycopg
 import pytest
@@ -900,3 +901,95 @@ def test_the_signup_bonus_lands_through_the_api_on_postgres(
         postgres_client.get("/api/v1/me", headers=bearer(subject=USER_B))
 
     assert credits.balance(USER_B) == before + 5
+
+
+# --- packages and payments (S-07) --------------------------------------------
+#
+# `record_payment` writes the payment row, the ledger row and the balance in
+# one transaction, and its Postgres implementation shares no code with the
+# sqlite one. Untested, a mistake here would grant credits with no payment
+# behind them, or take a payment that granted nothing.
+
+
+def seed_package(postgres_url: str, name: str = "Starter") -> str:
+    with psycopg.connect(postgres_url, autocommit=True, row_factory=dict_row) as connection:
+        row = connection.execute(
+            "INSERT INTO public.credit_packages (name, credits, price_vnd, sort_order) "
+            "VALUES (%s, 10, 20000, 1) RETURNING id",
+            (name,),
+        ).fetchone()
+    return str(row["id"])
+
+
+def test_packages_list_and_fetch_on_postgres(
+    postgres_client: TestClient, postgres_url: str
+) -> None:
+    package_id = seed_package(postgres_url, "PG Starter")
+    database = postgres_client.app.state.database
+
+    listed = database.list_credit_packages()
+    fetched = database.get_credit_package(package_id)
+
+    assert any(row["id"] == package_id for row in listed)
+    assert fetched is not None
+    # uuid must arrive as a string, or the service would hold a different type
+    # per backend.
+    assert isinstance(fetched["id"], str)
+    assert fetched["is_active"] is True
+    assert database.get_credit_package("not-a-uuid") is None
+
+
+def test_a_purchase_is_atomic_on_postgres(
+    postgres_client: TestClient, postgres_url: str
+) -> None:
+    package_id = seed_package(postgres_url, "PG Atomic")
+    credits = postgres_client.app.state.credit_service
+    payments = postgres_client.app.state.payment_service
+    before = credits.balance(USER_A)
+
+    payment = payments.purchase(USER_A, package_id, str(uuid4()))
+
+    assert payment["status"] == "completed"
+    assert payment["method"] == "simulated"
+    assert credits.balance(USER_A) == before + 10
+    assert payment["balance"] == before + 10
+    assert isinstance(payment["id"], str)
+    assert payment["created_at"].endswith("Z")
+
+    rows, _ = credits.history(USER_A, limit=1)
+    assert rows[0]["reason"] == "purchase"
+    assert rows[0]["ref_id"] == payment["id"]
+    assert postgres_client.app.state.database.ledger_drift() == []
+
+
+def test_a_replayed_purchase_grants_once_on_postgres(
+    postgres_client: TestClient, postgres_url: str
+) -> None:
+    package_id = seed_package(postgres_url, "PG Replay")
+    credits = postgres_client.app.state.credit_service
+    payments = postgres_client.app.state.payment_service
+    before = credits.balance(USER_A)
+    key = str(uuid4())
+
+    first = payments.purchase(USER_A, package_id, key)
+    second = payments.purchase(USER_A, package_id, key)
+
+    assert first["id"] == second["id"]
+    assert credits.balance(USER_A) == before + 10
+
+
+def test_an_unknown_package_leaves_nothing_behind_on_postgres(
+    postgres_client: TestClient, postgres_url: str
+) -> None:
+    credits = postgres_client.app.state.credit_service
+    payments = postgres_client.app.state.payment_service
+    before = credits.balance(USER_A)
+
+    with pytest.raises(AppError) as excinfo:
+        payments.purchase(USER_A, str(uuid4()), str(uuid4()))
+
+    assert excinfo.value.status_code == 404
+    assert credits.balance(USER_A) == before
+    with psycopg.connect(postgres_url, row_factory=dict_row) as connection:
+        count = connection.execute("SELECT COUNT(*) AS n FROM public.payments").fetchone()
+    assert count["n"] == 0
