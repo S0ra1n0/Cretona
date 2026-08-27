@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from typing import Any
 
 from app.errors import AppError
@@ -10,14 +11,26 @@ from app.storage import assert_owns_path
 
 
 class UsersService:
-    def __init__(self, database: Any, quota: QuotaService, storage: Any = None) -> None:
+    def __init__(
+        self,
+        database: Any,
+        quota: QuotaService,
+        storage: Any = None,
+        credits: Any = None,
+    ) -> None:
         self.database = database
         self.quota = quota
+        self.credits = credits
         # Optional so existing callers and tests keep working; without it
         # the avatar simply has no URL rather than the request failing.
         self.storage = storage
 
     def get_me(self, user_id: str, base_url: str = "") -> MeResponse:
+        if self.credits is not None:
+            # First read after sign-in is where the signup bonus lands.
+            # Idempotent, so every later read is a no-op.
+            with contextlib.suppress(Exception):
+                self.credits.ensure_signup_bonus(user_id)
         row = self.database.get_user(user_id)
         if row is None:
             raise AppError(404, "NOT_FOUND", "User not found.")

@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.conftest import USER_A, USER_B
+from tests.conftest import USER_A, USER_B, _seed_credits
 
 HEADERS = {"X-Debug-User-Id": USER_A}
 OTHER = {"X-Debug-User-Id": USER_B}
@@ -19,6 +19,10 @@ def profiled(client: TestClient) -> TestClient:
         created_at="2026-01-02T00:00:00Z",
     )
     database.upsert_user(USER_B, email="bob@example.com", username="bob")
+    # Provisioned accounts can be charged for a generation (S-05), and a
+    # charge against a zero balance is a 402. These tests are about the
+    # profile, not billing.
+    _seed_credits(client, USER_A, USER_B)
     return client
 
 

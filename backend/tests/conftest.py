@@ -60,6 +60,28 @@ def _settings(tmp_path: Path, **overrides: Any) -> Settings:
     return Settings(**{**defaults, **overrides})
 
 
+# A generation now costs credits, and a new account starts at zero (section
+# 2.1 of the brief). In production the signup-bonus event tops that up; here
+# the fixture does it, so a test about webhooks or providers does not also have
+# to be a test about billing. Tests that care about the balance set their own.
+TEST_STARTING_CREDITS = 100
+
+
+def _seed_credits(test_client: TestClient, *user_ids: str) -> None:
+    """Fund the given accounts, creating them only if they do not exist.
+
+    Never overwrites an existing row: a fixture that already set an email or a
+    username owns those values, and an unconditional upsert here silently
+    replaced them.
+    """
+    database = test_client.app.state.database
+    credits = test_client.app.state.credit_service
+    for user_id in user_ids:
+        if database.get_user(user_id) is None:
+            database.upsert_user(user_id, email=f"{user_id[:8]}@example.com")
+        credits.grant(user_id, TEST_STARTING_CREDITS, reason="signup_bonus")
+
+
 @pytest.fixture
 def client(tmp_path: Path) -> Iterator[TestClient]:
     settings = _settings(tmp_path)
@@ -83,6 +105,7 @@ def supabase_client(tmp_path: Path) -> Iterator[TestClient]:
         database = test_client.app.state.database
         database.upsert_user(USER_A, email="a@example.com")
         database.upsert_user(USER_B, email="b@example.com")
+        _seed_credits(test_client, USER_A, USER_B)
         yield test_client
 
 

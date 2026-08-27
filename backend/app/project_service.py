@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
 from app.config import Settings
+from app.credit_service import CreditService
 from app.errors import AppError
 from app.generation_log_service import GenerationLogService
 from app.providers import PollResult, ProviderRegistry
@@ -21,6 +23,8 @@ from app.schemas import (
 from app.storage import StorageBackend, assert_owns_path
 from app.thumbnails import ThumbnailGenerator
 from app.transitions import IN_FLIGHT, assert_transition, is_retryable
+
+logger = logging.getLogger("cretona.projects")
 
 FAILURE_MESSAGES = {
     "content_policy": "The prompt or image could not be used. Try different content.",
@@ -122,6 +126,7 @@ class ProjectService:
         quota: QuotaService,
         generation_log: GenerationLogService,
         thumbnails: ThumbnailGenerator,
+        credits: CreditService,
     ) -> None:
         self.thumbnails = thumbnails
         self.database = database
@@ -130,6 +135,7 @@ class ProjectService:
         self.storage = storage
         self.quota = quota
         self.generation_log = generation_log
+        self.credits = credits
 
     def create(
         self,
@@ -156,6 +162,12 @@ class ProjectService:
         # accounting, not control (ADR-007).
         self.quota.assert_available(owner_id, cost=quota_cost(provider.name, duration))
 
+        # The id is generated here rather than inline below so the charge can
+        # reference the project it pays for. Reserve before submitting, so a
+        # user with one credit cannot start ten jobs (API_CONTRACT.md §10.1).
+        project_id = str(uuid4())
+        self._charge_for_generation(owner_id, project_id)
+
         now = utc_now()
         effective_prompt = compose_enhanced_prompt(
             request.prompt,
@@ -165,7 +177,7 @@ class ProjectService:
         prompt = effective_prompt or request.prompt
         title = request.title or self._derive_title(prompt)
         values: dict[str, Any] = {
-            "id": str(uuid4()),
+            "id": project_id,
             "owner_id": owner_id,
             "title": title,
             "prompt": prompt,
@@ -188,8 +200,19 @@ class ProjectService:
             "updated_at": now,
             "completed_at": None,
         }
-        row, created = self.database.create_project(values)
+        try:
+            row, created = self.database.create_project(values)
+        except Exception:
+            # Nothing was generated and nothing is queued, so the reservation
+            # has to come back. Without this the credits would be spent on a
+            # project that does not exist.
+            self._refund_generation(owner_id, project_id, "Project could not be created")
+            raise
+
         if not created:
+            # An idempotency race: another request already created this project
+            # under the same key, and this one's charge paid for nothing.
+            self._refund_generation(owner_id, project_id, "Duplicate submission")
             return self.to_response(row, base_url)
 
         try:
@@ -224,6 +247,9 @@ class ProjectService:
                 request={"prompt": prompt, "imagePath": request.image_path},
                 response={"message": str(exc)},
             )
+            # The user got no video, so they keep their credits. The brief
+            # allows either not charging or refunding; this is the refund half.
+            self._refund_generation(owner_id, row["id"], "Generation failed to start")
             failed = self.database.update_project(
                 row["id"],
                 owner_id,
@@ -311,8 +337,20 @@ class ProjectService:
             cost=quota_cost(row["provider"], row["duration_seconds"]),
         )
 
+        # A retry is a real generation, so it is charged again -- the same
+        # reasoning ADR-007 applies to the quota allowance. The key includes the
+        # attempt number, so each attempt is its own charge rather than being
+        # swallowed as a replay of the first.
+        self._charge_for_generation(
+            owner_id, project_id, attempt=attempts + 1, note="Retry"
+        )
+
         provider = self.providers.get(row["provider"])
-        submitted = provider.submit(prompt=row["prompt"], image_path=row["image_path"])
+        try:
+            submitted = provider.submit(prompt=row["prompt"], image_path=row["image_path"])
+        except Exception:
+            self._refund_generation(owner_id, project_id, "Retry failed to start")
+            raise
         now = utc_now()
         updated = self.database.update_project(
             project_id,
@@ -466,6 +504,8 @@ class ProjectService:
         if updated is None:
             raise AppError(409, "CONFLICT", "Project state changed before cancellation.")
 
+        self._refund_generation(owner_id, project_id, "Cancelled by user")
+
         self.generation_log.record(
             project_id=project_id,
             provider=row["provider"],
@@ -559,6 +599,14 @@ class ProjectService:
         }
         if poll_count is not None:
             values["poll_count"] = poll_count
+
+        # Every terminal failure funnels through here -- timeout, provider
+        # error, webhook failure -- so this is the one place a refund has to
+        # live for all of them. `refund_for` is idempotent and returns None
+        # when there is nothing to give back, so calling it on a path that was
+        # never charged costs a lookup and changes nothing.
+        self._refund_generation(owner_id, row["id"], FAILURE_MESSAGES.get(failure, failure))
+
         updated = self.database.update_project(
             row["id"],
             owner_id,
@@ -566,6 +614,74 @@ class ProjectService:
             expected_status=row["status"],
         )
         return updated or self._owned(owner_id, row["id"])
+
+    def _charge_for_generation(
+        self,
+        owner_id: str,
+        project_id: str,
+        *,
+        attempt: int = 1,
+        note: str | None = None,
+    ) -> int:
+        """Reserve the cost of one generation. Raises 402 if it will not cover.
+
+        The price is resolved here rather than passed in, because the discount
+        that applies is the one running at this instant -- a client that
+        rendered "1 credit" a minute ago does not get to decide what it pays.
+
+        The idempotency key is derived from the project and the attempt, so the
+        same submission can never be charged twice while a genuine retry still
+        is.
+        """
+        if self.database.get_user(owner_id) is None:
+            # No profile row, so there is no balance to charge against.
+            #
+            # This is unreachable in any deployed profile: `_resolved_account`
+            # returns 401 before a request gets this far without a row, and the
+            # Supabase signup trigger creates one. It is reachable only in
+            # `auth_mode=dev`, which takes an identity from a header and
+            # deliberately never provisions anything (see the note on
+            # test_missing_profile_is_not_found).
+            #
+            # Skipping the charge there keeps dev mode working as documented
+            # without weakening billing anywhere it actually applies.
+            return 0
+
+        base = self.credits.generation_cost()
+        cost = CreditService.effective_cost(base, self._active_discount_percent())
+        self.credits.charge(
+            owner_id,
+            cost,
+            reason="generation",
+            ref_type="project",
+            ref_id=project_id,
+            note=note,
+            idempotency_key=f"generation:{project_id}:{attempt}",
+        )
+        return cost
+
+    def _refund_generation(self, owner_id: str, project_id: str, note: str) -> None:
+        """Give back what this project was charged, if anything.
+
+        Deliberately swallows its own failures. A refund that raises would turn
+        a failed generation into a 500 and leave the project stuck in flight,
+        which is worse for the user than a refund that has to be chased. The
+        drift query in `ledger_drift()` is how that would be found.
+        """
+        try:
+            self.credits.refund_for(
+                owner_id, ref_type="project", ref_id=project_id, note=note
+            )
+        except Exception:  # pragma: no cover - defensive
+            logger.exception("Refund failed for project %s", project_id)
+
+    def _active_discount_percent(self) -> int | None:
+        """The discount running right now, or None.
+
+        Returns None until EventService lands (S-10/S-11); wired here so the
+        charge site does not have to change when it does.
+        """
+        return None
 
     def _owned(self, owner_id: str, project_id: str) -> dict[str, Any]:
         row = self.database.get_project(project_id, owner_id)

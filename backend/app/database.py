@@ -310,7 +310,42 @@ class Database:
                 connection.execute("PRAGMA mmap_size = 268435456")
                 connection.executescript(SCHEMA)
                 self._add_missing_columns(connection)
+                self._seed_defaults(connection)
             self._initialized = True
+
+    @staticmethod
+    def _seed_defaults(connection: sqlite3.Connection) -> None:
+        """Mirror supabase/seed_credits_and_events.sql into the local database.
+
+        Postgres gets these from a seed script run against Supabase. Nothing
+        runs that script against the sqlite mirror, so a local or test database
+        had the tables but no rows -- which meant no generation cost, no signup
+        bonus, and a new account that could never generate anything.
+
+        Only the rows the product cannot start without: the cost setting and
+        the signup bonus. Packages, hot hours and the rest are campaign data,
+        and inventing them here would put a second source of truth next to the
+        SQL. Guarded, so a row an operator changed is never overwritten.
+        """
+        connection.execute(
+            "INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
+            ("generation_cost_credits", "1", "1970-01-01T00:00:00Z"),
+        )
+        connection.execute(
+            "INSERT OR IGNORE INTO events "
+            "(id, code, name, description, kind, bonus_credits, recurrence, "
+            " starts_at, ends_at, auto_grant, is_active, created_at) "
+            "VALUES (?, ?, ?, ?, 'grant', 5, 'once', ?, ?, 1, 1, ?)",
+            (
+                "00000000-0000-4000-8000-00000000e001",
+                "SIGNUP_BONUS",
+                "Welcome bonus",
+                "Five credits to get you started, added when you first sign in.",
+                "1970-01-01T00:00:00Z",
+                "2099-01-01T00:00:00Z",
+                "1970-01-01T00:00:00Z",
+            ),
+        )
 
     @staticmethod
     def _add_missing_columns(connection: sqlite3.Connection) -> None:
@@ -898,6 +933,22 @@ class Database:
         if row is None:  # pragma: no cover - just inserted
             raise RuntimeError("Inserted credit transaction could not be read back.")
         return dict(row), True
+
+    def find_auto_grant_event(self, now: str) -> dict[str, Any] | None:
+        """The active signup-bonus event, if one is running.
+
+        `auto_grant` events have no button: they apply the first time an
+        account is seen. Only one is expected at a time; the newest wins if a
+        campaign was replaced without the old one being deactivated.
+        """
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM events WHERE auto_grant = 1 AND is_active = 1 "
+                "  AND kind = 'grant' AND starts_at <= ? AND ends_at > ? "
+                "ORDER BY starts_at DESC LIMIT 1",
+                (now, now),
+            ).fetchone()
+        return dict(row) if row else None
 
     def find_credit_transaction_by_key(
         self, user_id: str, idempotency_key: str

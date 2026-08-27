@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.admin_service import AdminService
 from app.config import Settings, get_settings
+from app.credit_service import CreditService
 from app.database import Database
 from app.errors import AppError, app_error_handler, error_payload, validation_error_handler
 from app.generation_log_retention import GenerationLogRetentionWorker
@@ -162,7 +163,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     api.state.admin_service = AdminService(database)
     api.state.quota_service = QuotaService(database, active_settings)
-    api.state.users_service = UsersService(database, api.state.quota_service, storage)
+    # The only writer of a credit balance. Everything that moves credits goes
+    # through it, which is what makes the ledger invariants checkable.
+    api.state.credit_service = CreditService(database)
+    api.state.users_service = UsersService(
+        database, api.state.quota_service, storage, api.state.credit_service
+    )
     api.state.generation_log = GenerationLogService(database)
     api.state.generation_log_retention = GenerationLogRetentionWorker(
         api.state.generation_log, active_settings
@@ -185,6 +191,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             enabled=active_settings.thumbnails_enabled,
             seek_seconds=active_settings.thumbnail_seek_seconds,
         ),
+        api.state.credit_service,
     )
     api.state.prompt_enhancer = PromptEnhancer(active_settings)
     api.state.poller = JobPoller(

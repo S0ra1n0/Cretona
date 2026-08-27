@@ -82,14 +82,33 @@ Three integration points, and only three:
   charge rather than recomputing it, so a discount ending mid-job cannot change
   what comes back (contract §10.4).
 
-**S-05 · Wire charging into `project_service`** — 2h · *depends: S-04*
+**S-05 · Wire charging into `project_service`** — ✅ **DONE 08-28**
 : Reserve at submit, refund on `failed` and `cancelled`. `402
-  INSUFFICIENT_CREDITS` **before** any provider call or row insert. Retry
-  charges again.
-: `QuotaService` stays untouched — it is now defence in depth. Add a paragraph
-  to `ADR-007` saying so.
-: **Done when:** a generation charges 1 credit; a forced failure refunds it; both
-  appear in the ledger.
+  INSUFFICIENT_CREDITS` before any provider call or row insert. Retry charges
+  again, keyed per attempt. `QuotaService` untouched — now defence in depth.
+: `_mark_failed` is the single choke point every terminal failure passes
+  through, so the refund lives there once rather than at each call site.
+  `_refund_generation` swallows its own errors on purpose: a refund that raised
+  would turn a failed generation into a 500 and strand the project in flight.
+: **15 tests in `tests/test_credit_charging.py`.** Suite is 424 passed, ruff
+  clean.
+
+**S-05a · Signup bonus** — ✅ **DONE 08-28** *(pulled forward from S-11)*
+: **This was blocking everything.** A new account starts at 0 credits and
+  nothing else granted a first one, so a real user could complete their profile
+  and then never generate anything. The end-to-end test caught it.
+: `CreditService.ensure_signup_bonus()` applies the active `auto_grant` event,
+  idempotent on `signup:{user_id}`. Called from `GET /me` rather than at
+  signup: the row is created three different ways depending on profile (the
+  Supabase trigger, the sqlite provisioner, a seed script) and only two run
+  Python we control. Reading the profile is the one thing every client does
+  after signing in.
+: `Database.initialize()` now seeds the cost setting and the signup-bonus event
+  into sqlite, mirroring the Supabase seed. Local and test databases had the
+  tables but no rows, so local dev behaved differently from production.
+: **Left for S-11:** `GET /events`, claiming, and the discount applied at
+  charge time. `ProjectService._active_discount_percent()` is stubbed to return
+  None and is the only line S-11 has to change.
 
 **S-06 · W1 — provider-scoped claiming** — ✅ **DONE 08-28**
 : `claim_in_flight_projects` takes `providers: Sequence[str] | None` on both

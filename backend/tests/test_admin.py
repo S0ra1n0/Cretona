@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.conftest import USER_A, USER_B
+from tests.conftest import USER_A, USER_B, _seed_credits
 
 ADMIN_ID = "30000000-0000-4000-8000-000000000003"
 ADMIN_HEADERS = {"X-Debug-User-Id": ADMIN_ID}
@@ -35,6 +35,9 @@ def seeded(client: TestClient) -> TestClient:
         is_disabled=True,
         created_at="2026-01-01T00:00:00Z",
     )
+    # A provisioned account can be charged for a generation (S-05); these tests
+    # create projects and are not about billing.
+    _seed_credits(client, USER_A, USER_B)
     return client
 
 

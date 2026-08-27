@@ -984,6 +984,22 @@ class PostgresDatabase:
             raise RuntimeError("Inserted credit transaction could not be read back.")
         return _to_credit_row(row), True
 
+    def find_auto_grant_event(self, now: str) -> dict[str, Any] | None:
+        """The active signup-bonus event, if one is running."""
+        with self.pool.connection() as connection:
+            row = connection.execute(
+                "SELECT * FROM public.events WHERE auto_grant AND is_active "
+                "  AND kind = 'grant' AND starts_at <= %s::timestamptz "
+                "  AND ends_at > %s::timestamptz "
+                "ORDER BY starts_at DESC LIMIT 1",
+                (now, now),
+            ).fetchone()
+        if row is None:
+            return None
+        out = dict(row)
+        out["id"] = str(out["id"])
+        return out
+
     def find_credit_transaction_by_key(
         self, user_id: str, idempotency_key: str
     ) -> dict[str, Any] | None:

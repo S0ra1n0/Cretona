@@ -188,6 +188,42 @@ class CreditService:
         )
         return row
 
+    def ensure_signup_bonus(self, user_id: str) -> int:
+        """Apply the signup-bonus event once, if one is running.
+
+        Section 2.1 of the brief: an ordinary account starts at 0 credits, and
+        an account created during a valid promotion gets that promotion's
+        credits. Without this a new user starts at zero and can never generate
+        anything, because nothing else grants a first credit.
+
+        Applied lazily, on the first profile read, rather than at signup. The
+        row is created three different ways depending on the profile -- the
+        Supabase trigger, the local sqlite provisioner, or a seed script -- and
+        only two of those run any Python we control. Reading the profile is the
+        one thing every client does after signing in, whichever created it.
+
+        Idempotent on `signup:{user_id}`, so repeated reads grant once. Returns
+        the credits granted, or 0.
+        """
+        event = self.database.find_auto_grant_event(iso(datetime.now(UTC)))
+        if not event:
+            return 0
+
+        amount = int(event.get("bonus_credits") or 0)
+        if amount <= 0:
+            return 0
+
+        _, created = self.grant(
+            user_id,
+            amount,
+            reason="signup_bonus",
+            ref_type="event",
+            ref_id=str(event["id"]),
+            note=event.get("name"),
+            idempotency_key=f"signup:{user_id}",
+        )
+        return amount if created else 0
+
     # --- internals -----------------------------------------------------------
 
     def _find_charge(
