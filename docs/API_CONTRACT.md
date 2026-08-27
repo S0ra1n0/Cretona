@@ -205,3 +205,341 @@ stateDiagram-v2
     failed --> [*]
     cancelled --> [*]
 ```
+
+---
+
+# Part II — Credits, Events and Generation Modes
+
+- **Added:** 2026-08-28 · **Status:** agreed contract, implementation pending
+- **Owners:** S0ra1n0 implements the server; Bruce codes Android against this
+  document from day 1 with a fake repository implementation.
+- **Rule:** this document is the source of truth. A change here is told to the
+  other developer the same day. Contract drift found on 09-03 is the failure
+  this exists to prevent.
+
+## 4. Conventions that apply to everything below
+
+1. **Wire casing is camelCase.** Python keeps snake_case and aliases at the
+   schema boundary, exactly as `MeResponse` already does.
+2. **Errors use the §1.3 envelope.** New codes are listed in §4.1. A new
+   endpoint that returns a bare status string is a bug — `toAppError()` parses
+   the envelope, and the user sees a raw HTTP code otherwise.
+3. **Optional request fields carry no Kotlin default value.** `explicitNulls =
+   false` drops nulls and `encodeDefaults = false` drops anything equal to its
+   default, so a field with a default is silently unsendable. This is the
+   `gender`/`birthday` bug; `MeUpdateRequestSerializationTest` pins it. Every
+   new request model with an optional field needs the same treatment and the
+   same test.
+4. **Money is an integer of VND.** No decimals, no floats, no currency string.
+5. **Timestamps are ISO-8601 UTC with `Z`.** The client converts for display.
+6. **Cursor pagination**, same shape as `GET /projects`:
+   `{ "items": [...], "nextCursor": "<opaque|null>" }`. Query: `?limit=20&cursor=`.
+7. **`Idempotency-Key: <uuid>`** is required on every endpoint that moves
+   credits. Replaying a key returns the original result and never charges or
+   grants twice.
+
+### 4.1 New error codes
+
+| Code | HTTP | Meaning | Android behaviour |
+|---|---:|---|---|
+| `INSUFFICIENT_CREDITS` | 402 | Balance below the cost of this generation | Route to the Credits screen; never show a raw error |
+| `EVENT_NOT_ACTIVE` | 409 | Event window closed, or not started | Refresh the event list |
+| `EVENT_ALREADY_CLAIMED` | 409 | Already claimed for this period | Show "claimed", disable the button |
+| `EVENT_FULL` | 409 | Global claim cap reached | Show "fully claimed" |
+| `PACKAGE_INACTIVE` | 409 | Package disabled between listing and purchase | Refresh packages |
+
+`QUOTA_EXCEEDED` (429) keeps its current meaning — the rolling rate limit. It is
+**not** reused for credits. The two are independent controls.
+
+---
+
+## 5. Generation modes
+
+The app supports three input modes. Both fields are individually optional;
+**at least one must be present**.
+
+| Mode | `prompt` | `imagePath` | Meaning |
+|---|:--:|:--:|---|
+| `text` | yes | — | Text-to-video |
+| `image` | — | yes | Image-to-video, no text guidance |
+| `text_image` | yes | yes | Image-to-video guided by the prompt |
+
+- The client **does not send `mode`.** The server derives it and returns it on
+  every project object, so the two can never disagree.
+- Missing both → `VALIDATION_ERROR` with
+  `details: [{ "field": "prompt", "issue": "prompt_or_image_required" }]`.
+- The server picks the model from the mode. Which model serves `image` and
+  `text_image` is a provider concern and is **not** exposed to Android — this
+  preserves ADR-009's provider neutrality.
+- If no image-capable provider is available the request fails with
+  `PROVIDER_ERROR`. It does **not** silently fall back to text-only: a user who
+  supplied an image and received a video that ignores it has been misled.
+
+`POST /projects` gains no new request fields. `prompt` becomes nullable, and the
+project response object gains `"mode"`.
+
+---
+
+## 6. Credits — user endpoints
+
+### 6.1 `GET /me/credits`
+
+```json
+{
+  "balance": 25,
+  "generationCost": 1,
+  "effectiveCost": 1,
+  "activeDiscount": null,
+  "lifetimeGranted": 35,
+  "lifetimeSpent": 10
+}
+```
+
+`generationCost` is the configured base cost. `effectiveCost` is what the next
+generation actually costs **right now**, after any active discount event. While
+a discount runs:
+
+```json
+{
+  "balance": 25,
+  "generationCost": 2,
+  "effectiveCost": 1,
+  "activeDiscount": {
+    "eventId": "3f2a…", "name": "Hot Hours", "discountPercent": 50,
+    "endsAt": "2026-08-28T15:00:00Z"
+  },
+  "lifetimeGranted": 35,
+  "lifetimeSpent": 10
+}
+```
+
+The Create screen shows `effectiveCost`, never `generationCost`. A non-null
+`activeDiscount` is what drives the "50% off until 22:00" banner.
+
+### 6.2 `GET /me/credits/transactions?limit=20&cursor=`
+
+```json
+{
+  "items": [
+    {
+      "id": "8a1c…",
+      "delta": -1,
+      "balanceAfter": 24,
+      "reason": "generation",
+      "refType": "project",
+      "refId": "b72f…",
+      "note": "Hot Hours -50%",
+      "createdAt": "2026-08-28T13:20:11Z"
+    }
+  ],
+  "nextCursor": null
+}
+```
+
+`reason` is one of `signup_bonus`, `event_grant`, `purchase`, `generation`,
+`refund`, `admin_adjustment`. Android maps each to a label and an icon; an
+unrecognised value renders as the raw string rather than crashing, because the
+server may add reasons later.
+
+---
+
+## 7. Events — the promotion system
+
+One table serves every case. An event is either a **grant** (gives credits) or a
+**discount** (reduces generation cost), and fires **once**, **daily**, or
+**weekly** inside its campaign window.
+
+| Wanted behaviour | `kind` | `recurrence` | Fields |
+|---|---|---|---|
+| Hot hours, −50% from 20:00–22:00 | `discount` | `daily` | `discountPercent: 50`, `activeFromMinute: 1200`, `activeToMinute: 1320` |
+| Weekend gift, +10 credits | `grant` | `weekly` | `bonusCredits: 10`, `activeDays: ["sat","sun"]` |
+| National Day gift | `grant` | `once` | `bonusCredits: 20`, window = the holiday |
+| Admin surprise drop | `grant` | `once` | created ad hoc, short window |
+| Signup bonus | `grant` | `once` | `autoGrant: true` — applied at registration, no user action |
+
+**Minutes are local Vietnam time (UTC+7)**, stored as minutes from midnight.
+`1200` is 20:00, `1320` is 22:00. The server does the conversion; the client
+never computes a window.
+
+### 7.1 `GET /events`
+
+Events that are live or upcoming, with per-caller claim state.
+
+```json
+{
+  "items": [
+    {
+      "id": "e1…",
+      "code": "HOT_HOURS",
+      "name": "Hot Hours",
+      "description": "Half price on every generation, 20:00–22:00 daily.",
+      "kind": "discount",
+      "discountPercent": 50,
+      "bonusCredits": null,
+      "recurrence": "daily",
+      "isActiveNow": true,
+      "activeUntil": "2026-08-28T15:00:00Z",
+      "nextActiveAt": null,
+      "claimable": false,
+      "claimedThisPeriod": false,
+      "remainingSlots": null
+    },
+    {
+      "id": "e2…",
+      "code": "WEEKEND_GIFT",
+      "name": "Weekend Gift",
+      "description": "+10 credits every weekend.",
+      "kind": "grant",
+      "discountPercent": null,
+      "bonusCredits": 10,
+      "recurrence": "weekly",
+      "isActiveNow": false,
+      "activeUntil": null,
+      "nextActiveAt": "2026-08-29T17:00:00Z",
+      "claimable": false,
+      "claimedThisPeriod": false,
+      "remainingSlots": 480
+    }
+  ],
+  "nextCursor": null
+}
+```
+
+- **`claimable` is the single flag the button binds to.** True only when the
+  event is a `grant`, is active now, has slots left, and the caller has not
+  claimed it this period. Android must not re-derive this from the other
+  fields — the server owns the rule, and it is the one place a bug would give
+  away credits.
+- **`discount` events are never claimable.** They apply automatically at charge
+  time. The card shows them as information.
+- `remainingSlots` is `null` for uncapped events.
+
+### 7.2 `POST /events/{id}/claim`
+
+Header `Idempotency-Key` required. Empty body.
+
+```json
+{ "creditsGranted": 10, "balance": 35, "transactionId": "c93a…" }
+```
+
+Failures use the §4.1 codes: `EVENT_NOT_ACTIVE`, `EVENT_ALREADY_CLAIMED`,
+`EVENT_FULL`.
+
+**The cap and the per-period uniqueness are enforced in SQL**, not by reading a
+count and then inserting. A double-tap on a phone is enough to race a
+read-then-write and grant twice. `event_claims` carries
+`unique (event_id, user_id, period_key)`, where `period_key` is `''` for `once`,
+the local date for `daily`, and the ISO week for `weekly`.
+
+---
+
+## 8. Credit packages and payments
+
+Retained deliberately. §2.2 requires "chức năng mua thêm Credit", §3 requires a
+credit-package API and revenue reporting, and §5 names `Credit Packages` and
+`Payments` as required tables. Events do not satisfy those lines.
+
+**No real money moves.** See `ADR-010`. The flow, the state machine, the
+idempotency and the ledger entry are all real; only the gateway confirmation is
+stubbed.
+
+### 8.1 `GET /credit-packages`
+
+```json
+{ "items": [
+  { "id": "p1…", "name": "Starter", "credits": 10, "priceVnd": 20000, "sortOrder": 1 },
+  { "id": "p2…", "name": "Creator", "credits": 50, "priceVnd": 90000, "sortOrder": 2 }
+] }
+```
+
+### 8.2 `POST /payments`
+
+Header `Idempotency-Key` required.
+
+```json
+{ "packageId": "p1…" }
+```
+
+Response `201`:
+
+```json
+{
+  "id": "pay1…", "status": "completed",
+  "packageId": "p1…", "amountVnd": 20000,
+  "creditsGranted": 10, "balance": 35,
+  "method": "simulated",
+  "createdAt": "2026-08-28T13:20:11Z",
+  "completedAt": "2026-08-28T13:20:11Z"
+}
+```
+
+The payment row and the credit transaction are written in **one database
+transaction**. A completed payment that granted no credits, or credits granted
+with no payment row, is a bug the tests must cover.
+
+---
+
+## 9. Admin endpoints
+
+All require the admin role and are audit-logged through the existing
+`AuditEntry` mechanism, written in the same transaction as the mutation.
+
+| Method | Path | Body / notes |
+|---|---|---|
+| `POST` | `/admin/users/{id}/credits` | `{ "delta": 25, "note": "compensation" }` → reason `admin_adjustment`. Rejects a delta that would drive the balance negative |
+| `GET` | `/admin/credit-transactions` | `?userId=&reason=&limit=&cursor=` |
+| `GET` `POST` `PATCH` | `/admin/credit-packages` | `PATCH` toggles `isActive`. Packages are never deleted — payments reference them |
+| `GET` `POST` `PATCH` | `/admin/events` | The full event shape from §7, plus `isActive` |
+| `GET` | `/admin/events/{id}/claims` | Who claimed, when, how much |
+| `GET` | `/admin/payments` | `?status=&limit=&cursor=` |
+| `GET` `PATCH` | `/admin/settings` | `{ "generationCostCredits": 1 }` — closes the §3 "cấu hình chi phí tạo video" line |
+| `GET` | `/admin/projects` | `?status=&userId=&limit=&cursor=` — list and moderate videos. Only `/admin/projects/{id}/logs` exists today |
+
+### 9.1 `GET /admin/stats` — extended
+
+Four of the six metrics §3 requires are missing today. Existing keys are
+unchanged; these are added:
+
+```json
+{
+  "totals": { "users": 42, "activeUsers": 30, "projects": 128,
+              "creditsGranted": 1420, "creditsUsed": 380, "revenueVnd": 1800000 },
+  "daily": [ { "date": "2026-08-28", "created": 12, "completed": 10, "failed": 2,
+               "newUsers": 3, "creditsGranted": 40, "creditsUsed": 12,
+               "revenueVnd": 90000 } ],
+  "events": [ { "eventId": "e2…", "code": "WEEKEND_GIFT", "name": "Weekend Gift",
+                "claims": 37, "creditsGranted": 370, "remainingSlots": 463 } ]
+}
+```
+
+`newUsers` counts signups. Today's `DailyStat.created` counts projects, which is
+a different number and does not satisfy the "User mới" line.
+
+---
+
+## 10. Charging rules
+
+Normative. `CreditService` is the only writer of a balance.
+
+1. **Reserve at submit.** `POST /projects` charges `effectiveCost` before the
+   provider is called. The brief allows charge-on-success or
+   charge-then-refund; reserving is the only option that stops a user with one
+   credit launching ten jobs.
+2. **`effectiveCost = max(1, round(baseCost × (100 − discountPercent) / 100))`**,
+   computed server-side at charge time from the events active at that instant.
+   A discount that expires between the client rendering the screen and the
+   request arriving charges full price — the client's number is an estimate,
+   the server's is the truth.
+3. **Insufficient balance → `402 INSUFFICIENT_CREDITS`** before any provider
+   call, any row insert, or any quota consumption.
+4. **Refund on `failed` and on `cancelled`.** The amount actually charged, read
+   back from the original transaction — never recomputed, because the discount
+   may have ended since. Reason `refund`, same `refId`.
+5. **Retry charges again.** It is a real generation, matching ADR-007's existing
+   treatment of retry.
+6. **Idempotent.** `credit_transactions` carries
+   `unique (user_id, idempotency_key)` where the key is not null. A replayed
+   submit returns the original project and does not charge twice.
+7. **The ledger is append-only.** `users.credit_balance` is a cache written in
+   the same transaction. `balanceAfter` on every row exists so drift is
+   detectable by a query rather than by a user complaint.

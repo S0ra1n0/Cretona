@@ -1,0 +1,50 @@
+[
+  {
+    "prompt_key": "A",
+    "run_index": 1,
+    "seed": 1234,
+    "file": "A1_seed1234.mp4",
+    "status": "ok",
+    "seconds": 2952.1,
+    "peak_vram_gib": 12.39,
+    "peak_ram_gib": 29.13,
+    "bytes": 347446,
+    "sha256": "f7178381add6cd09ba47529787efa97ffc858a34ecb32a97fc3253de209da707"
+  },
+  {
+    "prompt_key": "A",
+    "run_index": 2,
+    "seed": 5678,
+    "file": "A2_seed5678.mp4",
+    "status": "ok",
+    "seconds": 2901.86,
+    "peak_vram_gib": 12.45,
+    "peak_ram_gib": 25.58,
+    "bytes": 454827,
+    "sha256": "4aa7bad5e208d0750565f29999dc82d16b3df3e8aadaa2f9b8f1e6ddf6045c96"
+  },
+  {
+    "prompt_key": "B",
+    "run_index": 1,
+    "seed": 1234,
+    "file": "B1_seed1234.mp4",
+    "status": "ok",
+    "seconds": 2902.6,
+    "peak_vram_gib": 12.45,
+    "peak_ram_gib": 25.4,
+    "bytes": 784535,
+    "sha256": "a32a4d452cc04cff042c20f08b3e7b90580bfefb3102a6556843e5d9239aada7"
+  },
+  {
+    "prompt_key": "B",
+    "run_index": 2,
+    "seed": 5678,
+    "file": "B2_seed5678.mp4",
+    "status": "ok",
+    "seconds": 2918.72,
+    "peak_vram_gib": 12.45,
+    "peak_ram_gib": 25.33,
+    "bytes": 769231,
+    "sha256": "4d75e3771bb6bc636975304618232717f018b1ab354a38e5e1672cea0a3e2abf"
+  }
+]

@@ -1,0 +1,12 @@
+{
+  "captured_at": "2026-08-27T10:47:35.439933Z",
+  "platform": "Linux-6.12.90+-x86_64-with-glibc2.35",
+  "python": "3.12.13",
+  "gpu": "Tesla T4, 15360 MiB, 580.159.04\nTesla T4, 15360 MiB, 580.159.04",
+  "cpu_count": 4,
+  "ffmpeg": "ffmpeg version 4.4.2-0ubuntu0.22.04.1 Copyright (c) 2000-2021 the FFmpeg developers",
+  "torch": "2.10.0+cu128",
+  "cuda": "12.8",
+  "gpu_torch": "Tesla T4",
+  "total_ram_gib": 31.35
+}

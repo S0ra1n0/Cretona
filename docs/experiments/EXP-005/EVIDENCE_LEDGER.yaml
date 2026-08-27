@@ -315,3 +315,39 @@ entries:
       - "This is a host result. It disconfirms free Kaggle T4 x2 with ~30 GB RAM, not the models themselves."
       - "Quantized checkpoints were not attempted; fp8 or GGUF roughly halves resident size and is the plausible route back onto constrained hardware."
       - "Peak RAM was not sampled at the moment of failure: the kernel is killed by the host watchdog, which leaves no process alive to record it."
+
+  - id: "EVD-EXP005-011"
+    claim: "Wan2.1 T2V 1.3B generates four distinct 81-frame 832x480 H.264 clips from text on free Kaggle T4 x2, from two prompts across two consecutive seeds each."
+    requirement_ids: ["FR-2.1", "FR-2.7"]
+    decision_ids: ["DEC-004"]
+    contract_ids: ["CRETONA-PERF-EXP-005"]
+    specialist_artifact_ids: []
+    task_ids: ["EXP-005-T2V-KAGGLE"]
+    release_candidate_id: null
+    evidence_type: "live model execution"
+    observation_method: "EXP-005_T2V_bakeoff.ipynb on Kaggle with SMOKE_TEST = False; two-phase load, one clip per cell; 2 prompts x 2 consecutive seeds."
+    evidence_level: "observed runtime"
+    tool_and_version: "diffusers WanPipeline; torch 2.10.0+cu128; cuda 12.8; python 3.12.13; ffmpeg 4.4.2"
+    policy_standard_or_target_revision: "Wan-AI/Wan2.1-T2V-1.3B-Diffusers@0fad780a534b6463e45facd96134c9f345acfa5b"
+    status: "passed"
+    command: "Run cells 4 -> 27 with SMOKE_TEST = False, STEPS = 50, NUM_FRAMES = 81"
+    working_directory: "/kaggle/working"
+    environment: "Kaggle; 2x Tesla T4, 15360 MiB each, driver 580.159.04; 31.35 GiB RAM; 4 vCPU; Linux 6.12.90"
+    executed_at: "2026-08-27"
+    exit_code: 0
+    result_summary: "4/4 clips generated, 4 distinct sha256; peak VRAM 12.45 GiB; peak RAM 29.13 GiB of 31.35 available; 2901.86-2952.10 s per clip, mean 2918.82 s (48.6 min), 11675.28 s (3.24 h) of GPU time for the set; every clip avc1 832x480, 81 frames, 5.063 s at 16 fps."
+    artifact_or_log: "docs/experiments/EXP-005/evidence/t2v-fullrun-2026-08-27-results.json and -environment.json; full archive exp005-t2v-20260827T104718Z.zip in the gitignored runs/ directory"
+    source_revision: "b60fe5f plus the working-tree notebook restructure (one clip per cell)"
+    artifact_digest: "sha256:f7178381add6cd09ba47529787efa97ffc858a34ecb32a97fc3253de209da707 (A1), 4aa7bad5e208d0750565f29999dc82d16b3df3e8aadaa2f9b8f1e6ddf6045c96 (A2), a32a4d452cc04cff042c20f08b3e7b90580bfefb3102a6556843e5d9239aada7 (B1), 4d75e3771bb6bc636975304618232717f018b1ab354a38e5e1672cea0a3e2abf (B2)"
+    workflow_or_deployment_run: "Kaggle interactive session, 2026-08-27 10:47Z - 14:41Z"
+    executed_by: "S0ra1n0 on Kaggle, notebook authored by Claude"
+    independently_verified_by: "Container parse of all four MP4 files off Kaggle confirmed avc1 832x480, 81 frames, 5.063 s, four distinct digests, and no near-empty frames."
+    receiver_verified_by: null
+    limitations:
+      - "This is a generation-validity result, not a quality result. QUALITY_SCORECARD.md is unscored, so the model remains unverified on quality and no pass against PB-FRAMEPACK-QUALITY's 73/100 bar is claimed."
+      - "Latency is 48.6 min per clip, 2.7x the earlier ~10.4 min figure, which was measured at 50 frames and on a run later invalidated by the grey-clip bug. 81 frames is 1.62x the frames for 4.7x the time; attention cost is superlinear in frame count."
+      - "48.6 min exceeds the only generation-latency blocking threshold the contract states, PB-FRAMEPACK-LATENCY at 1800 s, by 62 percent. That budget is written for the local FramePack path, so this is an unbudgeted workload rather than a recorded breach."
+      - "Peak RAM reached 29.13 GiB of 31.35 GiB, 93 percent of the host. Headroom is about 2.2 GiB and any increase in frames, batch, or resident state is likely to hit the RAM ceiling that caused the 2026-08-23 failures."
+      - "At roughly 30 GPU-hours per week of free Kaggle quota, this configuration supports about 37 clips per week in total across the whole team."
+      - "Blind labels only hide the seed. A single model was run, so the relabel does not conceal a candidate identity, and the scorecard's cross-candidate delta cannot be computed from this run alone."
+    blocker_class: null

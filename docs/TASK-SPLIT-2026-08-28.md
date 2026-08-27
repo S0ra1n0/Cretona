@@ -1,0 +1,304 @@
+# Cretona — task split to 2026-09-05
+
+- **Document ID:** `CRETONA-TASKS-005`
+- **Written:** 2026-08-28 · **Submit:** 2026-09-05 (8 working days)
+- **Contract:** `API_CONTRACT.md` Part II — **agreed, do not renegotiate
+  informally.** A change gets told to the other person the same day.
+- **Decisions:** `PLAN-TO-2026-09-05.md` §2 (D1–D4, all resolved)
+- **S0ra1n0** — backend, database, Kaggle worker · **Bruce** — Android, admin UI
+
+Ticket ids are stable. Use them in commit messages: `feat(credits): S-03 …`.
+
+---
+
+## 0. How the two lanes stay parallel
+
+Bruce is **not** blocked on S0ra1n0. Every screen is built against
+`API_CONTRACT.md` Part II with a fake implementation behind the existing
+`CretonaRepository` interface. `CretonaRepositoryImpl` swaps in when the real
+endpoint lands, and the screen does not change.
+
+Three integration points, and only three:
+
+| When | What | Who checks |
+|---|---|---|
+| End of 08-30 | Credits + events endpoints live; Bruce switches off fakes | Both, 30 min |
+| End of 09-02 | Worker produces a real clip; Bruce plays it in the app | Both, 30 min |
+| 09-03 18:00 | Feature freeze. Everything after is integration and docs | Both |
+
+---
+
+## 1. S0ra1n0 — backend
+
+### Day 1 · Fri 08-28
+
+**S-01 · Migration `013_add_credits_and_events.sql`** — 3h
+: Seven schema objects: `users.credit_balance`, `credit_transactions`,
+  `credit_packages`, `payments`, `events`, `event_claims`, `settings`. DDL is in
+  `PLAN-TO-2026-09-05.md` §4.
+: Lands in **five** places or the suite breaks: the migration, `bootstrap.sql`,
+  `database.py` → `SCHEMA`, `tests/postgres_schema.sql`,
+  `scripts/live-supabase-migration-gate.py`.
+: **Done when:** migration applies to live Postgres, `pytest` green, ruff clean.
+
+**S-02 · Seed data** — 1h
+: `settings.generation_cost_credits = 1`. Three credit packages. Five events:
+  `SIGNUP_BONUS` (auto-grant, +5), `HOT_HOURS` (daily discount 50%, 1200–1320),
+  `WEEKEND_GIFT` (weekly grant +10, sat/sun), `NATIONAL_DAY` (once, +20,
+  09-02), `WELCOME_BACK` (once, admin-style surprise).
+: **Done when:** a fresh `bootstrap.sql` + seed gives a working system with
+  events visible.
+
+**S-03 · `ADR-010` — simulated payments** — 30min
+: Why no real gateway (ADR-009), what is real (row, state machine, idempotency,
+  ledger entry in one transaction), what is stubbed (gateway confirmation), and
+  where the real call would go.
+
+### Day 2 · Sat 08-29
+
+**S-04 · `CreditService`** — 4h · *depends: S-01*
+: The **only** writer of a balance. `grant()`, `charge()`, `refund()`,
+  `balance()`, `history()`. Append-only ledger; `users.credit_balance` is a
+  cache written in the same transaction; every row carries `balance_after`.
+: Charging rules are normative in contract §10. Idempotency via
+  `unique (user_id, idempotency_key)` — **in the database**, not only in Python.
+: **Done when:** unit tests cover double-charge on a replayed key, refund
+  reading the original amount back, and a balance that cannot go negative.
+
+**S-05 · Wire charging into `project_service`** — 2h · *depends: S-04*
+: Reserve at submit, refund on `failed` and `cancelled`. `402
+  INSUFFICIENT_CREDITS` **before** any provider call or row insert. Retry
+  charges again.
+: `QuotaService` stays untouched — it is now defence in depth. Add a paragraph
+  to `ADR-007` saying so.
+: **Done when:** a generation charges 1 credit; a forced failure refunds it; both
+  appear in the ledger.
+
+**S-06 · W1 — provider-scoped claiming** — 1h
+: `claim_in_flight_projects` filters on `provider` in both adapters. Laptop
+  poller claims `fake`/`cloud`/`local`; the worker claims `kaggle`.
+
+### Day 3 · Sun 08-30
+
+**S-07 · User credit + package + payment endpoints** — 3h · *depends: S-04*
+: `GET /me/credits`, `GET /me/credits/transactions`, `GET /credit-packages`,
+  `POST /payments`. Contract §6, §8.
+: Payment row + credit transaction in **one** database transaction.
+
+**S-08 · Generation modes** — 2h
+: `prompt` nullable; at least one of `prompt`/`imagePath` required; server
+  derives `mode` and returns it. Provider routing by mode. `image` and
+  `text_image` return `PROVIDER_ERROR` until a model exists — **never** a silent
+  fall back to text. Contract §5.
+
+**S-09 · W2 — external provider mode** — 1h
+: `submit()` records only; `poll()` reads the row. Registered as `kaggle`.
+
+> **Integration point, end of day:** tell Bruce the endpoints are live.
+
+### Day 4 · Mon 08-31
+
+**S-10 · `EventService`** — 4h · *depends: S-04*
+: Window evaluation for `once` / `daily` / `weekly`, in **local Vietnam time
+  (UTC+7)**. `period_key` is `''`, the local date, or the ISO week.
+: `claimable` is computed server-side and is the only flag Android trusts.
+: **Cap and per-period uniqueness enforced in SQL** — an insert guarded by the
+  unique index, not read-count-then-insert. A double-tap must not grant twice.
+: **Done when:** a test fires two concurrent claims and exactly one succeeds.
+
+**S-11 · Event endpoints + discount at charge time** — 2h · *depends: S-10*
+: `GET /events`, `POST /events/{id}/claim`. `effectiveCost = max(1, round(base ×
+  (100 − discount) / 100))`, computed at charge time, recorded in the
+  transaction note. `SIGNUP_BONUS` auto-grants at first sign-in.
+
+### Day 5 · Tue 09-01
+
+**S-12 · D1 spike — image-to-video** — **hard stop 3h**
+: One Kaggle session. LTX-Video 2B first (T2V + I2V, distilled — may also help
+  D2), then Stable Video Diffusion. **Stop at 3 hours regardless of progress**
+  and record the result either way.
+: **Done when:** either an image-conditioned clip exists, or a disconfirming
+  evidence-ledger entry does.
+
+**S-13 · W3 — the Kaggle worker** — the rest of the day
+: Claim → `generating` → generate → upload → `completed`, honouring
+  `transitions.py`.
+: Three things it must get right: **renew the lease on a timer**
+  (`poll_lease_seconds` is 120 by default, ceiling 3600 — a 15-minute job at the
+  default is re-claimed seven times); **keep the encoder resident between jobs**
+  (phase 1 is ~5 min); **report progress per denoising step**.
+: Credentials: a dedicated Postgres role with `SELECT`/`UPDATE` on
+  `video_projects` only, and a storage credential scoped to the `videos` bucket,
+  both in Kaggle Secrets. **Never the `service_role` key.**
+
+### Day 6 · Wed 09-02
+
+**S-14 · W3 finish + first real clip** — all day
+: Settings: 65 frames, 30 steps. **Measure the first clip** — 65 frames is
+  interpolated, not measured (D2). If it exceeds ~20 min, drop to 49 frames.
+: **Done when:** a video generated on Kaggle plays in the Android app. Tell
+  Bruce the moment it works — the demo recording starts immediately.
+
+### Day 7 · Thu 09-03
+
+**S-15 · `/admin/stats` extension** — 2h
+: `newUsers` (signups, not projects), `creditsGranted`, `creditsUsed`,
+  `revenueVnd`, per-event `claims`. Contract §9.1.
+
+**S-16 · Remaining admin endpoints** — 3h
+: `POST /admin/users/{id}/credits`, `GET /admin/credit-transactions`,
+  `GET/PATCH /admin/settings`, `GET /admin/projects`, `CRUD /admin/events`,
+  `CRUD /admin/credit-packages`, `GET /admin/payments`,
+  `GET /admin/events/{id}/claims`. All audit-logged in the same transaction.
+
+> **Feature freeze 18:00.** Nothing new after this, in either lane.
+
+### Days 8–9 · Fri 09-04, Sat 09-05
+
+**S-17 · Evidence and docs** — update `DATA_MODEL.md`, `API_CONTRACT.md` §2.x,
+`ARCHITECTURE.md`; evidence-ledger entries for the worker and the first real
+generation.
+**S-18 · Submission package** — `bootstrap.sql` + seed verified from empty;
+sample accounts; final suite run.
+
+---
+
+## 2. Bruce — Android
+
+### Day 1 · Fri 08-28
+
+**B-01 · Camera capture** — 1h
+: `CAMERA` permission plus `ActivityResultContracts.TakePicture` alongside the
+  existing `PickVisualMedia` launcher in `HomeScreen.kt`. Explicitly named in
+  §2.2 of the brief and trivially demonstrable live.
+
+**B-02 · Contract models + fake repository** — 3h
+: Kotlin models for every shape in contract Part II. Retrofit interfaces.
+  A `FakeCreditRepository` returning plausible data so every screen below is
+  buildable today.
+: **The serialization trap:** optional request fields get **no default value**,
+  or `encodeDefaults = false` drops them silently. This is the `gender`/
+  `birthday` bug. Add a serialization test per new request model, mirroring
+  `MeUpdateRequestSerializationTest`.
+
+**B-03 · Credits screen** — 2h · *depends: B-02*
+: Balance, `effectiveCost`, the `activeDiscount` banner when non-null, and the
+  paged transaction list. Each `reason` maps to a label and icon; an unknown
+  value renders as the raw string rather than crashing.
+
+### Day 2 · Sat 08-29
+
+**B-04 · Buy credits flow** — 3h
+: Package list → confirm → `POST /payments` with an `Idempotency-Key` → balance
+  updates. Handle `PACKAGE_INACTIVE` by refreshing.
+
+**B-05 · Home: replace the quota chip** — 2h
+: The chip currently reads `"⚡ ${quota.remaining} of ${quota.limit} credits
+  remaining"` — that is the rate limit, not a balance. Replace with the real
+  balance and the effective cost of one generation.
+
+**B-06 · `402` handling** — 1h
+: `INSUFFICIENT_CREDITS` routes to the Credits screen with an actionable
+  message. Never a raw error. Keep `QUOTA_EXCEEDED` (429) distinct — different
+  message, different action.
+
+### Day 3 · Sun 08-30
+
+**B-07 · Three generation modes** — 3h
+: Prompt optional; image optional; submit enabled when either is present. Show
+  the derived `mode` back from the server. Handle `PROVIDER_ERROR` on image
+  modes with an honest message — the feature is not available yet, not "try
+  again".
+
+**B-08 · Admin: Manage list replaces the tab row** — 2h
+: Four tabs will not become ten on a phone. Stats stays the landing dashboard;
+  everything else becomes a row that navigates to its own screen.
+
+**B-09 · Admin: Videos screen** — 2h
+: List with status and owner filters, from `GET /admin/projects`.
+
+> **Integration point:** switch `CretonaRepositoryImpl` off the fakes.
+
+### Day 4 · Mon 08-31
+
+**B-10 · Events screen** — 3h
+: Cards for grants and discounts. **Bind the button to `claimable` only** — do
+  not re-derive it from windows and counts; the server owns that rule.
+  Discounts render as information, never as a button. Show `nextActiveAt` when
+  not active.
+: Handle `EVENT_NOT_ACTIVE`, `EVENT_ALREADY_CLAIMED`, `EVENT_FULL` distinctly.
+
+**B-11 · Admin: Credits and Transactions screens** — 3h
+: Per-user credit adjustment with a note; the global transaction list with
+  filters.
+
+### Day 5 · Tue 09-01
+
+**B-12 · Admin: Events, Packages, Settings screens** — 5h
+: Event create and edit covering every field in contract §7 — kind, recurrence,
+  window, minutes, days, cap. Package CRUD. Generation cost in Settings.
+
+### Day 6 · Wed 09-02
+
+**B-13 · Admin dashboard tiles** — 3h · *depends: S-15*
+: New users, credits granted, credits used, revenue, per-event take-up. Build
+  against the contract shape; wire to the live endpoint on 09-03.
+
+**B-14 · Screenshot pass** — 2h
+: Every screen, user and admin, light and dark. These go in the report.
+
+> **The moment S0ra1n0 says a real clip exists: play it in the app and start
+> recording the demo.** Do not leave the recording to 09-04.
+
+### Day 7 · Thu 09-03
+
+**B-15 · Wire the dashboard to live stats** — 1h
+**B-16 · Integration defects** — the rest of the day.
+
+> **Feature freeze 18:00.**
+
+### Days 8–9 · Fri 09-04, Sat 09-05
+
+**B-17 · Demo video** — the full flow in one take: register → signup bonus →
+claim a weekend gift → buy a package → generate with an image → watch the
+charge in the ledger → play, download, share → admin locks a user, adjusts
+credits, creates an event, reads the dashboard.
+**B-18 · Report and screenshots.**
+
+---
+
+## 3. Shared, and unassigned on purpose
+
+| Item | Who | When |
+|---|---|---|
+| Ask the lecturer the D1 question | S0ra1n0 | **today** |
+| Decide the FramePack/LTX fallback if the answer is "image must drive it" | Both | before the reply arrives |
+| Resolve `durationSeconds` 2–10 vs a fixed 4.06 s clip | Both | with the contract, day 1 |
+| Report writing | Both | 09-04 |
+
+---
+
+## 4. Cut order, if behind
+
+Decided now so it is not decided at 2am on the 4th.
+
+1. Per-event take-up reporting (one of six §3 metrics)
+2. Admin video moderation beyond a read-only list
+3. Admin `Packages` screen — seed three and manage them in SQL
+4. `weekly` recurrence — ship `once` and `daily` only, seed the weekend gift as
+   a series of `once` events
+5. Admin tablet and desktop layouts
+
+**Never cut:** the eight tables · real video generation · the admin screens ·
+the report and demo video.
+
+---
+
+## 5. Gates
+
+- **End of 08-29** — if credits do not charge and refund, drop events to a
+  read-only list with manual admin grants and keep the tables.
+- **End of 09-01** — if W3 is not claiming rows, spend 09-02 getting one clip
+  through the notebook with a manual upload so §6 has a demo video, then resume.
+- **09-01, 3 hours in** — the D1 spike stops whether or not it has worked.
+- **09-03 18:00** — feature freeze regardless of state.

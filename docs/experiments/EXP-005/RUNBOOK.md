@@ -1,8 +1,8 @@
 # EXP-005 bake-off — runbook
 
 - **Document ID:** `CRETONA-EXP005-RUNBOOK-001`
-- **Covers:** `EXP-005_T2V_bakeoff.ipynb` (24 cells, sections 1–12)
-- **Written:** 2026-08-26
+- **Covers:** `EXP-005_T2V_bakeoff.ipynb` (29 cells, sections 1–13)
+- **Written:** 2026-08-26; revised 2026-08-27 after the first full run
 - **Host:** Kaggle, GPU **T4 ×2**
 
 Cell numbers below are zero-indexed as Kaggle shows them. Odd numbers are
@@ -50,11 +50,27 @@ If it says `MISSING: torch, diffusers, ...` the pip line is still commented.
 any session or after any change.
 
 Both prompts, one seed each, 8 steps, 25 frames: **~3 minutes** instead of
-~50, exercising every line the full run does. That is **2 clips**, so
+~3.5 hours, exercising every line the full run does. That is **2 clips**, so
 `distinct outputs: 2/2` is the correct result in smoke mode — 4/4 belongs to a
 full run.
 
-Run cells **4 → 22** in order. Skip cell 2.
+Run cells **4 → 27** in order. Skip cell 2. Cells 16–19 are one clip each; run
+them one at a time.
+
+### Cell map
+
+| Cell | Section | What it does |
+|---:|---|---|
+| 2 | 1 | install, once per session |
+| 4 | 2 | configuration, incl. `SMOKE_TEST` |
+| 8 | 4 | environment capture |
+| 12 | 6 | adapter definitions |
+| 14 | 7 | **phase 1** — encode prompts, self-test, define `run_one()` |
+| 16–19 | 8 | **one clip each**, ~49 min apiece at full settings |
+| 21 | 9 | ffprobe playback proof |
+| 23 | 10 | blind relabel |
+| **25** | 11 | **ledger entry + the `N/N clips generated, N distinct` line** |
+| 27 | 12 | archive and download |
 
 ### What each checkpoint should print
 
@@ -69,7 +85,7 @@ clip   : 25 frames at 16fps = ~1.6s
 
 **Cell 12 — adapter.** Defines functions only; nothing loads yet.
 
-**Cell 14 — the run.** This is where everything happens, and where to watch:
+**Cell 14 — phase 1.** The encoder runs here, and this is where to watch:
 
 ```
 [phase 1] loading text encoder only
@@ -95,7 +111,12 @@ clip   : 25 frames at 16fps = ~1.6s
 | 3 | cache | written only after the checks pass |
 | 4 | generator | a few GB used, not a card at `0.0` free |
 
-**Cell 22 — download.** Run it even for a smoke test; it costs nothing and
+**Cells 16–19 — generation, one clip per cell.** Run them one at a time. An
+interrupt now costs one clip, not the whole set; re-running a cell replaces
+that clip's record rather than appending a duplicate, and `results.json` is
+rewritten after each.
+
+**Cell 27 — download.** Run it even for a smoke test; it costs nothing and
 proves the archive path works.
 
 ### The decision
@@ -117,7 +138,7 @@ In cell 4, set:
 SMOKE_TEST = False
 ```
 
-Run cells **4 → 22** again.
+Run cells **4 → 27** again, taking cells 16–19 one at a time.
 
 Phase 1 is now **skipped** — the embeddings are cached from the smoke test and
 the prompts have not changed:
@@ -126,10 +147,10 @@ the prompts have not changed:
 [phase 1] SKIPPED -- reusing embeds-a1b2c3d4e5f6a7b8.pt
 ```
 
-That saves ~5 minutes. Then 4 clips at ~10 minutes each — **budget 40–45
-minutes** and do not close the tab.
+That saves ~5 minutes. Then 4 clips at **~49 minutes each — budget 3.5 hours**
+and do not close the tab. This is measured, not estimated: see §8.
 
-### Reading the result — cell 20
+### Reading the result — cell 25
 
 ```
 4/4 clips generated, 4 distinct; peak VRAM 13.59 GiB; ...
@@ -142,7 +163,7 @@ the run prints a NOT-scoreable warning, and the ledger records `failed`.
 
 ---
 
-## 4. Download — cell 22
+## 4. Download — cell 27
 
 `/kaggle/working` is wiped when the session ends.
 
@@ -157,6 +178,11 @@ Then **stop the session** — idle time bills against the same quota.
 ## 5. Scoring — off Kaggle
 
 Only for a full run with `4/4 distinct`.
+
+The run of 2026-08-27 qualifies and is **waiting on this step**. Its archive
+is unpacked at
+`docs/experiments/EXP-005/runs/exp005-t2v-20260827T104718Z/` — that directory
+is gitignored, so the second reviewer needs the zip sent to them directly.
 
 1. Bruce and S0ra1n0 score `blind/` **independently**, in
    `QUALITY_SCORECARD.md`, **without opening `BLIND_KEY.json`**.
@@ -176,7 +202,8 @@ and write that reading in the notes column.
 
 | Situation | Do this |
 |---|---|
-| Clip 4 failed, 1–3 worked | Copy the run id from cell 4's output into `RESUME_RUN_ID`, re-run cell 4 then 14. Existing clips print `reused existing file` |
+| One clip failed, the others worked | Re-run just that clip's cell (16–19). The others are on disk and already recorded |
+| Session died, clips survive in a new session | Copy the run id from cell 4's output into `RESUME_RUN_ID`, re-run cell 4 then 14, then the clip cells. Existing clips print `reused existing file` |
 | Changed a prompt | Nothing. The cache key covers prompt text and invalidates itself |
 | Changed model or revision | Nothing. Same reason |
 | Want to force a re-encode | Delete the matching file in `/kaggle/working/_cache/` |
@@ -194,9 +221,9 @@ Every row below is a failure that actually happened on 2026-08-23/26.
 | `CUBLAS_STATUS_ALLOC_FAILED` **with a card at `0.0` free** | Weights fit; nothing left for cuBLAS handles | Something is still resident from an earlier attempt. Free it (below) |
 | `CUBLAS_STATUS_ALLOC_FAILED` **with cards nearly empty** | Host RAM exhausted | Reduce what phase 1 holds, or the model is too large for this host |
 | `CUDA out of memory` at step 0 | Activations, not weights | Lower `NUM_FRAMES` first — activation memory scales with frame count |
-| `NameError: PROMPTS is not defined` | Kernel restarted; cell 4 has not run since | Run cells 4 → 22, or Run All |
+| `NameError: PROMPTS is not defined` | Kernel restarted; cell 4 has not run since | Run cells 4 → 27, or Run All |
 | **All clips flat grey** | Text conditioning is meaningless | The `embed_tokens` tie repair addresses this. Check self-test line 2 |
-| **Clips byte-identical** | Prompts never reached the model | Cell 20 now catches it. Check the `distinct outputs` line |
+| **Clips byte-identical** | Prompts never reached the model | Cell 25 now catches it. Check the `distinct outputs` line |
 | `cosine similarity: 0.999+` | Encoder cannot distinguish prompts | Raises on purpose. Do not proceed; the tie repair did not work |
 
 ### Freeing stuck GPU memory without losing the weights
@@ -230,10 +257,17 @@ Both cards should return to ~14.4 GiB free. Downloaded weights are untouched.
 | Phase 1 encode (CPU) | ~5 min, cached afterwards |
 | Phase 2 load | ~1 min |
 | Generation, smoke (8 steps, 25 frames) | ~1.5 min |
-| Generation, full (50 steps, 81 frames) | **~10 min per clip** |
-| **Full run, cold** | **~50 min** |
-| **Full run, embeddings cached** | **~45 min** |
+| Generation, 50 steps at **50 frames** | ~10 min per clip |
+| Generation, full: 50 steps at **81 frames** | **~49 min per clip** (measured 2901.9–2952.1 s) |
+| **Full run, cold** | **~3.4 h** |
+| **Full run, embeddings cached** | **~3.3 h** (measured: 10:47Z → 14:41Z) |
 | **Smoke test, cached** | **~2 min** |
+
+**Do not extrapolate from the smoke test or from the 50-frame figure.** Going
+50 → 81 frames is 1.62x the frames for **4.7x the time** — full 3D attention is
+superlinear in frame count. This runbook previously said ~10 min per clip and a
+40–45 minute full run; both came from 50-frame measurements and were low by
+about 5x. Clip length, not step count, is the lever that matters.
 
 Generation is slow because a T4 is roughly a fifth of a modern card and the
 `sage_hub` attention backend is unavailable. That is the honest cost of

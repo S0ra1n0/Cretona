@@ -193,8 +193,11 @@ SEEDS = [1234, 5678]   # two consecutive runs per prompt -> repeatability
 # kept deliberately: one clip could not show whether the prompt reaches the
 # model at all, which is the thing most worth checking cheaply.
 #
-# Roughly 3 minutes instead of 50, exercising every line the full run does.
-# Far too coarse to judge quality; never score it.
+# Roughly 3 minutes instead of 3.3 hours, exercising every line the full run
+# does. Far too coarse to judge quality; never score it.
+#
+# Left True on purpose. A full run is measured at ~49 min per clip -- 3.3 GPU-
+# hours of a ~30-hour weekly quota -- so flipping this is a deliberate act.
 SMOKE_TEST = True
 
 if SMOKE_TEST:
@@ -716,25 +719,22 @@ print("adapter ready - phase 1 encodes, phase 2 generates, neither holds both")
 '''))
 
 CELLS.append(md(r"""
-## 7. Run the bake-off
+## 7. Prepare the run
 
-Three checkpoints make retrying cheap:
+Encodes the prompts and defines `run_one()`. Cheap and safe to re-run — phase 1
+is cached, and `RESULTS` survives because this cell only creates it when it does
+not already exist.
+
+Three checkpoints keep a retry cheap:
 
 | Checkpoint | Saves |
 |---|---|
-| `SMOKE_TEST = True` in section 2 | the whole run: ~90s instead of ~45min |
+| `SMOKE_TEST = True` in section 2 | the whole run: ~3 min instead of ~3.3 h |
 | Encoded prompts cached to disk | ~5 min of encoder loading per retry |
-| Existing clips skipped | ~10 min per clip already generated |
+| Existing clips skipped | ~49 min per clip already generated |
 
 Set `RESUME_RUN_ID` in section 2 to a previous run id to write into that same
 directory, and any clip already there is left alone.
-
-4 clips: 2 prompts x 2 seeds. The two seeds per prompt are the *two consecutive
-runs* the gate asks for — they show whether the model is repeatable or whether
-one good clip was luck.
-
-A failure is a result. If a run raises, it is recorded and the notebook
-continues rather than losing the runs that did work.
 """))
 
 CELLS.append(code(r'''
@@ -747,62 +747,124 @@ def sha256_of(path: pathlib.Path) -> str:
             h.update(chunk)
     return h.hexdigest()
 
-RESULTS = []
+# Created once and kept. Re-running this cell must not discard clips that
+# earlier cells already produced, so it is only initialised when absent.
+try:
+    RESULTS
+except NameError:
+    RESULTS = []
 
 # Phase 1 for every prompt, once. If this fails there is no point loading the
 # transformer, so it is deliberately outside the per-clip error handling.
 EMBEDS = encode_all_prompts(PROMPTS, NEGATIVE_PROMPT)
 
-for prompt_key in PROMPTS:
-    for run_index, seed in enumerate(SEEDS, start=1):
-        name = f"{prompt_key}{run_index}_seed{seed}.mp4"
-        target = RAW_DIR / name
-        print(f"\n=== prompt {prompt_key} | run {run_index} | seed {seed} ===")
 
-        record = {
-            "prompt_key": prompt_key, "run_index": run_index, "seed": seed,
-            "file": name, "status": "failed",
-        }
+def run_one(prompt_key: str, run_index: int, seed: int) -> None:
+    """Generate exactly one clip.
 
-        # Resume. A clip that already exists is 10 minutes already spent.
-        if target.exists() and target.stat().st_size > 1024:
-            record.update(
-                status="ok",
-                bytes=target.stat().st_size,
-                sha256=sha256_of(target),
-                reused=True,
-            )
-            print(f"  reused existing file ({record['bytes']:,} bytes)")
-            RESULTS.append(record)
-            continue
+    One clip per cell, deliberately. A single generation is ~49 minutes and a
+    stray Ctrl-C or a browser hiccup takes the whole cell with it -- on
+    2026-08-27 an interrupt during clip 4 ended a loop that had already spent
+    2.6 hours on clips 1-3. Separate cells contain the blast radius to one clip,
+    and the resume check below means even that one is usually recoverable.
 
-        try:
-            with ResourceSampler() as rs:
-                generate_from_embeds(EMBEDS[prompt_key], seed, target)
-            record.update(
-                status="ok",
-                seconds=rs.seconds,
-                peak_vram_gib=rs.peak_vram_gib,
-                peak_ram_gib=rs.peak_ram_gib,
-                bytes=target.stat().st_size,
-                sha256=sha256_of(target),
-            )
-            print(f"  ok  {rs.seconds}s  peak VRAM {rs.peak_vram_gib} GiB  "
-                  f"peak RAM {rs.peak_ram_gib} GiB  {record['bytes']:,} bytes")
-        except Exception as ex:
-            record["error"] = f"{type(ex).__name__}: {ex}"
-            print("  FAILED:", record["error"])
-            traceback.print_exc(limit=3)
+    Idempotent: re-running a cell replaces that clip's record rather than
+    appending a duplicate.
+    """
+    name = f"{prompt_key}{run_index}_seed{seed}.mp4"
+    target = RAW_DIR / name
+    print(f"=== prompt {prompt_key} | run {run_index} | seed {seed} ===")
 
-        RESULTS.append(record)
+    record = {
+        "prompt_key": prompt_key, "run_index": run_index, "seed": seed,
+        "file": name, "status": "failed",
+    }
 
-ok = [r for r in RESULTS if r["status"] == "ok"]
-print(f"\n{len(ok)}/{len(RESULTS)} clips generated")
-(OUT_DIR / "results.json").write_text(json.dumps(RESULTS, indent=2), encoding="utf-8")
+    def _store(rec):
+        # Replace any earlier record for this file, then append.
+        RESULTS[:] = [r for r in RESULTS if r.get("file") != name]
+        RESULTS.append(rec)
+        (OUT_DIR / "results.json").write_text(
+            json.dumps(RESULTS, indent=2), encoding="utf-8"
+        )
+
+    # Resume. A clip that already exists is ten minutes already spent.
+    if target.exists() and target.stat().st_size > 1024:
+        record.update(
+            status="ok",
+            bytes=target.stat().st_size,
+            sha256=sha256_of(target),
+            reused=True,
+        )
+        print(f"  reused existing file ({record['bytes']:,} bytes)")
+        _store(record)
+        return
+
+    try:
+        with ResourceSampler() as rs:
+            generate_from_embeds(EMBEDS[prompt_key], seed, target)
+        record.update(
+            status="ok",
+            seconds=rs.seconds,
+            peak_vram_gib=rs.peak_vram_gib,
+            peak_ram_gib=rs.peak_ram_gib,
+            bytes=target.stat().st_size,
+            sha256=sha256_of(target),
+        )
+        print(f"  ok  {rs.seconds}s  peak VRAM {rs.peak_vram_gib} GiB  "
+              f"peak RAM {rs.peak_ram_gib} GiB  {record['bytes']:,} bytes")
+    except KeyboardInterrupt:
+        # Named separately so an accidental stop reads as what it is, rather
+        # than as a model or memory failure.
+        record["error"] = "KeyboardInterrupt: run cancelled"
+        print("  INTERRUPTED -- re-run this cell to retry just this clip")
+        _store(record)
+        raise
+    except Exception as ex:
+        record["error"] = f"{type(ex).__name__}: {ex}"
+        print("  FAILED:", record["error"])
+        traceback.print_exc(limit=3)
+
+    _store(record)
+
+
+def progress() -> None:
+    done = [r for r in RESULTS if r["status"] == "ok"]
+    want = len(PROMPTS) * len(SEEDS)
+    print(f"  -> {len(done)}/{want} clips done so far")
+
+
+print(f"ready: {len(PROMPTS)} prompts x {len(SEEDS)} seeds = "
+      f"{len(PROMPTS) * len(SEEDS)} clips, one per cell below")
 '''))
 
 CELLS.append(md(r"""
-## 8. Playback proof
+## 8. Generate — one clip per cell
+
+**Run these one at a time.** Each is **~49 minutes** at full settings
+(measured 2901.9-2952.1 s on 2026-08-27). The four together are ~3.3 GPU-hours
+of a ~30-hour weekly quota.
+
+Interrupting a cell now costs only that clip; the finished ones are already on
+disk and recorded. To retry one, just re-run its cell — the record is replaced
+rather than duplicated, and `results.json` is rewritten after every clip so a
+lost session still leaves the completed work behind.
+
+In smoke mode there is one seed, so the `run 2` cells skip themselves.
+"""))
+
+for _pk in ("A", "B"):
+    for _ri in (1, 2):
+        CELLS.append(code(f'''
+if len(SEEDS) >= {_ri}:
+    run_one("{_pk}", {_ri}, SEEDS[{_ri - 1}])
+    progress()
+else:
+    print("skipped: only {{}} seed(s) configured".format(len(SEEDS)))
+'''))
+
+CELLS.append(md(r"""
+## 9. Playback proof
 
 The gate requires H.264 playback proof. A file that exists is not a clip that
 plays — this reads the actual stream with `ffprobe` and reports codec, duration
@@ -840,7 +902,7 @@ if any(r.get("status") == "ok" and not r.get("playable_h264") for r in RESULTS):
 '''))
 
 CELLS.append(md(r"""
-## 9. Blind relabel
+## 10. Blind relabel
 
 `QUALITY_SCORECARD.md` scores clips `A1 A2 B1 B2`, and section 8 requires
 scoring **without model labels**. Filenames carrying the model name or seed
@@ -871,7 +933,7 @@ print("blind clips :", sorted(p.name for p in BLIND_DIR.glob("*.mp4")))
 print("key written :", OUT_DIR / "BLIND_KEY.json", "(do not open until scored)")
 '''))
 
-CELLS.append(md("## 10. Ledger entry and summary"))
+CELLS.append(md("## 11. Ledger entry and summary"))
 
 CELLS.append(code(r'''
 ok = [r for r in RESULTS if r["status"] == "ok"]
@@ -946,7 +1008,7 @@ print("  quality            : not measured here — blind scoring decides")
 '''))
 
 CELLS.append(md(r"""
-## 11. Download before the session ends
+## 12. Download before the session ends
 
 `/kaggle/working` is **wiped when the session ends**. Nothing below is
 recoverable afterwards, so run this cell and download the archive before you
@@ -980,9 +1042,9 @@ display(FileLink(pathlib.Path(archive).name))
 '''))
 
 CELLS.append(md(r"""
-## 12. After the run
+## 13. After the run
 
-1. **Download the archive from section 11** if you have not already. Kaggle
+1. **Download the archive from section 12** if you have not already. Kaggle
    wipes `/kaggle/working` when the session ends.
 2. **Score the clips** in `QUALITY_SCORECARD.md`. Bruce and S0ra1n0 score
    independently, from `blind/` only, without opening the key.

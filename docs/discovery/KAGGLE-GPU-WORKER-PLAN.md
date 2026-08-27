@@ -4,7 +4,7 @@
 - **Mode:** Design proposal; nothing here is built
 - **Written:** 2026-08-19
 - **Status:** **UNBLOCKED 2026-08-27.** Kaggle generates real text-to-video
-  with Wan2.1 T2V 1.3B via a two-phase load, ~10 min per clip. See
+  with Wan2.1 T2V 1.3B via a two-phase load, **~49 min per 5-second clip**. See
   `docs/evidence/EXP-005_KAGGLE_T2V_WORKING_2026-08-27.md`. Build order below;
   still gated on a scored full run.
 - **Related:** `ADR-009`, `FREE-LOCAL-BEST-OUTPUT.md` §11,
@@ -16,8 +16,18 @@
 > the text encoder and transformer together needs ~25 GB; loading them in two
 > phases needs ~4 GB at peak, and the same T4s generate fine.
 >
-> **Measured:** Wan2.1 T2V 1.3B, 4/4 clips, ~10.4 min each, peak 13.6 GiB
-> VRAM and 25.7 GiB RAM.
+> **Measured, full run 2026-08-27** (`EVD-EXP005-011`): Wan2.1 T2V 1.3B,
+> 4/4 clips and 4 distinct, 832x480, 81 frames, 5.06 s at 16 fps.
+> **2901.9-2952.1 s per clip, mean 2918.8 s = 48.6 min**, peak 12.45 GiB VRAM
+> and 29.13 GiB RAM of 31.35 available.
+>
+> **The earlier ~10.4 min figure was at 50 frames, and on a run later
+> invalidated by the grey-clip bug.** 81 frames is 1.62x the frames for 4.7x
+> the time — attention cost is superlinear in frame count, so clip length is
+> the dominant latency lever, ahead of step count. Anything in this plan that
+> assumed a ten-minute job needs re-checking against 49 minutes: a free Kaggle
+> week is ~30 GPU-hours, which is **about 37 clips per week** for the whole
+> team, and peak RAM leaves only ~2.2 GiB of headroom.
 >
 > **W1 and W2 can start.** W4 is already done (2026-08-23). W3 — the worker —
 > should wait for a full run scored `distinct outputs: 4/4`, because there is
@@ -148,8 +158,10 @@ A single Python file, run in a Kaggle notebook cell. Loop:
 
 1. Claim one `pending` row where `provider='kaggle'`, taking a lease.
 2. Set `status='generating'`.
-3. Run the model (HunyuanVideo 1.5 — T2V or I2V depending on whether
-   `image_path` is set).
+3. Run the model (**Wan2.1 T2V 1.3B**, not HunyuanVideo 1.5 — Hunyuan's
+   transformer alone is ~16.6 GB in fp16, above a single T4, and the two-phase
+   split does not rescue it). Text-to-video only until an I2V candidate passes
+   its own gate.
 4. Update `progress_percent` / `step_message` periodically.
 5. Upload the mp4 to Supabase Storage.
 6. Set `status='completed'` and `video_path`; release the lease.
@@ -162,7 +174,21 @@ rules the backend enforces. A worker that writes an illegal transition will
 desynchronise the app's state machine.
 
 **Heartbeat:** the lease has to be extended while a long generation runs, or it
-expires mid-job and the row is handed to another claimant.
+expires mid-job and the row is handed to another claimant. The measured job is
+**2918 s**, and `poll_lease_seconds` defaults to **120** with a validator
+ceiling of **3600** (`backend/app/config.py`). At the default a single clip
+would be re-claimed roughly 24 times; even the maximum leaves only ~11 minutes
+of margin over the slowest observed clip. Renewing on a timer is therefore
+required, not an optimisation, and the worker must renew rather than rely on a
+long initial lease.
+
+**Encoder residency:** phase 1 costs ~5 minutes and must run **once per
+session**, not once per job. The worker keeps the encoded embeddings (or the
+encoder itself, RAM permitting) alive between jobs.
+
+**Progress reporting:** at 49 minutes per clip, `progress_percent` is what
+stops the app looking hung. Report per denoising step — 50 steps is roughly one
+update a minute.
 
 ### W4 — Image-to-video input *(backend, blocking for I2V)*
 
@@ -211,10 +237,16 @@ The worker inherits it.
 This is **not** a service, and should never be described as one:
 
 - generation only happens while a human has a notebook running;
-- roughly 30 GPU-hours per week;
+- roughly 30 GPU-hours per week, and at a **measured 48.6 min per 5-second
+  clip** that is **about 37 clips per week** for the entire team;
 - ~30–40 GB of model weights re-downloaded each session, which consumes a
   meaningful part of the runtime before the first clip;
-- first-clip latency after a cold session start is minutes, not seconds.
+- first-clip latency after a cold session start is minutes, not seconds, and
+  the clip itself is then **another ~49 minutes**. A user who submits a prompt
+  waits the better part of an hour;
+- peak RAM was 29.13 GiB of 31.35 available, leaving ~2.2 GiB. Running the
+  worker loop alongside the model is not free, and this is the constraint that
+  broke the 2026-08-23 attempts.
 
 It is good enough for a demo, a bake-off, and a recorded walkthrough. It is not
 good enough for real users, and the README should say so.
