@@ -65,14 +65,22 @@ Three integration points, and only three:
 
 ### Day 2 · Sat 08-29
 
-**S-04 · `CreditService`** — 4h · *depends: S-01*
-: The **only** writer of a balance. `grant()`, `charge()`, `refund()`,
-  `balance()`, `history()`. Append-only ledger; `users.credit_balance` is a
-  cache written in the same transaction; every row carries `balance_after`.
-: Charging rules are normative in contract §10. Idempotency via
-  `unique (user_id, idempotency_key)` — **in the database**, not only in Python.
-: **Done when:** unit tests cover double-charge on a replayed key, refund
-  reading the original amount back, and a balance that cannot go negative.
+**S-04 · `CreditService`** — ✅ **DONE 08-28**
+: `app/credit_service.py` plus repository methods on **both** adapters:
+  `apply_credit_delta`, `list_credit_transactions`, `credit_totals`,
+  `get_setting`/`set_setting`, `get_credit_balance`, `ledger_drift`.
+: The invariants live in the database, not the service. Non-negative balance is
+  the `WHERE credit_balance + ? >= 0` clause on the UPDATE; single-charge is the
+  unique partial index; atomicity is one transaction. SQLite opens it with
+  `BEGIN IMMEDIATE` so two concurrent charges cannot both read the old balance.
+: **36 tests in `tests/test_credits.py`**, including ten threads racing a
+  balance that covers three — exactly three win, and the ledger still explains
+  the balance afterwards. `ledger_drift()` is tested both ways: clean after a
+  grant/charge/refund cycle, and detecting a balance written behind the
+  service's back.
+: **Note for S-05:** `refund_for()` reads the amount back from the original
+  charge rather than recomputing it, so a discount ending mid-job cannot change
+  what comes back (contract §10.4).
 
 **S-05 · Wire charging into `project_service`** — 2h · *depends: S-04*
 : Reserve at submit, refund on `failed` and `cancelled`. `402
@@ -83,9 +91,16 @@ Three integration points, and only three:
 : **Done when:** a generation charges 1 credit; a forced failure refunds it; both
   appear in the ledger.
 
-**S-06 · W1 — provider-scoped claiming** — 1h
-: `claim_in_flight_projects` filters on `provider` in both adapters. Laptop
-  poller claims `fake`/`cloud`/`local`; the worker claims `kaggle`.
+**S-06 · W1 — provider-scoped claiming** — ✅ **DONE 08-28**
+: `claim_in_flight_projects` takes `providers: Sequence[str] | None` on both
+  adapters and in the `ProjectRepository` protocol. `ProviderRegistry.
+  in_process_names()` reports what this process can actually run, and
+  `JobPoller` claims only those.
+: `None` means "any" (admin backfill, tests). An **empty** sequence returns
+  early rather than falling through to no filter — a claimant that can run
+  nothing must claim nothing, not everything.
+: **Ready for W2:** a provider marked `external = True` is excluded
+  automatically, so registering the Kaggle provider is the only step left.
 
 ### Day 3 · Sun 08-30
 
@@ -176,19 +191,32 @@ sample accounts; final suite run.
 
 ### Day 1 · Fri 08-28
 
-**B-01 · Camera capture** — 1h
-: `CAMERA` permission plus `ActivityResultContracts.TakePicture` alongside the
-  existing `PickVisualMedia` launcher in `HomeScreen.kt`. Explicitly named in
-  §2.2 of the brief and trivially demonstrable live.
+**B-01 · Camera capture** — ✅ **DONE 08-28**
+: `CAMERA` permission plus `<uses-feature required="false">` so the app still
+  installs on a device without one. `TakePicture` writes into a FileProvider
+  `cache-path` (`captures/`) — a `file://` URI throws `FileUriExposedException`.
+: The "Attach Reference Image" button is now **Choose** and **Take photo** side
+  by side. Permission is checked before asking, so the system dialog appears
+  once rather than on every tap, and a denial explains that the gallery still
+  works instead of failing silently.
+: Both sources share one `readImage` path, so a fix to compression or MIME
+  detection cannot apply to one and miss the other. Backing out of the camera
+  reports nothing — that is a cancellation, not an error.
 
-**B-02 · Contract models + fake repository** — 3h
-: Kotlin models for every shape in contract Part II. Retrofit interfaces.
-  A `FakeCreditRepository` returning plausible data so every screen below is
-  buildable today.
-: **The serialization trap:** optional request fields get **no default value**,
-  or `encodeDefaults = false` drops them silently. This is the `gender`/
-  `birthday` bug. Add a serialization test per new request model, mirroring
-  `MeUpdateRequestSerializationTest`.
+**B-02 · Contract models + fake repository** — ✅ **DONE 08-28**
+: `domain/model/Credits.kt` (domain types), `data/remote/CreditsDto.kt` (wire
+  types + mappers), six endpoints added to `CretonaApi`,
+  `domain/repository/CreditsRepository.kt`, and `data/FakeCreditsRepository.kt`
+  bound in `RepositoryModule` with a `TODO(S-07/S-11)` marking the swap.
+: The fake reproduces the **refusals**, not just the happy path: a replayed
+  idempotency key returns the original result, claiming a `discount` event is
+  refused, an already-claimed event is refused, and a 350 ms delay keeps
+  loading states honest. All four seeded events match the SQL seed.
+: `reason` stays a `String`, not an enum — the server may add one before the
+  app ships again, and an unknown value must render rather than crash.
+: **8 tests in `CreditsSerializationTest`**, including a descriptor-level guard
+  that fails if anyone gives a request field a default value, which is what
+  `encodeDefaults = false` silently drops.
 
 **B-03 · Credits screen** — 2h · *depends: B-02*
 : Balance, `effectiveCost`, the `activeDiscount` banner when non-null, and the

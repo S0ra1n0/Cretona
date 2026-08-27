@@ -7,6 +7,14 @@
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
+    <!-- Section 2.2 of the brief: "chon HOAC CHUP hinh anh tu thiet bi". The
+         gallery picker needs no permission; capturing does. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- required=false so the app still installs on a device without a camera;
+         the capture button hides itself there rather than crashing. -->
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
 
     <application
         android:name=".CretonaApplication"

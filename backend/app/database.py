@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from threading import Lock
@@ -10,6 +10,8 @@ from typing import Any
 
 from app.repository import (
     AuditEntry,
+    InsufficientCreditsError,
+    UnknownUserError,
     UsernameTakenError,
     build_stats,
     decode_cursor,
@@ -699,20 +701,40 @@ class Database:
         owner: str,
         now: str,
         lease_until: str,
+        providers: Sequence[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Take a durable lease on a batch of in-flight projects.
 
         The claim is written to the row rather than held as a lock, because the
         work that follows is HTTP calls to a provider and must not run inside an
         open transaction. A lock would be released the moment this returns.
+
+        `providers` scopes the claim (W1). Two claimants poll this table -- the
+        in-process poller and an external worker -- and without a filter they
+        race for the same rows. The loser waits, so a job is served late or by a
+        machine that cannot run it. Passing disjoint sets makes that structural
+        rather than a matter of timing. None means "any", which is what the
+        admin backfill and the tests want.
         """
+        provider_filter = ""
+        provider_args: tuple[str, ...] = ()
+        if providers is not None:
+            if not providers:
+                # An empty set is not "no filter". A caller that can run nothing
+                # must claim nothing, or it would silently claim everything.
+                return []
+            placeholders = ", ".join("?" for _ in providers)
+            provider_filter = f"  AND provider IN ({placeholders}) "
+            provider_args = tuple(providers)
+
         with self.connect() as connection:
             rows = connection.execute(
                 "SELECT id FROM projects "
                 "WHERE status IN ('pending', 'generating') AND deleted_at IS NULL "
                 "  AND (lease_expires_at IS NULL OR lease_expires_at < ?) "
+                f"{provider_filter}"
                 "ORDER BY updated_at ASC LIMIT ?",
-                (now, limit),
+                (now, *provider_args, limit),
             ).fetchall()
             claimed = [row["id"] for row in rows]
             if not claimed:
@@ -775,6 +797,183 @@ class Database:
             entry["response"] = _from_json(entry["response"])
             entries.append(entry)
         return entries
+
+    # --- credits -------------------------------------------------------------
+
+    def get_setting(self, key: str) -> str | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT value FROM settings WHERE key = ?", (key,)
+            ).fetchone()
+        return row["value"] if row else None
+
+    def set_setting(self, key: str, value: str, *, updated_by: str, updated_at: str) -> None:
+        with self.connect() as connection:
+            connection.execute(
+                "INSERT INTO settings (key, value, updated_by, updated_at) "
+                "VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value, "
+                "updated_by = excluded.updated_by, updated_at = excluded.updated_at",
+                (key, value, updated_by, updated_at),
+            )
+
+    def get_credit_balance(self, user_id: str) -> int | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT credit_balance FROM users WHERE id = ?", (user_id,)
+            ).fetchone()
+        return int(row["credit_balance"]) if row else None
+
+    def apply_credit_delta(
+        self,
+        *,
+        transaction_id: str,
+        user_id: str,
+        delta: int,
+        reason: str,
+        created_at: str,
+        ref_type: str | None = None,
+        ref_id: str | None = None,
+        note: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> tuple[dict[str, Any], bool]:
+        """Move a balance and write its ledger row, atomically.
+
+        One method rather than two calls, because the balance and the ledger
+        must move together or not at all. A service that updated the balance
+        and then inserted the row would leave money unexplained whenever the
+        second statement failed.
+
+        Returns `(row, created)`. `created` is False when `idempotency_key` had
+        already been used, in which case the original row comes back and
+        nothing moved -- that is what makes a retried submit safe.
+        """
+        try:
+            with self.connect() as connection:
+                # IMMEDIATE takes the write lock up front. Without it two
+                # concurrent charges can both read the same balance before
+                # either writes, and the second overwrites the first.
+                connection.execute("BEGIN IMMEDIATE")
+                updated = connection.execute(
+                    "UPDATE users SET credit_balance = credit_balance + ? "
+                    "WHERE id = ? AND credit_balance + ? >= 0 "
+                    "RETURNING credit_balance",
+                    (delta, user_id, delta),
+                ).fetchone()
+                if updated is None:
+                    # Either the user does not exist or the charge would go
+                    # negative. Distinguishing them costs a second query and
+                    # the caller treats both as "cannot charge".
+                    exists = connection.execute(
+                        "SELECT 1 FROM users WHERE id = ?", (user_id,)
+                    ).fetchone()
+                    raise (
+                        InsufficientCreditsError(user_id)
+                        if exists
+                        else UnknownUserError(user_id)
+                    )
+
+                balance_after = int(updated["credit_balance"])
+                connection.execute(
+                    "INSERT INTO credit_transactions "
+                    "(id, user_id, delta, balance_after, reason, ref_type, ref_id, "
+                    " note, idempotency_key, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        transaction_id, user_id, delta, balance_after, reason,
+                        ref_type, ref_id, note, idempotency_key, created_at,
+                    ),
+                )
+                row = connection.execute(
+                    "SELECT * FROM credit_transactions WHERE id = ?", (transaction_id,)
+                ).fetchone()
+        except sqlite3.IntegrityError:
+            if not idempotency_key:
+                raise
+            existing = self.find_credit_transaction_by_key(user_id, idempotency_key)
+            if existing is None:
+                raise
+            return existing, False
+
+        if row is None:  # pragma: no cover - just inserted
+            raise RuntimeError("Inserted credit transaction could not be read back.")
+        return dict(row), True
+
+    def find_credit_transaction_by_key(
+        self, user_id: str, idempotency_key: str
+    ) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM credit_transactions "
+                "WHERE user_id = ? AND idempotency_key = ?",
+                (user_id, idempotency_key),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def list_credit_transactions(
+        self,
+        user_id: str,
+        *,
+        limit: int,
+        cursor: str | None = None,
+        reason: str | None = None,
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        where = ["user_id = ?"]
+        parameters: list[Any] = [user_id]
+
+        if reason:
+            where.append("reason = ?")
+            parameters.append(reason)
+
+        if cursor:
+            created_at, row_id = decode_cursor(cursor)
+            where.append("(created_at < ? OR (created_at = ? AND id < ?))")
+            parameters.extend([created_at, created_at, row_id])
+
+        parameters.append(limit + 1)
+        rows = []
+        with self.connect() as connection:
+            rows = [
+                dict(row)
+                for row in connection.execute(
+                    "SELECT * FROM credit_transactions WHERE "
+                    + " AND ".join(where)
+                    + " ORDER BY created_at DESC, id DESC LIMIT ?",
+                    tuple(parameters),
+                ).fetchall()
+            ]
+
+        next_cursor = None
+        if len(rows) > limit:
+            rows = rows[:limit]
+            next_cursor = encode_cursor(rows[-1]["created_at"], rows[-1]["id"])
+        return rows, next_cursor
+
+    def credit_totals(self, user_id: str) -> tuple[int, int]:
+        """Lifetime granted and lifetime spent, both as positive numbers."""
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT "
+                "  COALESCE(SUM(CASE WHEN delta > 0 THEN delta END), 0) AS granted, "
+                "  COALESCE(SUM(CASE WHEN delta < 0 THEN -delta END), 0) AS spent "
+                "FROM credit_transactions WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()
+        return int(row["granted"]), int(row["spent"])
+
+    def ledger_drift(self) -> list[str]:
+        """User ids whose cached balance disagrees with their ledger.
+
+        `balance_after` and this query are the reason the cache is safe to
+        keep: drift is detectable by asking, rather than by a user noticing
+        their credits are wrong.
+        """
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT u.id FROM users u WHERE u.credit_balance <> COALESCE("
+                "  (SELECT SUM(t.delta) FROM credit_transactions t WHERE t.user_id = u.id), 0)"
+            ).fetchall()
+        return [row["id"] for row in rows]
 
     def list_projects_missing_thumbnails(self) -> list[dict[str, Any]]:
         with self.connect() as connection:

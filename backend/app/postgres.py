@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import random
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -14,6 +15,8 @@ from psycopg_pool import ConnectionPool
 
 from app.repository import (
     AuditEntry,
+    InsufficientCreditsError,
+    UnknownUserError,
     UsernameTakenError,
     build_stats,
     decode_cursor,
@@ -614,6 +617,7 @@ class PostgresDatabase:
         owner: str,
         now: str,
         lease_until: str,
+        providers: Sequence[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Take a durable lease on a batch, skipping rows others hold.
 
@@ -621,7 +625,22 @@ class PostgresDatabase:
         selecting the same rows, but the lease is what survives the
         transaction. The row lock is released as soon as this commits, and the
         provider calls that follow happen long after that.
+
+        `providers` scopes the claim (W1). SKIP LOCKED stops two claimants
+        picking the same row; it does not stop the wrong claimant picking a row
+        it cannot execute. Disjoint provider sets do.
         """
+        provider_filter = ""
+        provider_args: tuple[Any, ...] = ()
+        if providers is not None:
+            if not providers:
+                # An empty set means "this claimant runs nothing", not "no
+                # filter". Returning early is the difference between claiming
+                # nothing and claiming everything.
+                return []
+            provider_filter = "     AND provider = ANY(%s) "
+            provider_args = (list(providers),)
+
         with self.pool.connection() as connection:
             rows = connection.execute(
                 f"UPDATE {TABLE} SET lease_owner = %s, lease_expires_at = %s::timestamptz "
@@ -629,9 +648,10 @@ class PostgresDatabase:
                 f"  SELECT id FROM {TABLE} "
                 "   WHERE status IN ('pending', 'generating') AND deleted_at IS NULL "
                 "     AND (lease_expires_at IS NULL OR lease_expires_at < %s::timestamptz) "
+                f"{provider_filter}"
                 "   ORDER BY updated_at ASC LIMIT %s FOR UPDATE SKIP LOCKED"
                 f") RETURNING {SELECTED_COLUMNS}",
-                (owner, lease_until, now, limit),
+                (owner, lease_until, now, *provider_args, limit),
             ).fetchall()
         return [_to_service_row(row) for row in rows]
 
@@ -871,6 +891,179 @@ class PostgresDatabase:
         return entries, next_cursor
 
 
+    # --- credits -------------------------------------------------------------
+
+    def get_setting(self, key: str) -> str | None:
+        with self.pool.connection() as connection:
+            row = connection.execute(
+                "SELECT value FROM public.settings WHERE key = %s", (key,)
+            ).fetchone()
+        return row["value"] if row else None
+
+    def set_setting(self, key: str, value: str, *, updated_by: str, updated_at: str) -> None:
+        with self.pool.connection() as connection:
+            connection.execute(
+                "INSERT INTO public.settings (key, value, updated_by, updated_at) "
+                "VALUES (%s, %s, %s, %s::timestamptz) "
+                "ON CONFLICT (key) DO UPDATE SET value = excluded.value, "
+                "updated_by = excluded.updated_by, updated_at = excluded.updated_at",
+                (key, value, updated_by if _is_uuid(updated_by) else None, updated_at),
+            )
+
+    def get_credit_balance(self, user_id: str) -> int | None:
+        if not _is_uuid(user_id):
+            return None
+        with self.pool.connection() as connection:
+            row = connection.execute(
+                "SELECT credit_balance FROM public.users WHERE id = %s", (user_id,)
+            ).fetchone()
+        return int(row["credit_balance"]) if row else None
+
+    def apply_credit_delta(
+        self,
+        *,
+        transaction_id: str,
+        user_id: str,
+        delta: int,
+        reason: str,
+        created_at: str,
+        ref_type: str | None = None,
+        ref_id: str | None = None,
+        note: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> tuple[dict[str, Any], bool]:
+        """Move a balance and write its ledger row in one transaction.
+
+        The `credit_balance + %s >= 0` guard lives in the UPDATE rather than in
+        a prior SELECT: read-then-write loses to a concurrent charge, and the
+        thing it loses is money.
+
+        Returns `(row, created)`. `created` is False when `idempotency_key` was
+        already used -- the original row comes back and nothing moved.
+        """
+        if not _is_uuid(user_id):
+            raise UnknownUserError(user_id)
+        try:
+            with self.pool.connection() as connection, connection.transaction():
+                updated = connection.execute(
+                    "UPDATE public.users SET credit_balance = credit_balance + %s "
+                    "WHERE id = %s AND credit_balance + %s >= 0 "
+                    "RETURNING credit_balance",
+                    (delta, user_id, delta),
+                ).fetchone()
+                if updated is None:
+                    exists = connection.execute(
+                        "SELECT 1 FROM public.users WHERE id = %s", (user_id,)
+                    ).fetchone()
+                    raise (
+                        InsufficientCreditsError(user_id)
+                        if exists
+                        else UnknownUserError(user_id)
+                    )
+
+                row = connection.execute(
+                    "INSERT INTO public.credit_transactions "
+                    "(id, user_id, delta, balance_after, reason, ref_type, ref_id, "
+                    " note, idempotency_key, created_at) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::timestamptz) "
+                    "RETURNING *",
+                    (
+                        transaction_id, user_id, delta, int(updated["credit_balance"]),
+                        reason, ref_type, ref_id, note, idempotency_key, created_at,
+                    ),
+                ).fetchone()
+        except pg_errors.UniqueViolation:
+            if not idempotency_key:
+                raise
+            existing = self.find_credit_transaction_by_key(user_id, idempotency_key)
+            if existing is None:
+                raise
+            return existing, False
+
+        if row is None:  # pragma: no cover - just inserted
+            raise RuntimeError("Inserted credit transaction could not be read back.")
+        return _to_credit_row(row), True
+
+    def find_credit_transaction_by_key(
+        self, user_id: str, idempotency_key: str
+    ) -> dict[str, Any] | None:
+        if not _is_uuid(user_id):
+            return None
+        with self.pool.connection() as connection:
+            row = connection.execute(
+                "SELECT * FROM public.credit_transactions "
+                "WHERE user_id = %s AND idempotency_key = %s",
+                (user_id, idempotency_key),
+            ).fetchone()
+        return _to_credit_row(row) if row else None
+
+    def list_credit_transactions(
+        self,
+        user_id: str,
+        *,
+        limit: int,
+        cursor: str | None = None,
+        reason: str | None = None,
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        if not _is_uuid(user_id):
+            return [], None
+
+        where = ["user_id = %s"]
+        parameters: list[Any] = [user_id]
+
+        if reason:
+            where.append("reason = %s")
+            parameters.append(reason)
+
+        if cursor:
+            created_at, row_id = decode_cursor(cursor)
+            where.append(
+                "(created_at < %s::timestamptz "
+                " OR (created_at = %s::timestamptz AND id < %s::uuid))"
+            )
+            parameters.extend([created_at, created_at, row_id])
+
+        parameters.append(limit + 1)
+        with self.pool.connection() as connection:
+            rows = connection.execute(
+                "SELECT * FROM public.credit_transactions WHERE "
+                + " AND ".join(where)
+                + " ORDER BY created_at DESC, id DESC LIMIT %s",
+                tuple(parameters),
+            ).fetchall()
+
+        items = [_to_credit_row(row) for row in rows]
+        next_cursor = None
+        if len(items) > limit:
+            items = items[:limit]
+            next_cursor = encode_cursor(items[-1]["created_at"], items[-1]["id"])
+        return items, next_cursor
+
+    def credit_totals(self, user_id: str) -> tuple[int, int]:
+        """Lifetime granted and lifetime spent, both as positive numbers."""
+        if not _is_uuid(user_id):
+            return 0, 0
+        with self.pool.connection() as connection:
+            row = connection.execute(
+                "SELECT "
+                "  COALESCE(SUM(delta) FILTER (WHERE delta > 0), 0) AS granted, "
+                "  COALESCE(SUM(-delta) FILTER (WHERE delta < 0), 0) AS spent "
+                "FROM public.credit_transactions WHERE user_id = %s",
+                (user_id,),
+            ).fetchone()
+        return int(row["granted"]), int(row["spent"])
+
+    def ledger_drift(self) -> list[str]:
+        """User ids whose cached balance disagrees with their ledger."""
+        with self.pool.connection() as connection:
+            rows = connection.execute(
+                "SELECT u.id FROM public.users u WHERE u.credit_balance <> COALESCE("
+                "  (SELECT SUM(t.delta) FROM public.credit_transactions t "
+                "   WHERE t.user_id = u.id), 0)"
+            ).fetchall()
+        return [str(row["id"]) for row in rows]
+
+
 def _to_service_row(row: dict[str, Any]) -> dict[str, Any]:
     """Normalize a Postgres row onto the shared row-dict contract.
 
@@ -910,3 +1103,20 @@ def _is_uuid(value: str) -> bool:
     except (ValueError, AttributeError, TypeError):
         return False
     return True
+
+
+def _to_credit_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Normalise a ledger row onto the same currency the SQLite adapter uses.
+
+    Postgres returns uuid and timestamptz objects; SQLite returns strings, and
+    the service layer is written against strings so it never learns which
+    database it is talking to.
+    """
+    out = dict(row)
+    for key in ("id", "user_id"):
+        if out.get(key) is not None:
+            out[key] = str(out[key])
+    created = out.get("created_at")
+    if created is not None and not isinstance(created, str):
+        out["created_at"] = created.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    return out

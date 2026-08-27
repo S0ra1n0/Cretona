@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
@@ -111,7 +112,38 @@ class ProjectRepository(Protocol):
 
     def soft_delete_project(self, project_id: str, owner_id: str) -> bool: ...
 
+    def claim_in_flight_projects(
+        self,
+        limit: int,
+        *,
+        owner: str,
+        now: str,
+        lease_until: str,
+        providers: Sequence[str] | None = None,
+    ) -> list[dict[str, Any]]: ...
+
     def get_user(self, user_id: str) -> dict[str, Any] | None: ...
+
+
+class InsufficientCreditsError(Exception):
+    """A charge would drive a balance below zero.
+
+    Raised by the repository rather than checked by the service, because the
+    guard lives in the UPDATE's WHERE clause: a service that read the balance
+    and then wrote it would lose to a concurrent charge.
+    """
+
+    def __init__(self, user_id: str) -> None:
+        super().__init__(f"Insufficient credits for user {user_id}.")
+        self.user_id = user_id
+
+
+class UnknownUserError(Exception):
+    """A credit operation named a user that does not exist."""
+
+    def __init__(self, user_id: str) -> None:
+        super().__init__(f"Unknown user {user_id}.")
+        self.user_id = user_id
 
 
 class UsernameTakenError(Exception):

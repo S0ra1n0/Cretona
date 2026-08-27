@@ -23,10 +23,21 @@ class JobPoller:
     would sit at `generating` forever, holding quota and never completing.
     """
 
-    def __init__(self, database: Any, project_service: Any, settings: Any) -> None:
+    def __init__(
+        self,
+        database: Any,
+        project_service: Any,
+        settings: Any,
+        providers: Any = None,
+    ) -> None:
         self.database = database
         self.project_service = project_service
         self.settings = settings
+        # W1: claim only what this process can actually advance. Without it the
+        # poller and an external worker fight over the same rows.
+        self.claimable_providers: tuple[str, ...] | None = (
+            tuple(providers.in_process_names()) if providers is not None else None
+        )
         # Identifies this instance's claims. Regenerated per process, so a
         # restarted poller does not inherit its own stale leases -- it waits
         # for them to expire like any other holder would.
@@ -41,6 +52,7 @@ class JobPoller:
             owner=self.instance_id,
             now=_iso(now),
             lease_until=_iso(now + timedelta(seconds=self.settings.poll_lease_seconds)),
+            providers=self.claimable_providers,
         )
         advanced = 0
 

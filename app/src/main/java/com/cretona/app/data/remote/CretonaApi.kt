@@ -91,6 +91,42 @@ interface CretonaApi {
 
     @GET("admin/metrics")
     suspend fun getAdminMetrics(): AdminMetricsDto
+
+    // --- credits, events and packages (API_CONTRACT.md Part II) --------------
+
+    @GET("me/credits")
+    suspend fun getCreditBalance(): CreditBalanceDto
+
+    @GET("me/credits/transactions")
+    suspend fun getCreditTransactions(
+        @retrofit2.http.Query("limit") limit: Int = 20,
+        @retrofit2.http.Query("cursor") cursor: String? = null,
+    ): CreditTransactionPageDto
+
+    @GET("credit-packages")
+    suspend fun getCreditPackages(): CreditPackageListDto
+
+    /**
+     * Simulated purchase. The Idempotency-Key is required, not optional: a
+     * retried request without one grants credits twice.
+     */
+    @POST("payments")
+    suspend fun createPayment(
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body request: PaymentCreateRequest,
+    ): PaymentDto
+
+    @GET("events")
+    suspend fun getEvents(
+        @retrofit2.http.Query("cursor") cursor: String? = null,
+    ): EventPageDto
+
+    @POST("events/{id}/claim")
+    suspend fun claimEvent(
+        @Path("id") eventId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+    ): EventClaimDto
+
 }
 
 @Serializable

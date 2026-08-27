@@ -187,7 +187,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ),
     )
     api.state.prompt_enhancer = PromptEnhancer(active_settings)
-    api.state.poller = JobPoller(database, api.state.project_service, active_settings)
+    api.state.poller = JobPoller(
+        database,
+        api.state.project_service,
+        active_settings,
+        # W1: the poller claims only providers it can run in this process,
+        # leaving external ones for the worker that actually executes them.
+        providers=providers,
+    )
 
     @api.middleware("http")
     async def request_id_middleware(request: Request, call_next):  # type: ignore[no-untyped-def]

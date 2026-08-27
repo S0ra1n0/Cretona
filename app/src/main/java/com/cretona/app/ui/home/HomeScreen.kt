@@ -1,9 +1,15 @@
 package com.cretona.app.ui.home
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
+import java.io.File
 import androidx.annotation.OptIn as AndroidxOptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -34,6 +40,7 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -115,34 +122,85 @@ fun HomeScreen(
     val context = LocalContext.current
     val imagePickerScope = rememberCoroutineScope()
 
+    // Both the gallery picker and the camera end at the same place: a content
+    // URI to read, compress and hand to the view model. Shared so a fix to the
+    // read path cannot apply to one source and not the other.
+    val readImage: (Uri, String) -> Unit = { uri, fallbackName ->
+        imagePickerScope.launch {
+            try {
+                val selection = withContext(Dispatchers.IO) {
+                    val bytes = context.contentResolver.openInputStream(uri)?.use {
+                        ImageCompressor.readBounded(it)
+                    } ?: throw IllegalStateException("The selected image could not be opened.")
+                    val mime = context.contentResolver.getType(uri) ?: "image/jpeg"
+                    val fileName = uri.lastPathSegment ?: fallbackName
+                    Triple(bytes, mime, fileName)
+                }
+                viewModel.onImageSelected(
+                    uri,
+                    selection.first,
+                    selection.second,
+                    selection.third,
+                )
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                viewModel.onImageSelectionFailed(
+                    error.message ?: "The selected image could not be read.",
+                )
+            }
+        }
+    }
+
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),
-        onResult = { uri ->
-            if (uri != null) {
-                imagePickerScope.launch {
-                    try {
-                        val selection = withContext(Dispatchers.IO) {
-                            val bytes = context.contentResolver.openInputStream(uri)?.use {
-                                ImageCompressor.readBounded(it)
-                            } ?: throw IllegalStateException("The selected image could not be opened.")
-                            val mime = context.contentResolver.getType(uri) ?: "image/jpeg"
-                            val fileName = uri.lastPathSegment ?: "reference.jpg"
-                            Triple(bytes, mime, fileName)
-                        }
-                        viewModel.onImageSelected(
-                            uri,
-                            selection.first,
-                            selection.second,
-                            selection.third,
-                        )
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (error: Exception) {
-                        viewModel.onImageSelectionFailed(
-                            error.message ?: "The selected image could not be read.",
-                        )
-                    }
-                }
+        onResult = { uri -> if (uri != null) readImage(uri, "reference.jpg") },
+    )
+
+    // TakePicture writes into a URI we supply, so the destination has to exist
+    // before the camera opens and has to survive the activity being recreated
+    // while the camera app is in front. remember + a cache file does both.
+    var pendingCaptureUri by remember { mutableStateOf<Uri?>(null) }
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture(),
+        onResult = { saved ->
+            val uri = pendingCaptureUri
+            pendingCaptureUri = null
+            // `saved` is false when the user backs out of the camera. That is
+            // a cancellation, not a failure, so it reports nothing.
+            if (saved && uri != null) readImage(uri, "capture.jpg")
+        },
+    )
+
+    val launchCamera: () -> Unit = {
+        try {
+            val directory = File(context.cacheDir, "captures").apply { mkdirs() }
+            val file = File(directory, "capture-${System.currentTimeMillis()}.jpg")
+            val uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                file,
+            )
+            pendingCaptureUri = uri
+            cameraLauncher.launch(uri)
+        } catch (error: Exception) {
+            viewModel.onImageSelectionFailed(
+                error.message ?: "The camera could not be opened.",
+            )
+        }
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+        onResult = { granted ->
+            if (granted) {
+                launchCamera()
+            } else {
+                viewModel.onImageSelectionFailed(
+                    "Camera permission is needed to take a photo. " +
+                        "You can still choose one from your gallery.",
+                )
             }
         },
     )
@@ -155,6 +213,20 @@ fun HomeScreen(
             photoPickerLauncher.launch(
                 PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
             )
+        },
+        onCaptureImage = {
+            // Asking every time would nag; checking first means the system
+            // dialog appears once and never again after it is granted.
+            val alreadyGranted = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.CAMERA,
+            ) == PackageManager.PERMISSION_GRANTED
+
+            if (alreadyGranted) {
+                launchCamera()
+            } else {
+                cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+            }
         },
         onClearImage = viewModel::onImageCleared,
         onEnhance = {
@@ -188,6 +260,7 @@ private fun HomeContent(
     onPromptChanged: (String) -> Unit,
     onProviderSelected: (String) -> Unit,
     onPickImage: () -> Unit,
+    onCaptureImage: () -> Unit,
     onClearImage: () -> Unit,
     onEnhance: () -> Unit,
     onRevertPrompt: () -> Unit,
@@ -480,6 +553,7 @@ private fun HomeContent(
                 ImageReferencePicker(
                     selectedImageUri = state.selectedImageUri,
                     onPickImage = onPickImage,
+                    onCaptureImage = onCaptureImage,
                     onClearImage = onClearImage,
                 )
             }
@@ -832,6 +906,7 @@ private fun CurrentProjectCard(
 private fun ImageReferencePicker(
     selectedImageUri: android.net.Uri?,
     onPickImage: () -> Unit,
+    onCaptureImage: () -> Unit,
     onClearImage: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -883,16 +958,34 @@ private fun ImageReferencePicker(
             }
         }
     } else {
-        OutlinedButton(
-            onClick = onPickImage,
+        // Two sources, side by side, because section 2.2 of the brief asks for
+        // both: "chon hoac chup hinh anh tu thiet bi".
+        Row(
             modifier = modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Icon(
-                imageVector = Icons.Default.Image,
-                contentDescription = null,
-                modifier = Modifier.padding(end = 8.dp),
-            )
-            Text("Attach Reference Image (Image-to-Video)")
+            OutlinedButton(
+                onClick = onPickImage,
+                modifier = Modifier.weight(1f),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Image,
+                    contentDescription = null,
+                    modifier = Modifier.padding(end = 8.dp),
+                )
+                Text("Choose")
+            }
+            OutlinedButton(
+                onClick = onCaptureImage,
+                modifier = Modifier.weight(1f),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PhotoCamera,
+                    contentDescription = null,
+                    modifier = Modifier.padding(end = 8.dp),
+                )
+                Text("Take photo")
+            }
         }
     }
 }
@@ -1042,6 +1135,7 @@ private fun HomeScreenPreview() {
             onPromptChanged = {},
             onProviderSelected = {},
             onPickImage = {},
+            onCaptureImage = {},
             onClearImage = {},
             onEnhance = {},
             onRevertPrompt = {},

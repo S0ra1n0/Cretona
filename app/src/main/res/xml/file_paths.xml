@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <cache-path name="cached_videos" path="videos/" />
+    <!-- Where TakePicture writes. The camera app needs a content:// URI
+         it can write to; a file:// one throws FileUriExposedException. -->
+    <cache-path name="captures" path="captures/" />
 </paths>

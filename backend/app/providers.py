@@ -603,6 +603,26 @@ class ProviderRegistry:
             # Fallback to first available provider
             self.default = next(iter(self._providers.keys()))
 
+    def in_process_names(self) -> tuple[str, ...]:
+        """Providers this process can actually execute, for the poller to claim.
+
+        W1: the in-process `JobPoller` and an external worker both poll the same
+        table. Without a filter they race for every row and the loser waits,
+        so jobs get served late, erratically, or by a machine that cannot run
+        them at all. Each claimant takes a disjoint set instead.
+
+        An external provider (`submit()` records, `poll()` reads the row) is
+        excluded here: nothing in this process advances it, so claiming one
+        would only hold a lease the real worker is waiting for.
+        """
+        return tuple(
+            sorted(
+                name
+                for name, provider in self._providers.items()
+                if not getattr(provider, "external", False)
+            )
+        )
+
     def get(self, name: str | None) -> VideoProvider:
         raw_key = (name or self.default).lower().strip()
         canonical_key = self.ALIASES.get(raw_key, raw_key)
