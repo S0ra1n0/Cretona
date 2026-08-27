@@ -581,6 +581,76 @@ class LocalModelVideoProvider:
         )
 
 
+class ExternalVideoProvider:
+    """A job this process records but never executes (W2).
+
+    Generation happens elsewhere -- a Kaggle notebook with a GPU this laptop
+    does not have. That inverts how every other provider works: instead of
+    FastAPI calling out and waiting, the worker polls the database, claims a
+    row, generates, uploads, and writes the result back.
+
+    So `submit()` does no work and `poll()` contacts nothing. The row *is* the
+    channel. The status the app sees is whatever the worker last wrote, which
+    is why `poll()` reports `running` and lets the real state come from the
+    row: reporting anything else would fight the worker for ownership of the
+    state machine.
+
+    `external = True` is what keeps the in-process `JobPoller` from claiming
+    these rows (W1). Without it the poller would take a lease on work it cannot
+    perform and hold it until the lease expired, while the worker that could
+    run it waited.
+    """
+
+    name = "kaggle"
+    external = True
+
+    def submit(self, *, prompt: str | None, image_path: str | None) -> SubmitResult:
+        # No network, no model, no side effect. The project row created around
+        # this call is the entire submission; a worker will find it by polling.
+        del prompt, image_path
+        return SubmitResult(job_id=f"external-{uuid4()}")
+
+    def poll(
+        self,
+        *,
+        job_id: str,
+        prompt: str | None,
+        poll_count: int,
+        image_path: str | None = None,
+    ) -> PollResult:
+        """Report no change, so the row keeps whatever the worker wrote.
+
+        Returning `succeeded` or `failed` here would overwrite the worker's
+        own progress with a guess made by a process that has no idea what the
+        GPU is doing.
+        """
+        del job_id, prompt, poll_count, image_path
+        return PollResult(status="running")
+
+    def verify_webhook(
+        self,
+        *,
+        headers: dict[str, str],
+        body: bytes,
+        secret: str = "",
+        tolerance_seconds: int = DEFAULT_TOLERANCE_SECONDS,
+    ) -> dict[str, Any]:
+        """Refuse webhooks outright.
+
+        The worker owns its rows and writes results directly. Accepting a
+        webhook would open a second, unauthenticated path to completing a
+        generation -- anyone who could reach it could mark work finished.
+        """
+        del headers, body, secret, tolerance_seconds
+        # Imported here rather than at module scope, matching ProviderRegistry
+        # below: app.errors reaches back into this module's vocabulary.
+        from app.errors import AppError
+
+        raise AppError(
+            404, "NOT_FOUND", "This provider does not accept webhooks."
+        )
+
+
 class ProviderRegistry:
     """Central registry with support for 3 canonical tiers: mock, cloud, local
     and backward-compatible alias resolution ('fake', 'real', 'wan21').
@@ -593,6 +663,8 @@ class ProviderRegistry:
         "cloud": "real",
         "wan21": "real",
         "local": "local",
+        "kaggle": "kaggle",
+        "external": "kaggle",
     }
 
     def __init__(self, providers: list[VideoProvider], default: str) -> None:

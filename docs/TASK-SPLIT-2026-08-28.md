@@ -146,8 +146,17 @@ Three integration points, and only three:
   `text_image` return `PROVIDER_ERROR` until a model exists — **never** a silent
   fall back to text. Contract §5.
 
-**S-09 · W2 — external provider mode** — 1h
-: `submit()` records only; `poll()` reads the row. Registered as `kaggle`.
+**S-09 · W2 — external provider mode** — ✅ **DONE 08-28**
+: `ExternalVideoProvider` in `providers.py`, registered as `kaggle`.
+  `submit()` records only — no network, no model. `poll()` returns `running`
+  so the row keeps whatever the worker last wrote; reporting anything else
+  would overwrite real progress with a guess from a process that cannot see
+  the GPU.
+: `verify_webhook()` **refuses outright**. The worker writes results directly,
+  so a webhook would be a second, unauthenticated way to mark work finished.
+: `external = True` pairs with S-06: `in_process_names()` now returns
+  `('fake', 'local', 'real')` and the poller leaves `kaggle` rows alone.
+  W1 + W2 together are what make the worker safe to add.
 
 > **Integration point, end of day:** tell Bruce the endpoints are live.
 
@@ -176,8 +185,6 @@ Three integration points, and only three:
 : **32 tests in `test_events.py` + 5 Postgres parity tests.** Every window case
   is pinned to a fixed instant, so none of them pass or fail depending on when
   the suite runs.
-
-**Final state: 529 passed, 0 skipped** with a disposable Postgres running.
 
 ### Day 5 · Tue 09-01
 
@@ -213,11 +220,28 @@ Three integration points, and only three:
 : `newUsers` (signups, not projects), `creditsGranted`, `creditsUsed`,
   `revenueVnd`, per-event `claims`. Contract §9.1.
 
-**S-16 · Remaining admin endpoints** — 3h
-: `POST /admin/users/{id}/credits`, `GET /admin/credit-transactions`,
-  `GET/PATCH /admin/settings`, `GET /admin/projects`, `CRUD /admin/events`,
-  `CRUD /admin/credit-packages`, `GET /admin/payments`,
-  `GET /admin/events/{id}/claims`. All audit-logged in the same transaction.
+**S-16 · Remaining admin endpoints** — ✅ **DONE 08-28**
+: All twelve: credit adjustment, credit-transaction listing, settings get and
+  patch, package list/create/patch, event list/create/patch, event claims,
+  payments, and cross-user project listing. `AdminCreditService` in
+  `app/admin_credit_service.py`.
+: **The credit adjustment writes its audit row inside the same transaction as
+  the money** — `apply_credit_delta` now takes an optional `AuditEntry` on both
+  adapters. An admin changing a balance with no record of it was the one gap
+  left in the T2-5 rule.
+: Packages are never deleted, only deactivated: `payments` reference them, and
+  a purchase history that loses what was purchased is not a history.
+: Event validation repeats the CHECK constraints on purpose — the database
+  would refuse a grant with no credits anyway, but an admin filling in a form
+  deserves to be told *which field*, not a constraint violation.
+: `GET /admin/projects` is a separate repository method from `list_projects`,
+  so the user-facing path never grows a flag whose only job is skipping the
+  ownership check.
+: **28 tests**, including one that walks every new endpoint and asserts a
+  normal user gets 403 — one place to notice if a route is ever added without
+  a role gate.
+
+**Final state: 557 passed, 0 skipped** with a disposable Postgres running.
 
 > **Feature freeze 18:00.** Nothing new after this, in either lane.
 

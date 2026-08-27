@@ -111,6 +111,7 @@ class CreditService:
         ref_id: str | None = None,
         note: str | None = None,
         idempotency_key: str | None = None,
+        audit: Any = None,
     ) -> tuple[dict[str, Any], bool]:
         if amount <= 0:
             raise ValueError("A grant must be positive; use charge() to deduct.")
@@ -122,6 +123,7 @@ class CreditService:
             ref_id=ref_id,
             note=note,
             idempotency_key=idempotency_key,
+            audit=audit,
         )
 
     def charge(
@@ -134,6 +136,7 @@ class CreditService:
         ref_id: str | None = None,
         note: str | None = None,
         idempotency_key: str | None = None,
+        audit: Any = None,
     ) -> tuple[dict[str, Any], bool]:
         """Deduct credits, or raise 402 if the balance will not cover it.
 
@@ -152,6 +155,7 @@ class CreditService:
             ref_id=ref_id,
             note=note,
             idempotency_key=idempotency_key,
+            audit=audit,
         )
 
     def refund_for(
@@ -263,6 +267,7 @@ class CreditService:
         ref_id: str | None,
         note: str | None,
         idempotency_key: str | None,
+        audit: Any = None,
     ) -> tuple[dict[str, Any], bool]:
         if reason not in REASONS:
             raise ValueError(f"Unknown credit reason: {reason}")
@@ -277,6 +282,7 @@ class CreditService:
                 ref_id=ref_id,
                 note=note,
                 idempotency_key=idempotency_key,
+                audit=audit,
             )
         except InsufficientCreditsError:
             balance = self.database.get_credit_balance(user_id) or 0

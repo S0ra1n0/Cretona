@@ -406,3 +406,174 @@ class EventClaimResponse(ApiModel):
     credits_granted: int = Field(alias="creditsGranted")
     balance: int
     transaction_id: str = Field(alias="transactionId")
+
+
+# --- admin: credits, packages, events (API_CONTRACT.md Part II §9) -----------
+
+
+class AdminCreditAdjust(ApiModel):
+    # No default: `encodeDefaults = false` on the client would drop a defaulted
+    # field, and a dropped delta is an adjustment of nothing.
+    delta: int
+    note: str | None = None
+
+
+class AdminCreditAdjustResponse(ApiModel):
+    user_id: str = Field(alias="userId")
+    delta: int
+    balance: int
+    transaction_id: str = Field(alias="transactionId")
+
+
+class AdminSettingsResponse(ApiModel):
+    generation_cost_credits: int = Field(alias="generationCostCredits")
+
+
+class AdminSettingsUpdate(ApiModel):
+    generation_cost_credits: Annotated[
+        int, Field(alias="generationCostCredits", ge=1, le=1000)
+    ]
+
+
+class AdminPackageCreate(ApiModel):
+    name: Annotated[str, Field(min_length=1, max_length=80)]
+    credits: Annotated[int, Field(gt=0, le=100000)]
+    price_vnd: Annotated[int, Field(alias="priceVnd", ge=0)]
+    sort_order: int = Field(default=0, alias="sortOrder")
+
+
+class AdminPackageUpdate(ApiModel):
+    name: str | None = None
+    credits: Annotated[int | None, Field(gt=0, le=100000)] = None
+    price_vnd: Annotated[int | None, Field(alias="priceVnd", ge=0)] = None
+    sort_order: int | None = Field(default=None, alias="sortOrder")
+    is_active: bool | None = Field(default=None, alias="isActive")
+
+
+class AdminPackage(ApiModel):
+    id: str
+    name: str
+    credits: int
+    price_vnd: int = Field(alias="priceVnd")
+    sort_order: int = Field(alias="sortOrder")
+    is_active: bool = Field(alias="isActive")
+
+
+class AdminPackageList(ApiModel):
+    items: list[AdminPackage]
+
+
+class AdminEventCreate(ApiModel):
+    code: Annotated[str, Field(min_length=1, max_length=40)]
+    name: Annotated[str, Field(min_length=1, max_length=120)]
+    description: str | None = None
+    kind: Literal["grant", "discount"]
+    bonus_credits: Annotated[int | None, Field(alias="bonusCredits", gt=0)] = None
+    discount_percent: Annotated[
+        int | None, Field(alias="discountPercent", ge=1, le=100)
+    ] = None
+    recurrence: Literal["once", "daily", "weekly"] = "once"
+    # 'sat,sun'. Free text rather than an enum list because the database stores
+    # it as one string and the service parses it in one place.
+    active_days: str | None = Field(default=None, alias="activeDays")
+    # Minutes from local midnight: 1200 is 20:00 Vietnam time.
+    active_from_minute: Annotated[
+        int | None, Field(alias="activeFromMinute", ge=0, le=1440)
+    ] = None
+    active_to_minute: Annotated[
+        int | None, Field(alias="activeToMinute", ge=0, le=1440)
+    ] = None
+    starts_at: str = Field(alias="startsAt")
+    ends_at: str = Field(alias="endsAt")
+    max_claims: Annotated[int | None, Field(alias="maxClaims", gt=0)] = None
+    auto_grant: bool = Field(default=False, alias="autoGrant")
+
+
+class AdminEventUpdate(ApiModel):
+    name: str | None = None
+    description: str | None = None
+    bonus_credits: Annotated[int | None, Field(alias="bonusCredits", gt=0)] = None
+    discount_percent: Annotated[
+        int | None, Field(alias="discountPercent", ge=1, le=100)
+    ] = None
+    active_days: str | None = Field(default=None, alias="activeDays")
+    active_from_minute: Annotated[
+        int | None, Field(alias="activeFromMinute", ge=0, le=1440)
+    ] = None
+    active_to_minute: Annotated[
+        int | None, Field(alias="activeToMinute", ge=0, le=1440)
+    ] = None
+    starts_at: str | None = Field(default=None, alias="startsAt")
+    ends_at: str | None = Field(default=None, alias="endsAt")
+    max_claims: Annotated[int | None, Field(alias="maxClaims", gt=0)] = None
+    is_active: bool | None = Field(default=None, alias="isActive")
+
+
+class AdminEvent(ApiModel):
+    id: str
+    code: str
+    name: str
+    description: str | None = None
+    kind: str
+    bonus_credits: int | None = Field(default=None, alias="bonusCredits")
+    discount_percent: int | None = Field(default=None, alias="discountPercent")
+    recurrence: str
+    active_days: str | None = Field(default=None, alias="activeDays")
+    active_from_minute: int | None = Field(default=None, alias="activeFromMinute")
+    active_to_minute: int | None = Field(default=None, alias="activeToMinute")
+    starts_at: str = Field(alias="startsAt")
+    ends_at: str = Field(alias="endsAt")
+    max_claims: int | None = Field(default=None, alias="maxClaims")
+    auto_grant: bool = Field(alias="autoGrant")
+    is_active: bool = Field(alias="isActive")
+
+
+class AdminEventList(ApiModel):
+    items: list[AdminEvent]
+
+
+class AdminEventClaim(ApiModel):
+    id: str
+    user_id: str = Field(alias="userId")
+    period_key: str = Field(alias="periodKey")
+    credits_granted: int = Field(alias="creditsGranted")
+    created_at: str = Field(alias="createdAt")
+
+
+class AdminEventClaimList(ApiModel):
+    items: list[AdminEventClaim]
+    total: int
+
+
+class AdminPayment(ApiModel):
+    id: str
+    user_id: str = Field(alias="userId")
+    package_id: str = Field(alias="packageId")
+    amount_vnd: int = Field(alias="amountVnd")
+    credits_granted: int = Field(alias="creditsGranted")
+    method: str
+    status: str
+    created_at: str = Field(alias="createdAt")
+    completed_at: str | None = Field(default=None, alias="completedAt")
+
+
+class AdminPaymentPage(ApiModel):
+    items: list[AdminPayment]
+    next_cursor: str | None = Field(default=None, alias="nextCursor")
+
+
+class AdminCreditTransaction(ApiModel):
+    id: str
+    user_id: str = Field(alias="userId")
+    delta: int
+    balance_after: int = Field(alias="balanceAfter")
+    reason: str
+    ref_type: str | None = Field(default=None, alias="refType")
+    ref_id: str | None = Field(default=None, alias="refId")
+    note: str | None = None
+    created_at: str = Field(alias="createdAt")
+
+
+class AdminCreditTransactionPage(ApiModel):
+    items: list[AdminCreditTransaction]
+    next_cursor: str | None = Field(default=None, alias="nextCursor")

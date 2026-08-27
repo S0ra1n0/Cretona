@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.admin_credit_service import AdminCreditService
 from app.admin_service import AdminService
 from app.config import Settings, get_settings
 from app.credit_service import CreditService
@@ -32,6 +33,7 @@ from app.project_service import ProjectService
 from app.prompt_service import PromptEnhancer
 from app.providers import (
     CloudAiVideoProvider,
+    ExternalVideoProvider,
     LocalModelVideoProvider,
     MockVideoProvider,
     ProviderRegistry,
@@ -118,8 +120,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ffmpeg_path=active_settings.ffmpeg_path,
         read_image=storage.read_image_bytes,
     )
+    # W2: generation for this one happens in a Kaggle notebook, not here. The
+    # registry still needs it so a project can name it; `external = True` keeps
+    # the in-process poller from claiming its rows (W1).
+    external_provider = ExternalVideoProvider()
     providers = ProviderRegistry(
-        [mock_provider, cloud_provider, local_provider],
+        [mock_provider, cloud_provider, local_provider, external_provider],
         active_settings.default_video_provider,
     )
 
@@ -170,6 +176,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.state.credit_service = CreditService(database)
     api.state.payment_service = PaymentService(database, api.state.credit_service)
     api.state.event_service = EventService(database, api.state.credit_service)
+    api.state.admin_credit_service = AdminCreditService(
+        database, api.state.credit_service
+    )
     api.state.users_service = UsersService(
         database, api.state.quota_service, storage, api.state.credit_service
     )

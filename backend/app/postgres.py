@@ -931,6 +931,7 @@ class PostgresDatabase:
         ref_id: str | None = None,
         note: str | None = None,
         idempotency_key: str | None = None,
+        audit: AuditEntry | None = None,
     ) -> tuple[dict[str, Any], bool]:
         """Move a balance and write its ledger row in one transaction.
 
@@ -972,6 +973,9 @@ class PostgresDatabase:
                         reason, ref_type, ref_id, note, idempotency_key, created_at,
                     ),
                 ).fetchone()
+                if audit is not None:
+                    # Same transaction as the money it describes (T2-5).
+                    self._insert_audit_log(connection, audit)
         except pg_errors.UniqueViolation:
             if not idempotency_key:
                 raise
@@ -1199,6 +1203,232 @@ class PostgresDatabase:
             )
 
         return _payment_like_row(row), "claimed"
+
+    # --- admin: credits, packages, events, payments ---------------------------
+
+    def list_all_credit_transactions(
+        self, *, limit: int, cursor: str | None = None, reason: str | None = None
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        where: list[str] = []
+        parameters: list[Any] = []
+        if reason:
+            where.append("reason = %s")
+            parameters.append(reason)
+        if cursor:
+            created_at, row_id = decode_cursor(cursor)
+            where.append(
+                "(created_at < %s::timestamptz "
+                " OR (created_at = %s::timestamptz AND id < %s::uuid))"
+            )
+            parameters.extend([created_at, created_at, row_id])
+
+        clause = (" WHERE " + " AND ".join(where)) if where else ""
+        parameters.append(limit + 1)
+        with self.pool.connection() as connection:
+            rows = connection.execute(
+                "SELECT * FROM public.credit_transactions" + clause
+                + " ORDER BY created_at DESC, id DESC LIMIT %s",
+                tuple(parameters),
+            ).fetchall()
+
+        items = [_to_credit_row(row) for row in rows]
+        next_cursor = None
+        if len(items) > limit:
+            items = items[:limit]
+            next_cursor = encode_cursor(items[-1]["created_at"], items[-1]["id"])
+        return items, next_cursor
+
+    def create_credit_package(
+        self,
+        *,
+        package_id: str,
+        name: str,
+        credits: int,
+        price_vnd: int,
+        sort_order: int,
+        created_at: str,
+        audit: AuditEntry | None = None,
+    ) -> dict[str, Any]:
+        with self.pool.connection() as connection, connection.transaction():
+            row = connection.execute(
+                "INSERT INTO public.credit_packages "
+                "(id, name, credits, price_vnd, sort_order, created_at) "
+                "VALUES (%s, %s, %s, %s, %s, %s::timestamptz) RETURNING *",
+                (package_id, name, credits, price_vnd, sort_order, created_at),
+            ).fetchone()
+            if audit is not None:
+                self._insert_audit_log(connection, audit)
+        return _payment_like_row(row)
+
+    def update_credit_package(
+        self, package_id: str, changes: dict[str, Any], *, audit: AuditEntry | None = None
+    ) -> dict[str, Any] | None:
+        if not _is_uuid(package_id):
+            return None
+        allowed = {"name", "credits", "price_vnd", "sort_order", "is_active"}
+        fields = {key: value for key, value in changes.items() if key in allowed}
+        if not fields:
+            return self.get_credit_package(package_id)
+
+        assignments = ", ".join(f"{key} = %s" for key in fields)
+        with self.pool.connection() as connection, connection.transaction():
+            row = connection.execute(
+                f"UPDATE public.credit_packages SET {assignments} "
+                "WHERE id = %s RETURNING *",
+                (*fields.values(), package_id),
+            ).fetchone()
+            if row is None:
+                return None
+            if audit is not None:
+                self._insert_audit_log(connection, audit)
+        return _payment_like_row(row)
+
+    def create_event(
+        self,
+        *,
+        event_id: str,
+        values: dict[str, Any],
+        created_at: str,
+        audit: AuditEntry | None = None,
+    ) -> dict[str, Any]:
+        columns = (
+            "code", "name", "description", "kind", "bonus_credits", "discount_percent",
+            "recurrence", "active_days", "active_from_minute", "active_to_minute",
+            "starts_at", "ends_at", "max_claims", "auto_grant", "is_active",
+        )
+        payload = {column: values.get(column) for column in columns}
+        payload["auto_grant"] = bool(payload.get("auto_grant"))
+        payload["is_active"] = payload.get("is_active", True) is not False
+        casts = {"starts_at": "::timestamptz", "ends_at": "::timestamptz"}
+        placeholders = ", ".join("%s" + casts.get(column, "") for column in columns)
+
+        with self.pool.connection() as connection, connection.transaction():
+            row = connection.execute(
+                "INSERT INTO public.events (id, created_at, "
+                + ", ".join(columns)
+                + ") VALUES (%s, %s::timestamptz, " + placeholders + ") RETURNING *",
+                (event_id, created_at, *[payload[column] for column in columns]),
+            ).fetchone()
+            if audit is not None:
+                self._insert_audit_log(connection, audit)
+        return _event_row_pg(row)
+
+    def update_event(
+        self, event_id: str, changes: dict[str, Any], *, audit: AuditEntry | None = None
+    ) -> dict[str, Any] | None:
+        if not _is_uuid(event_id):
+            return None
+        allowed = {
+            "name", "description", "bonus_credits", "discount_percent", "active_days",
+            "active_from_minute", "active_to_minute", "starts_at", "ends_at",
+            "max_claims", "is_active",
+        }
+        fields = {key: value for key, value in changes.items() if key in allowed}
+        if not fields:
+            return self.get_event(event_id)
+
+        casts = {"starts_at": "::timestamptz", "ends_at": "::timestamptz"}
+        assignments = ", ".join(
+            f"{key} = %s" + casts.get(key, "") for key in fields
+        )
+        with self.pool.connection() as connection, connection.transaction():
+            row = connection.execute(
+                f"UPDATE public.events SET {assignments} WHERE id = %s RETURNING *",
+                (*fields.values(), event_id),
+            ).fetchone()
+            if row is None:
+                return None
+            if audit is not None:
+                self._insert_audit_log(connection, audit)
+        return _event_row_pg(row)
+
+    def list_event_claims(self, event_id: str) -> list[dict[str, Any]]:
+        if not _is_uuid(event_id):
+            return []
+        with self.pool.connection() as connection:
+            rows = connection.execute(
+                "SELECT * FROM public.event_claims WHERE event_id = %s "
+                "ORDER BY created_at DESC, id DESC",
+                (event_id,),
+            ).fetchall()
+        return [_payment_like_row(row) for row in rows]
+
+    def list_payments(
+        self, *, status: str | None = None, limit: int = 20, cursor: str | None = None
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        where: list[str] = []
+        parameters: list[Any] = []
+        if status:
+            where.append("status = %s")
+            parameters.append(status)
+        if cursor:
+            created_at, row_id = decode_cursor(cursor)
+            where.append(
+                "(created_at < %s::timestamptz "
+                " OR (created_at = %s::timestamptz AND id < %s::uuid))"
+            )
+            parameters.extend([created_at, created_at, row_id])
+
+        clause = (" WHERE " + " AND ".join(where)) if where else ""
+        parameters.append(limit + 1)
+        with self.pool.connection() as connection:
+            rows = connection.execute(
+                "SELECT * FROM public.payments" + clause
+                + " ORDER BY created_at DESC, id DESC LIMIT %s",
+                tuple(parameters),
+            ).fetchall()
+
+        items = [_payment_like_row(row) for row in rows]
+        next_cursor = None
+        if len(items) > limit:
+            items = items[:limit]
+            next_cursor = encode_cursor(items[-1]["created_at"], items[-1]["id"])
+        return items, next_cursor
+
+    def list_all_projects(
+        self,
+        *,
+        status: str | None = None,
+        owner_id: str | None = None,
+        limit: int = 20,
+        cursor: str | None = None,
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        """Every user's projects, for admin moderation.
+
+        Separate from `list_projects` so the user-facing path never grows a
+        flag whose only purpose is skipping the ownership check.
+        """
+        where = ["deleted_at IS NULL"]
+        parameters: list[Any] = []
+        if status:
+            where.append("status = %s")
+            parameters.append(status)
+        if owner_id and _is_uuid(owner_id):
+            where.append("user_id = %s")
+            parameters.append(owner_id)
+        if cursor:
+            created_at, project_id = decode_cursor(cursor)
+            where.append(
+                "(created_at < %s::timestamptz "
+                " OR (created_at = %s::timestamptz AND id < %s::uuid))"
+            )
+            parameters.extend([created_at, created_at, project_id])
+
+        parameters.append(limit + 1)
+        with self.pool.connection() as connection:
+            rows = connection.execute(
+                f"SELECT {SELECTED_COLUMNS} FROM {TABLE} WHERE "
+                + " AND ".join(where)
+                + " ORDER BY created_at DESC, id DESC LIMIT %s",
+                tuple(parameters),
+            ).fetchall()
+
+        items = [_to_service_row(row) for row in rows]
+        next_cursor = None
+        if len(items) > limit:
+            items = items[:limit]
+            next_cursor = encode_cursor(items[-1]["created_at"], items[-1]["id"])
+        return items, next_cursor
 
     def find_auto_grant_event(self, now: str) -> dict[str, Any] | None:
         """The active signup-bonus event, if one is running."""

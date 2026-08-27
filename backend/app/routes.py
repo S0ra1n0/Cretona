@@ -9,6 +9,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Header, Query, Request, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
 
+from app.admin_credit_service import AdminCreditService
 from app.admin_service import AdminService
 from app.auth import current_user_id, require_admin
 from app.credit_service import CreditService
@@ -22,8 +23,26 @@ from app.prompt_service import PromptEnhancer
 from app.schemas import (
     ActiveDiscount,
     AdminAuditLogPage,
+    AdminCreditAdjust,
+    AdminCreditAdjustResponse,
+    AdminCreditTransaction,
+    AdminCreditTransactionPage,
+    AdminEvent,
+    AdminEventClaim,
+    AdminEventClaimList,
+    AdminEventCreate,
+    AdminEventList,
+    AdminEventUpdate,
     AdminLogList,
     AdminMetricsResponse,
+    AdminPackage,
+    AdminPackageCreate,
+    AdminPackageList,
+    AdminPackageUpdate,
+    AdminPayment,
+    AdminPaymentPage,
+    AdminSettingsResponse,
+    AdminSettingsUpdate,
     AdminUser,
     AdminUserPage,
     AdminUserUpdate,
@@ -40,6 +59,7 @@ from app.schemas import (
     LedgerDriftResponse,
     MeResponse,
     MeUpdate,
+    PageInfo,
     PaymentCreate,
     PaymentResponse,
     ProjectCancelResponse,
@@ -648,4 +668,285 @@ def claim_event(
         creditsGranted=result["credits_granted"],
         balance=result["balance"],
         transactionId=result["transaction_id"],
+    )
+
+
+# --- admin: credits, packages, events, payments (S-16) -----------------------
+
+
+def admin_credits(request: Request) -> AdminCreditService:
+    return request.app.state.admin_credit_service
+
+
+AdminId = Annotated[str, Depends(require_admin)]
+
+
+def _admin_tx(row: dict) -> AdminCreditTransaction:
+    return AdminCreditTransaction(
+        id=str(row["id"]),
+        userId=str(row["user_id"]),
+        delta=row["delta"],
+        balanceAfter=row["balance_after"],
+        reason=row["reason"],
+        refType=row.get("ref_type"),
+        refId=row.get("ref_id"),
+        note=row.get("note"),
+        createdAt=row["created_at"],
+    )
+
+
+def _admin_event(row: dict) -> AdminEvent:
+    return AdminEvent(
+        id=str(row["id"]),
+        code=row["code"],
+        name=row["name"],
+        description=row.get("description"),
+        kind=row["kind"],
+        bonusCredits=row.get("bonus_credits"),
+        discountPercent=row.get("discount_percent"),
+        recurrence=row["recurrence"],
+        activeDays=row.get("active_days"),
+        activeFromMinute=row.get("active_from_minute"),
+        activeToMinute=row.get("active_to_minute"),
+        startsAt=row["starts_at"],
+        endsAt=row["ends_at"],
+        maxClaims=row.get("max_claims"),
+        autoGrant=bool(row.get("auto_grant")),
+        isActive=bool(row.get("is_active")),
+    )
+
+
+def _admin_package(row: dict) -> AdminPackage:
+    return AdminPackage(
+        id=str(row["id"]),
+        name=row["name"],
+        credits=row["credits"],
+        priceVnd=row["price_vnd"],
+        sortOrder=row.get("sort_order", 0),
+        isActive=bool(row.get("is_active", True)),
+    )
+
+
+@router.post(
+    "/admin/users/{user_id}/credits",
+    response_model=AdminCreditAdjustResponse,
+)
+def adjust_user_credits(
+    user_id: str,
+    payload: AdminCreditAdjust,
+    admin_id: AdminId,
+    service: Annotated[AdminCreditService, Depends(admin_credits)],
+) -> AdminCreditAdjustResponse:
+    """Add or remove credits from an account (brief §3).
+
+    The adjustment and its audit row are written in one transaction, so an
+    admin cannot change a balance without leaving a record of having done it.
+    """
+    result = service.adjust(admin_id, user_id, payload.delta, payload.note)
+    return AdminCreditAdjustResponse(
+        userId=result["userId"],
+        delta=result["delta"],
+        balance=result["balance"],
+        transactionId=result["transactionId"],
+    )
+
+
+@router.get("/admin/credit-transactions", response_model=AdminCreditTransactionPage)
+def admin_list_credit_transactions(
+    _admin_id: AdminId,
+    service: Annotated[AdminCreditService, Depends(admin_credits)],
+    userId: str | None = None,
+    reason: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    cursor: str | None = None,
+) -> AdminCreditTransactionPage:
+    rows, next_cursor = service.transactions(
+        user_id=userId, reason=reason, limit=limit, cursor=cursor
+    )
+    return AdminCreditTransactionPage(
+        items=[_admin_tx(row) for row in rows], nextCursor=next_cursor
+    )
+
+
+@router.get("/admin/settings", response_model=AdminSettingsResponse)
+def admin_get_settings(
+    _admin_id: AdminId,
+    service: Annotated[AdminCreditService, Depends(admin_credits)],
+) -> AdminSettingsResponse:
+    values = service.settings()
+    return AdminSettingsResponse(
+        generationCostCredits=int(values.get("generation_cost_credits") or 1)
+    )
+
+
+@router.patch("/admin/settings", response_model=AdminSettingsResponse)
+def admin_update_settings(
+    payload: AdminSettingsUpdate,
+    admin_id: AdminId,
+    service: Annotated[AdminCreditService, Depends(admin_credits)],
+) -> AdminSettingsResponse:
+    """Set what a generation costs -- the brief's "cấu hình chi phí tạo video".
+
+    Takes effect on the next charge, because the cost is read at charge time
+    rather than cached anywhere.
+    """
+    values = service.update_setting(
+        admin_id, "generation_cost_credits", str(payload.generation_cost_credits)
+    )
+    return AdminSettingsResponse(
+        generationCostCredits=int(values.get("generation_cost_credits") or 1)
+    )
+
+
+@router.get("/admin/credit-packages", response_model=AdminPackageList)
+def admin_list_packages(
+    _admin_id: AdminId,
+    service: Annotated[AdminCreditService, Depends(admin_credits)],
+) -> AdminPackageList:
+    # Inactive ones included: the admin screen manages them, and a package you
+    # cannot see is a package you cannot re-enable.
+    return AdminPackageList(items=[_admin_package(row) for row in service.packages()])
+
+
+@router.post(
+    "/admin/credit-packages",
+    response_model=AdminPackage,
+    status_code=status.HTTP_201_CREATED,
+)
+def admin_create_package(
+    payload: AdminPackageCreate,
+    admin_id: AdminId,
+    service: Annotated[AdminCreditService, Depends(admin_credits)],
+) -> AdminPackage:
+    return _admin_package(
+        service.create_package(admin_id, payload.model_dump(exclude_none=True))
+    )
+
+
+@router.patch("/admin/credit-packages/{package_id}", response_model=AdminPackage)
+def admin_update_package(
+    package_id: str,
+    payload: AdminPackageUpdate,
+    admin_id: AdminId,
+    service: Annotated[AdminCreditService, Depends(admin_credits)],
+) -> AdminPackage:
+    """Change a package, or take it off sale with `isActive: false`.
+
+    There is no delete: `payments` reference packages, and a purchase history
+    that loses the thing purchased is not a history.
+    """
+    return _admin_package(
+        service.update_package(
+            admin_id, package_id, payload.model_dump(exclude_unset=True)
+        )
+    )
+
+
+@router.get("/admin/events", response_model=AdminEventList)
+def admin_list_events(
+    _admin_id: AdminId,
+    service: Annotated[AdminCreditService, Depends(admin_credits)],
+) -> AdminEventList:
+    return AdminEventList(items=[_admin_event(row) for row in service.events()])
+
+
+@router.post(
+    "/admin/events", response_model=AdminEvent, status_code=status.HTTP_201_CREATED
+)
+def admin_create_event(
+    payload: AdminEventCreate,
+    admin_id: AdminId,
+    service: Annotated[AdminCreditService, Depends(admin_credits)],
+) -> AdminEvent:
+    """Create a promotion (brief §3: window, conditions, grant, cap, status)."""
+    return _admin_event(service.create_event(admin_id, payload.model_dump()))
+
+
+@router.patch("/admin/events/{event_id}", response_model=AdminEvent)
+def admin_update_event(
+    event_id: str,
+    payload: AdminEventUpdate,
+    admin_id: AdminId,
+    service: Annotated[AdminCreditService, Depends(admin_credits)],
+) -> AdminEvent:
+    return _admin_event(
+        service.update_event(admin_id, event_id, payload.model_dump(exclude_unset=True))
+    )
+
+
+@router.get("/admin/events/{event_id}/claims", response_model=AdminEventClaimList)
+def admin_list_event_claims(
+    event_id: str,
+    _admin_id: AdminId,
+    service: Annotated[AdminCreditService, Depends(admin_credits)],
+) -> AdminEventClaimList:
+    """Who took a campaign up -- the brief's "hiệu quả các đợt khuyến mãi"."""
+    claims = service.claims(event_id)
+    return AdminEventClaimList(
+        items=[
+            AdminEventClaim(
+                id=str(row["id"]),
+                userId=str(row["user_id"]),
+                periodKey=row["period_key"],
+                creditsGranted=row["credits_granted"],
+                createdAt=row["created_at"],
+            )
+            for row in claims
+        ],
+        total=len(claims),
+    )
+
+
+@router.get("/admin/payments", response_model=AdminPaymentPage)
+def admin_list_payments(
+    _admin_id: AdminId,
+    service: Annotated[AdminCreditService, Depends(admin_credits)],
+    status_filter: Annotated[str | None, Query(alias="status")] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    cursor: str | None = None,
+) -> AdminPaymentPage:
+    """Where the revenue figure comes from. No real money moves -- ADR-010."""
+    rows, next_cursor = service.payments(
+        status=status_filter, limit=limit, cursor=cursor
+    )
+    return AdminPaymentPage(
+        items=[
+            AdminPayment(
+                id=str(row["id"]),
+                userId=str(row["user_id"]),
+                packageId=str(row["package_id"]),
+                amountVnd=row["amount_vnd"],
+                creditsGranted=row["credits_granted"],
+                method=row["method"],
+                status=row["status"],
+                createdAt=row["created_at"],
+                completedAt=row.get("completed_at"),
+            )
+            for row in rows
+        ],
+        nextCursor=next_cursor,
+    )
+
+
+@router.get("/admin/projects", response_model=ProjectPage)
+def admin_list_projects(
+    request: Request,
+    _admin_id: AdminId,
+    service: Annotated[ProjectService, Depends(project_service)],
+    status_filter: Annotated[ProjectStatus | None, Query(alias="status")] = None,
+    userId: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    cursor: str | None = None,
+) -> ProjectPage:
+    """Every user's videos, for moderation (brief §3: "quản lý ... video")."""
+    rows, next_cursor = request.app.state.database.list_all_projects(
+        status=status_filter.value if status_filter else None,
+        owner_id=userId,
+        limit=limit,
+        cursor=cursor,
+    )
+    base_url = request_base_url(request)
+    return ProjectPage(
+        items=[service.to_response(row, base_url) for row in rows],
+        page=PageInfo(nextCursor=next_cursor, hasMore=next_cursor is not None),
     )
