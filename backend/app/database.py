@@ -28,7 +28,10 @@ CREATE TABLE IF NOT EXISTS users (
     -- Optional profile details. Only the username is required to finish
     -- setup, so both stay nullable and read as "not chosen yet".
     gender TEXT CHECK (gender IN ('male', 'female', 'other')),
-    birthday TEXT
+    birthday TEXT,
+    -- Cache of the credit ledger. Written only in the same transaction as a
+    -- credit_transactions row; never set directly.
+    credit_balance INTEGER NOT NULL DEFAULT 0 CHECK (credit_balance >= 0)
 );
 
 CREATE TABLE IF NOT EXISTS projects (
@@ -111,7 +114,129 @@ ON projects(provider, provider_job_id);
 CREATE INDEX IF NOT EXISTS projects_deleted_idx
 ON projects(deleted_at, owner_id);
 
+-- Credits, events, packages, payments and settings (migration 013).
+--
+-- The SQLite mirror. Types differ from Postgres by necessity -- no uuid, no
+-- timestamptz, no partial-index-with-predicate on older builds -- but every
+-- constraint that protects money is reproduced, because the tests run here and
+-- a constraint that only exists in production is a constraint nobody tests.
+
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_by TEXT,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS credit_packages (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    credits INTEGER NOT NULL CHECK (credits > 0),
+    price_vnd INTEGER NOT NULL CHECK (price_vnd >= 0),
+    is_active INTEGER NOT NULL DEFAULT 1,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS payments (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    package_id TEXT NOT NULL,
+    amount_vnd INTEGER NOT NULL CHECK (amount_vnd >= 0),
+    credits_granted INTEGER NOT NULL CHECK (credits_granted > 0),
+    method TEXT NOT NULL DEFAULT 'simulated',
+    status TEXT NOT NULL CHECK (status IN ('pending', 'completed', 'failed')),
+    idempotency_key TEXT,
+    created_at TEXT NOT NULL,
+    completed_at TEXT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_payments_idempotency
+ON payments(user_id, idempotency_key) WHERE idempotency_key IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS payments_user_created_idx
+ON payments(user_id, created_at DESC, id DESC);
+
+-- Minutes are LOCAL Vietnam time (UTC+7) from midnight: 1200 = 20:00.
+CREATE TABLE IF NOT EXISTS events (
+    id TEXT PRIMARY KEY,
+    code TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    description TEXT,
+    kind TEXT NOT NULL CHECK (kind IN ('grant', 'discount')),
+    bonus_credits INTEGER CHECK (bonus_credits > 0),
+    discount_percent INTEGER CHECK (discount_percent BETWEEN 1 AND 100),
+    recurrence TEXT NOT NULL CHECK (recurrence IN ('once', 'daily', 'weekly')),
+    active_days TEXT,
+    active_from_minute INTEGER CHECK (active_from_minute BETWEEN 0 AND 1440),
+    active_to_minute INTEGER CHECK (active_to_minute BETWEEN 0 AND 1440),
+    starts_at TEXT NOT NULL,
+    ends_at TEXT NOT NULL,
+    max_claims INTEGER CHECK (max_claims > 0),
+    auto_grant INTEGER NOT NULL DEFAULT 0,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    CHECK (ends_at > starts_at),
+    CHECK (
+        (kind = 'grant' AND bonus_credits IS NOT NULL AND discount_percent IS NULL)
+     OR (kind = 'discount' AND discount_percent IS NOT NULL AND bonus_credits IS NULL)
+    ),
+    CHECK ((active_from_minute IS NULL) = (active_to_minute IS NULL))
+);
+
+CREATE INDEX IF NOT EXISTS events_active_window_idx
+ON events(is_active, starts_at, ends_at);
+
+-- period_key: '' for once, the local date for daily, the ISO week for weekly.
+-- This unique constraint -- not a count-then-insert -- is what stops a
+-- double-tap claiming the same weekend gift twice.
+CREATE TABLE IF NOT EXISTS event_claims (
+    id TEXT PRIMARY KEY,
+    event_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    period_key TEXT NOT NULL DEFAULT '',
+    credits_granted INTEGER NOT NULL CHECK (credits_granted > 0),
+    created_at TEXT NOT NULL,
+    UNIQUE(event_id, user_id, period_key)
+);
+
+CREATE INDEX IF NOT EXISTS event_claims_event_created_idx
+ON event_claims(event_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS event_claims_user_created_idx
+ON event_claims(user_id, created_at DESC);
+
+-- The append-only ledger. users.credit_balance is a cache; this is the truth.
+-- balance_after exists so drift between the two is a query, not a surprise.
+CREATE TABLE IF NOT EXISTS credit_transactions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    delta INTEGER NOT NULL CHECK (delta <> 0),
+    balance_after INTEGER NOT NULL CHECK (balance_after >= 0),
+    reason TEXT NOT NULL CHECK (reason IN (
+        'signup_bonus', 'event_grant', 'purchase',
+        'generation', 'refund', 'admin_adjustment')),
+    ref_type TEXT CHECK (ref_type IN ('project', 'payment', 'event')),
+    ref_id TEXT,
+    note TEXT,
+    idempotency_key TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_credit_tx_idempotency
+ON credit_transactions(user_id, idempotency_key) WHERE idempotency_key IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS credit_tx_user_created_idx
+ON credit_transactions(user_id, created_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS credit_tx_reason_created_idx
+ON credit_transactions(reason, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS credit_tx_ref_idx
+ON credit_transactions(ref_type, ref_id);
+
 """
+
 
 # Columns added after the first release. SQLite has no `ADD COLUMN IF NOT
 # EXISTS`, so an existing database file is widened here rather than recreated;
@@ -139,6 +264,11 @@ ADDED_COLUMNS = {
         # the value is validated by the MeUpdate schema before it ever lands.
         "gender": "TEXT",
         "birthday": "TEXT",
+        # Credit balance cache (supabase/013_add_credits_and_events.sql). No
+        # CHECK here for the same reason as gender: SQLite cannot add one via
+        # ALTER TABLE. CreditService is the only writer and refuses to go
+        # negative, and the fresh-database SCHEMA above does carry the check.
+        "credit_balance": "INTEGER NOT NULL DEFAULT 0",
     },
 }
 

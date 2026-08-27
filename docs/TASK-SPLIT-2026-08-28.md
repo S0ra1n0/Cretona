@@ -32,27 +32,36 @@ Three integration points, and only three:
 
 ### Day 1 · Fri 08-28
 
-**S-01 · Migration `013_add_credits_and_events.sql`** — 3h
+**S-01 · Migration `013_add_credits_and_events.sql`** — ✅ **DONE 08-28**
 : Seven schema objects: `users.credit_balance`, `credit_transactions`,
-  `credit_packages`, `payments`, `events`, `event_claims`, `settings`. DDL is in
-  `PLAN-TO-2026-09-05.md` §4.
-: Lands in **five** places or the suite breaks: the migration, `bootstrap.sql`,
-  `database.py` → `SCHEMA`, `tests/postgres_schema.sql`,
-  `scripts/live-supabase-migration-gate.py`.
-: **Done when:** migration applies to live Postgres, `pytest` green, ruff clean.
+  `credit_packages`, `payments`, `events`, `event_claims`, `settings`.
+: Landed in **four** places: `supabase/013_add_credits_and_events.sql`,
+  `supabase/bootstrap.sql` (§9, folded in verbatim), `database.py` → `SCHEMA`
+  **and** `ADDED_COLUMNS["users"]`, `tests/postgres_schema.sql` (plus explicit
+  drops — `drop table users cascade` does not reach `events` or
+  `credit_packages`, which have no FK to users).
+: `live-supabase-migration-gate.py` needs no change: it validates index health
+  generically rather than against a table list. Confirmed by running
+  `test_migration_gate.py`.
+: **Verified:** 373 passed / 31 skipped, ruff clean. Constraint smoke tests
+  pass on a real SQLite database — `delta <> 0`, reason whitelist, grant
+  requires `bonus_credits`, discount excludes it, double-claim in the same
+  period blocked, next period allowed, replayed idempotency key blocked.
+: **Remaining:** apply the migration to live Supabase Postgres (needs the
+  dashboard).
 
-**S-02 · Seed data** — 1h
-: `settings.generation_cost_credits = 1`. Three credit packages. Five events:
-  `SIGNUP_BONUS` (auto-grant, +5), `HOT_HOURS` (daily discount 50%, 1200–1320),
-  `WEEKEND_GIFT` (weekly grant +10, sat/sun), `NATIONAL_DAY` (once, +20,
-  09-02), `WELCOME_BACK` (once, admin-style surprise).
-: **Done when:** a fresh `bootstrap.sql` + seed gives a working system with
-  events visible.
+**S-02 · Seed data** — ✅ **DONE 08-28**
+: `supabase/seed_credits_and_events.sql`. Cost = 1 credit, three packages
+  (Starter/Creator/Studio), and all five events: `SIGNUP_BONUS` (+5, auto),
+  `HOT_HOURS` (daily −50%, 1200–1320), `WEEKEND_GIFT` (+10 weekly, sat/sun,
+  cap 500), `NATIONAL_DAY` (+20, 09-02, cap 1000), `WELCOME_BACK` (+15, cap 100).
+: Every insert is guarded, so re-running is safe.
 
-**S-03 · `ADR-010` — simulated payments** — 30min
-: Why no real gateway (ADR-009), what is real (row, state machine, idempotency,
-  ledger entry in one transaction), what is stubbed (gateway confirmation), and
-  where the real call would go.
+**S-03 · `ADR-010` — simulated payments** — ✅ **DONE 08-28**
+: `docs/adr/ADR-010-simulated-payments.md`. Adds one implementation
+  constraint worth knowing before S-07: `payments.method` stores
+  `'simulated'` on every row, so the database itself discloses the stub rather
+  than relying on the report to do it.
 
 ### Day 2 · Sat 08-29
 
