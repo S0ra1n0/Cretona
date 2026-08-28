@@ -162,22 +162,65 @@ def build_stats(
     by_status: Any,
     by_provider: Any,
     daily: Any,
+    daily_users: Any = (),
+    daily_credits: Any = (),
+    daily_revenue: Any = (),
+    events: Any = (),
 ) -> dict[str, Any]:
     """Shape admin statistics identically on either backend.
 
     Both adapters run their own dialect-specific aggregation and then hand the
     rows here, so a difference in SQL cannot become a difference in contract.
+
+    The daily series is assembled from four separate queries rather than one
+    joined one. Joining them would drop a day on which credits moved but no
+    project was created -- and a revenue chart with holes in it is worse than
+    no chart, because it looks like data.
     """
     status_counts = {row["status"]: int(row["total"]) for row in by_status}
     completed = status_counts.get("completed", 0)
     failed = status_counts.get("failed", 0)
     finished = completed + failed
 
+    def blank() -> dict[str, int]:
+        return {
+            "created": 0, "completed": 0, "failed": 0,
+            "newUsers": 0, "creditsGranted": 0, "creditsUsed": 0, "revenueVnd": 0,
+        }
+
+    buckets: dict[str, dict[str, int]] = {}
+
+    def bucket(value: Any) -> dict[str, int]:
+        return buckets.setdefault(str(value)[:10], blank())
+
+    for row in daily:
+        entry = bucket(row["date"])
+        entry["created"] = int(row["created"] or 0)
+        entry["completed"] = int(row["completed"] or 0)
+        entry["failed"] = int(row["failed"] or 0)
+
+    for row in daily_users:
+        bucket(row["date"])["newUsers"] = int(row["total"] or 0)
+
+    for row in daily_credits:
+        entry = bucket(row["date"])
+        entry["creditsGranted"] = int(row["granted"] or 0)
+        entry["creditsUsed"] = int(row["used"] or 0)
+
+    for row in daily_revenue:
+        bucket(row["date"])["revenueVnd"] = int(row["revenue"] or 0)
+
     return {
         "totals": {
             "users": int(totals["users"]),
             "activeUsers": int(totals["active_users"]),
             "projects": int(totals["projects"]),
+            # Brief §3: "Credit đã cấp/đã sử dụng, doanh thu bán Credit".
+            "creditsGranted": int(totals.get("credits_granted") or 0),
+            "creditsUsed": int(totals.get("credits_used") or 0),
+            # Simulated revenue -- no real money moves (ADR-010). The dashboard
+            # labels it as such where it is displayed.
+            "revenueVnd": int(totals.get("revenue_vnd") or 0),
         },
         "projectsByStatus": {status: status_counts.get(status, 0) for status in STATUSES},
         "projectsByProvider": {row["provider"]: int(row["total"]) for row in by_provider},
@@ -185,13 +228,24 @@ def build_stats(
         # in-flight work as a success would make the rate drift with load.
         "failureRate": 0.0 if finished == 0 else round(failed / finished, 4),
         "daily": [
+            {"date": date, **buckets[date]}
+            for date in sorted(buckets, reverse=True)
+        ],
+        "events": [
             {
-                "date": str(row["date"])[:10],
-                "created": int(row["created"] or 0),
-                "completed": int(row["completed"] or 0),
-                "failed": int(row["failed"] or 0),
+                "eventId": str(row["id"]),
+                "code": row["code"],
+                "name": row["name"],
+                "claims": int(row["claims"] or 0),
+                "creditsGranted": int(row["credits_granted"] or 0),
+                # None when uncapped, so the app shows "unlimited" rather than
+                # a number that would have to mean two things.
+                "remainingSlots": (
+                    None if row["max_claims"] is None
+                    else max(0, int(row["max_claims"]) - int(row["claims"] or 0))
+                ),
             }
-            for row in daily
+            for row in events
         ],
     }
 

@@ -209,6 +209,11 @@ class StatsTotals(ApiModel):
     users: int
     active_users: int = Field(alias="activeUsers")
     projects: int
+    credits_granted: int = Field(default=0, alias="creditsGranted")
+    credits_used: int = Field(default=0, alias="creditsUsed")
+    # Simulated -- no real money moves (ADR-010). Labelled as such wherever it
+    # is displayed, not only where it is defined.
+    revenue_vnd: int = Field(default=0, alias="revenueVnd")
 
 
 class DailyStat(ApiModel):
@@ -216,6 +221,20 @@ class DailyStat(ApiModel):
     created: int
     completed: int
     failed: int
+    # Signups. `created` counts projects, which is a different number.
+    new_users: int = Field(default=0, alias="newUsers")
+    credits_granted: int = Field(default=0, alias="creditsGranted")
+    credits_used: int = Field(default=0, alias="creditsUsed")
+    revenue_vnd: int = Field(default=0, alias="revenueVnd")
+
+
+class EventStat(ApiModel):
+    event_id: str = Field(alias="eventId")
+    code: str
+    name: str
+    claims: int
+    credits_granted: int = Field(alias="creditsGranted")
+    remaining_slots: int | None = Field(default=None, alias="remainingSlots")
 
 
 class StatsResponse(ApiModel):
@@ -224,6 +243,7 @@ class StatsResponse(ApiModel):
     projects_by_provider: dict[str, int] = Field(alias="projectsByProvider")
     failure_rate: float = Field(alias="failureRate")
     daily: list[DailyStat]
+    events: list[EventStat] = Field(default_factory=list)
 
 
 class UploadSignRequest(ApiModel):

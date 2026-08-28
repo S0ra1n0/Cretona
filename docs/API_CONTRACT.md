@@ -210,7 +210,9 @@ stateDiagram-v2
 
 # Part II — Credits, Events and Generation Modes
 
-- **Added:** 2026-08-28 · **Status:** agreed contract, implementation pending
+- **Added:** 2026-08-28 · **Status:** **implemented and green** as of
+  2026-08-28. Every endpoint below exists; 590 backend tests pass against
+  both SQLite and Postgres with 0 skipped.
 - **Owners:** S0ra1n0 implements the server; Bruce codes Android against this
   document from day 1 with a fake repository implementation.
 - **Rule:** this document is the source of truth. A change here is told to the
@@ -274,6 +276,12 @@ The app supports three input modes. Both fields are individually optional;
 - If no image-capable provider is available the request fails with
   `PROVIDER_ERROR`. It does **not** silently fall back to text-only: a user who
   supplied an image and received a video that ignores it has been misled.
+- **Implemented as a provider attribute**, `supports_image`. `real` and `local`
+  are True (they pan across the account's own upload, W4); `fake` and `kaggle`
+  are False. When an image-conditioned model is proven (D1 / EXP-005), that
+  attribute is the line that changes.
+- Ownership of the image path is checked **before** capability, so the status
+  code cannot be used to probe whether someone else's storage path exists.
 
 `POST /projects` gains no new request fields. `prompt` becomes nullable, and the
 project response object gains `"mode"`.
@@ -295,9 +303,11 @@ project response object gains `"mode"`.
 }
 ```
 
-`generationCost` is the configured base cost. `effectiveCost` is what the next
-generation actually costs **right now**, after any active discount event. While
-a discount runs:
+`generationCost` is the configured base cost, set by an admin through
+`PATCH /admin/settings`. `effectiveCost` is what the next generation actually
+costs **right now**, after any active discount event — resolved server-side at
+request time and again at charge time, so a stale client number can never
+decide a price. While a discount runs:
 
 ```json
 {
@@ -493,7 +503,8 @@ All require the admin role and are audit-logged through the existing
 | `GET` | `/admin/events/{id}/claims` | Who claimed, when, how much |
 | `GET` | `/admin/payments` | `?status=&limit=&cursor=` |
 | `GET` `PATCH` | `/admin/settings` | `{ "generationCostCredits": 1 }` — closes the §3 "cấu hình chi phí tạo video" line |
-| `GET` | `/admin/projects` | `?status=&userId=&limit=&cursor=` — list and moderate videos. Only `/admin/projects/{id}/logs` exists today |
+| `GET` | `/admin/projects` | `?status=&userId=&limit=&cursor=` — list and moderate videos |
+| `GET` | `/admin/credits/drift` | Accounts whose cached balance disagrees with their ledger. The only symptom a silently failed refund has |
 
 ### 9.1 `GET /admin/stats` — extended
 
@@ -512,8 +523,13 @@ unchanged; these are added:
 }
 ```
 
-`newUsers` counts signups. Today's `DailyStat.created` counts projects, which is
-a different number and does not satisfy the "User mới" line.
+`newUsers` counts signups. `created` counts projects, which is a different
+number and does not satisfy the "User mới" line.
+
+The daily series is assembled from **four separate queries** merged by date, not
+one joined query. A join would drop any day on which credits moved but no
+project was created, and a revenue chart with holes in it is worse than no
+chart because it looks like data.
 
 ---
 

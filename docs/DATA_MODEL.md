@@ -143,3 +143,106 @@ CREATE INDEX idx_logs_project_created    ON generation_logs (project_id, created
 CREATE INDEX idx_logs_retention          ON generation_logs (created_at ASC, id ASC);
 CREATE INDEX idx_users_email             ON users (lower(email));
 ```
+
+---
+
+## 4. Credits, events, packages and payments
+
+Added by `supabase/013_add_credits_and_events.sql`, applied to live Supabase on
+2026-08-28. Closes the six tables §5 of the exam brief names as the minimum
+schema. Wire contract: `API_CONTRACT.md` Part II.
+
+### 4.1 The tables
+
+| Table | Purpose |
+|---|---|
+| `credit_transactions` | The append-only ledger. Signed `delta`; every row carries `balance_after` |
+| `credit_packages` | What a user can buy. Deactivated, never deleted |
+| `payments` | Purchases. `method` is always `simulated` today — see `ADR-010` |
+| `events` | Promotions. One table for both grants and discounts |
+| `event_claims` | Who took up which campaign, in which period |
+| `settings` | Admin-configurable values. Currently `generation_cost_credits` |
+
+Plus `users.credit_balance` (integer, default 0, `>= 0` enforced by CHECK).
+
+### 4.2 The ledger is the truth
+
+`users.credit_balance` is a **cache**. Every change to it is written in the same
+transaction as a `credit_transactions` row, and `balance_after` on each row is
+what makes disagreement between the two detectable:
+
+```sql
+select u.id from public.users u
+where u.credit_balance <> coalesce(
+  (select sum(t.delta) from public.credit_transactions t where t.user_id = u.id), 0);
+```
+
+That query returning any row is a bug, not a reconciliation task. It is exposed
+as `GET /admin/credits/drift`, because `ProjectService._refund_generation`
+deliberately swallows its own errors — a refund that raised would turn a failed
+generation into a 500 and strand the project — and a silently failed refund has
+no other symptom.
+
+Never update or delete a ledger row. `CreditService` is the only writer of a
+balance.
+
+### 4.3 One table for two kinds of campaign
+
+`events.kind` is `grant` or `discount`. A grant gives credits when claimed; a
+discount lowers the generation price by itself and is never claimable. They
+share a row shape because they differ only in payload — splitting them would
+have duplicated the window, recurrence and cap logic, which is most of the
+complexity.
+
+| Behaviour | kind | recurrence | fields |
+|---|---|---|---|
+| Hot hours, −50% 20:00–22:00 | `discount` | `daily` | `discount_percent`, `active_from_minute` 1200, `active_to_minute` 1320 |
+| Weekend gift, +10 | `grant` | `weekly` | `bonus_credits`, `active_days` `'sat,sun'` |
+| Holiday gift | `grant` | `once` | `bonus_credits`, window = the holiday |
+| Signup bonus | `grant` | `once` | `auto_grant = true` — applied on first profile read, no button |
+
+**Minutes are local Vietnam time (UTC+7)** stored as minutes from midnight.
+Storing minutes rather than timestamps is what lets one row mean "every day
+between 20:00 and 22:00" without generating a row per day. A window may wrap
+midnight (`1320` to `120`), which `EventService` treats as two ranges.
+
+A CHECK enforces that a `grant` carries `bonus_credits` and no
+`discount_percent`, and a `discount` the reverse — the service repeats that
+validation only so an admin filling in a form learns which field is wrong.
+
+### 4.4 What the database enforces, not the service
+
+These are constraints rather than Python checks because a service-level check
+loses to a concurrent request, and what it loses is money:
+
+| Rule | Enforcement |
+|---|---|
+| A balance never goes negative | `users_credit_balance_non_negative`, plus `WHERE credit_balance + ? >= 0` on the UPDATE |
+| A generation is charged once | `uq_credit_tx_idempotency` — unique `(user_id, idempotency_key)` |
+| A purchase grants once | `uq_payments_idempotency` |
+| One claim per campaign occurrence | `uq_event_claims_per_period` — unique `(event_id, user_id, period_key)` |
+| A campaign cap holds | The `WHERE (select count(*) …) < max_claims` inside the INSERT |
+| A ledger row always moves something | `CHECK (delta <> 0)` |
+
+`period_key` is `''` for a `once` event, the local date for `daily`, and the ISO
+week for `weekly`. That is what makes "once per weekend" mean a weekend rather
+than forever.
+
+### 4.5 Row-level security
+
+Same posture as `users` and `video_projects`: a user reads only their own rows,
+writes nothing directly, and every mutation goes through FastAPI.
+
+- `credit_transactions`, `event_claims`, `payments` — select own only
+- `credit_packages`, `events` — any signed-in user may read active rows
+- `settings` — RLS on with **no policy**, which denies every anon and
+  authenticated read. Only the service role needs it.
+
+### 4.6 The SQLite mirror
+
+`app/database.py` reproduces every constraint above. `Database.initialize()`
+also seeds the generation cost, the signup-bonus event and the three credit
+packages, mirroring `supabase/seed_credits_and_events.sql` — without them a
+local database has the tables but no rows, and a new account can never generate
+anything. `test_sqlite_defaults_match_the_seed` parses the SQL file and fails if
+the two drift apart.

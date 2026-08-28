@@ -448,7 +448,13 @@ class PostgresDatabase:
                 "SELECT (SELECT COUNT(*) FROM public.users) AS users, "
                 "(SELECT COUNT(*) FROM public.users WHERE NOT is_disabled) AS active_users, "
                 "(SELECT COUNT(*) FROM public.video_projects "
-                " WHERE deleted_at IS NULL) AS projects"
+                " WHERE deleted_at IS NULL) AS projects, "
+                "(SELECT COALESCE(SUM(delta), 0) FROM public.credit_transactions "
+                " WHERE delta > 0) AS credits_granted, "
+                "(SELECT COALESCE(SUM(-delta), 0) FROM public.credit_transactions "
+                " WHERE delta < 0) AS credits_used, "
+                "(SELECT COALESCE(SUM(amount_vnd), 0) FROM public.payments "
+                " WHERE status = 'completed') AS revenue_vnd"
             ).fetchone()
             by_status = connection.execute(
                 "SELECT status::text AS status, COUNT(*) AS total "
@@ -467,8 +473,44 @@ class PostgresDatabase:
                 "GROUP BY 1 ORDER BY 1 DESC",
                 (since,),
             ).fetchall()
+            # Signups, not projects: `created` above counts generations, which
+            # is a different number and does not answer "User mới".
+            daily_users = connection.execute(
+                "SELECT date_trunc('day', created_at)::date AS date, COUNT(*) AS total "
+                "FROM public.users WHERE created_at >= %s::timestamptz "
+                "GROUP BY 1 ORDER BY 1 DESC",
+                (since,),
+            ).fetchall()
+            daily_credits = connection.execute(
+                "SELECT date_trunc('day', created_at)::date AS date, "
+                "COALESCE(SUM(delta) FILTER (WHERE delta > 0), 0) AS granted, "
+                "COALESCE(SUM(-delta) FILTER (WHERE delta < 0), 0) AS used "
+                "FROM public.credit_transactions WHERE created_at >= %s::timestamptz "
+                "GROUP BY 1 ORDER BY 1 DESC",
+                (since,),
+            ).fetchall()
+            daily_revenue = connection.execute(
+                "SELECT date_trunc('day', created_at)::date AS date, "
+                "COALESCE(SUM(amount_vnd), 0) AS revenue "
+                "FROM public.payments WHERE status = 'completed' "
+                "  AND created_at >= %s::timestamptz GROUP BY 1 ORDER BY 1 DESC",
+                (since,),
+            ).fetchall()
+            # LEFT JOIN so a campaign nobody claimed still appears -- an event
+            # with zero take-up is exactly what an admin needs to see.
+            events = connection.execute(
+                "SELECT e.id, e.code, e.name, e.max_claims, "
+                "COUNT(c.id) AS claims, "
+                "COALESCE(SUM(c.credits_granted), 0) AS credits_granted "
+                "FROM public.events e "
+                "LEFT JOIN public.event_claims c ON c.event_id = e.id "
+                "GROUP BY e.id, e.code, e.name, e.max_claims ORDER BY e.code"
+            ).fetchall()
 
-        return build_stats(dict(totals), by_status, by_provider, daily)
+        return build_stats(
+            dict(totals), by_status, by_provider, daily,
+            daily_users, daily_credits, daily_revenue, events,
+        )
 
     # --- projects ------------------------------------------------------------
 

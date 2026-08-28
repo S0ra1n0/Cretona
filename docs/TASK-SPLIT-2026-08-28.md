@@ -232,9 +232,21 @@ Three integration points, and only three:
 
 ### Day 7 · Thu 09-03
 
-**S-15 · `/admin/stats` extension** — 2h
-: `newUsers` (signups, not projects), `creditsGranted`, `creditsUsed`,
-  `revenueVnd`, per-event `claims`. Contract §9.1.
+**S-15 · `/admin/stats` extension** — ✅ **DONE 08-28**
+: `creditsGranted`, `creditsUsed`, `revenueVnd` on totals; `newUsers` plus all
+  three on the daily series; a per-campaign `events` block with claims, credits
+  granted and slots remaining.
+: **Four separate queries merged by date**, not one joined query. A join drops
+  any day on which credits moved but no project was created, and a revenue
+  chart with holes looks like data rather than a bug.
+: A refund is a positive delta, so it counts in `creditsGranted` rather than
+  netting off `creditsUsed` — otherwise "credits used" would mean something no
+  single query produces and the two halves would stop summing to the balance.
+: `remainingSlots` is `null` for an uncapped event, never `0` — "unlimited" and
+  "none left" must not render the same.
+: Empty systems report **zeroes, not nulls**: a dashboard tile bound to null
+  renders blank, which reads as broken.
+: **14 tests in `test_admin_stats.py`.**
 
 **S-16 · Remaining admin endpoints** — ✅ **DONE 08-28**
 : All twelve: credit adjustment, credit-transaction listing, settings get and
@@ -257,7 +269,7 @@ Three integration points, and only three:
   normal user gets 403 — one place to notice if a route is ever added without
   a role gate.
 
-**Final state: 576 passed, 0 skipped** with a disposable Postgres running.
+**590 passed, 0 skipped** with a disposable Postgres running.
 
 > **Feature freeze 18:00.** Nothing new after this, in either lane.
 
@@ -423,3 +435,57 @@ the report and demo video.
   through the notebook with a manual upload so §6 has a demo video, then resume.
 - **09-01, 3 hours in** — the D1 spike stops whether or not it has worked.
 - **09-03 18:00** — feature freeze regardless of state.
+
+---
+
+## 6. Progress — end of 2026-08-28
+
+**Backend is done except the Kaggle worker.** 14 of 18 backend tickets closed in
+one day; the four left all need either a Kaggle session or the D1 answer.
+
+| Ticket | | Ticket | |
+|---|---|---|---|
+| S-01 migration | ✅ | S-10 `EventService` | ✅ |
+| S-02 seed | ✅ | S-11 event endpoints + discount | ✅ |
+| S-03 `ADR-010` | ✅ | S-12 image-to-video spike | ⏸ needs D1 |
+| S-04 `CreditService` | ✅ | S-13 Kaggle worker | ⏸ needs Kaggle |
+| S-05 charge and refund | ✅ | S-14 first real clip | ⏸ needs Kaggle |
+| S-05a signup bonus | ✅ | S-15 `/admin/stats` | ✅ |
+| S-06 W1 scoped claiming | ✅ | S-16 admin endpoints | ✅ |
+| S-07 credit endpoints | ✅ | S-17 evidence and docs | in progress |
+| S-08 generation modes | ✅ | S-18 submission package | pending |
+| S-09 W2 external provider | ✅ | | |
+
+### Verification
+
+**590 passed, 0 skipped** against SQLite *and* a disposable Postgres 17; ruff
+clean. Migration `013` and its seed are applied to live Supabase and verified
+there, including two constraint probes that confirm the CHECKs actually bite.
+
+Running the Postgres half is documented in `backend/README.md`. Plain `pytest`
+skips 31–66 tests, and production runs Postgres — so a green plain run is not a
+green run.
+
+### Three things worth carrying forward
+
+1. **A gap the tests found, not the plan.** A new account starts at 0 credits
+   and nothing granted a first one, so a real user could finish their profile
+   and then never generate anything. The end-to-end test caught it. The signup
+   bonus (S-05a) was pulled forward from S-11 to close it.
+2. **Every adapter method exists twice.** Three times running, code written for
+   Postgres had never executed while the SQLite suite passed — production runs
+   Postgres. The parity suite now covers credits, payments and events, and
+   `backend/README.md` says why a plain `pytest` run is not enough.
+3. **The money invariants live in the database.** Non-negative balances,
+   single-charge, single-claim and campaign caps are CHECKs, unique indexes and
+   `WHERE` clauses inside the write — never a read-then-write in Python, which
+   loses to a second tap. Concurrency tests on both backends prove each one.
+
+### What is left, and who it needs
+
+| | Needs |
+|---|---|
+| **D1 — must the image drive the video?** | **One message to the lecturer.** Unanswered since 08-28. It decides S-12, and a wrong guess costs a week of GPU quota |
+| A fallback if the answer is "it must" | Both of you, before the reply lands. FramePack has never been run |
+| S-12 / S-13 / S-14 | A Kaggle session, and the D1 answer |
+| Bruce's lane | **Nothing.** Every endpoint his screens need now exists |

@@ -584,7 +584,13 @@ class Database:
             totals = connection.execute(
                 "SELECT (SELECT COUNT(*) FROM users) AS users, "
                 "(SELECT COUNT(*) FROM users WHERE is_disabled = 0) AS active_users, "
-                "(SELECT COUNT(*) FROM projects WHERE deleted_at IS NULL) AS projects"
+                "(SELECT COUNT(*) FROM projects WHERE deleted_at IS NULL) AS projects, "
+                "(SELECT COALESCE(SUM(delta), 0) FROM credit_transactions "
+                " WHERE delta > 0) AS credits_granted, "
+                "(SELECT COALESCE(SUM(-delta), 0) FROM credit_transactions "
+                " WHERE delta < 0) AS credits_used, "
+                "(SELECT COALESCE(SUM(amount_vnd), 0) FROM payments "
+                " WHERE status = 'completed') AS revenue_vnd"
             ).fetchone()
             by_status = connection.execute(
                 "SELECT status, COUNT(*) AS total FROM projects "
@@ -602,8 +608,43 @@ class Database:
                 "GROUP BY 1 ORDER BY 1 DESC",
                 (since,),
             ).fetchall()
+            # Signups, not projects. The existing `created` column counts
+            # generations, which is a different number and does not answer the
+            # brief's "User mới".
+            daily_users = connection.execute(
+                "SELECT substr(created_at, 1, 10) AS date, COUNT(*) AS total "
+                "FROM users WHERE created_at >= ? GROUP BY 1 ORDER BY 1 DESC",
+                (since,),
+            ).fetchall()
+            daily_credits = connection.execute(
+                "SELECT substr(created_at, 1, 10) AS date, "
+                "COALESCE(SUM(CASE WHEN delta > 0 THEN delta END), 0) AS granted, "
+                "COALESCE(SUM(CASE WHEN delta < 0 THEN -delta END), 0) AS used "
+                "FROM credit_transactions WHERE created_at >= ? "
+                "GROUP BY 1 ORDER BY 1 DESC",
+                (since,),
+            ).fetchall()
+            daily_revenue = connection.execute(
+                "SELECT substr(created_at, 1, 10) AS date, "
+                "COALESCE(SUM(amount_vnd), 0) AS revenue "
+                "FROM payments WHERE status = 'completed' AND created_at >= ? "
+                "GROUP BY 1 ORDER BY 1 DESC",
+                (since,),
+            ).fetchall()
+            # LEFT JOIN so a campaign nobody has taken up still appears. An
+            # event with zero claims is exactly the thing an admin needs to see.
+            events = connection.execute(
+                "SELECT e.id, e.code, e.name, e.max_claims, "
+                "COUNT(c.id) AS claims, "
+                "COALESCE(SUM(c.credits_granted), 0) AS credits_granted "
+                "FROM events e LEFT JOIN event_claims c ON c.event_id = e.id "
+                "GROUP BY e.id, e.code, e.name, e.max_claims ORDER BY e.code"
+            ).fetchall()
 
-        return build_stats(dict(totals), by_status, by_provider, daily)
+        return build_stats(
+            dict(totals), by_status, by_provider, daily,
+            daily_users, daily_credits, daily_revenue, events,
+        )
 
     @staticmethod
     def _user_row(row: sqlite3.Row | None) -> dict[str, Any] | None:

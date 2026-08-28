@@ -116,10 +116,53 @@ Class names corrected 2026-08-17 (T0-2) to match `backend/app/providers.py`; see
 `docs/AI_PROVIDER_SPEC.md` for what each tier's output actually is.
 - `MockVideoProvider` (alias `fake`): Zero-spend mock provider for lightning-fast testing and offline demonstrations.
 - `CloudAiVideoProvider` (aliases `real`, `wan21`): Fetches one AI-generated still and pans across it with ffmpeg. No video model runs.
-- `LocalModelVideoProvider` (alias `local`): Reserved for a local model; no temporal model or local weights run yet. It currently calls the same hosted-still-plus-pan path as the cloud tier.
+- `LocalModelVideoProvider` (alias `local`): Reserved for a local model; nothing local runs yet. No Wan 2.1 or other model is integrated — it calls the identical still-plus-pan path as the cloud tier.
+- `ExternalVideoProvider` (aliases `kaggle`, `external`, added 2026-08-28, W2):
+  generation happens in a Kaggle notebook, not in this process. `submit()`
+  records the row and does nothing else; `poll()` returns `running` so the row
+  keeps whatever the worker last wrote. It refuses webhooks outright — the
+  worker writes results directly, so a webhook would be a second,
+  unauthenticated way to mark work finished.
 
-### 4.3 Observed evidence boundary
+Each provider declares **`supports_image`**: whether an uploaded image actually
+reaches the output. `real` and `local` are True (they pan across the account's
+own upload); `fake` and `kaggle` are False. A request in `image` or
+`text_image` mode against a provider that is False is **refused** with
+`PROVIDER_ERROR` rather than served from the prompt alone.
 
-- Android source gates: 103 JVM tests, lint, debug APK, minified unsigned release APK, and instrumented-test compilation pass. No physical device/emulator was attached for this 2026-08-20 audit, so Keystore and UI runtime are not device-proven here.
-- Backend source gates: 365 tests pass in the credential-free default profile; the full 396-test suite passes when the 31 Postgres gates target disposable PostgreSQL 17.6.
-- Provider output: `mock` serves a bundled clip; `cloud` and `local` can generate one still and render camera motion with ffmpeg. A temporal text/image-to-video model remains unimplemented.
+`external = True` on the Kaggle tier is what keeps the in-process `JobPoller`
+from claiming its rows (W1): `ProviderRegistry.in_process_names()` reports only
+what this process can execute, and the poller claims nothing else. Without it
+the poller would take a lease on work it cannot perform while the worker that
+could run it waited.
+
+### 4.3 Credits, events and payments
+
+Added 2026-08-28. Data model in `DATA_MODEL.md` §4; wire contract in
+`API_CONTRACT.md` Part II.
+
+| Service | Responsibility |
+|---|---|
+| `CreditService` | **The only writer of a balance.** Grants, charges, refunds, history, the configured generation cost |
+| `EventService` | Campaign windows (`once`/`daily`/`weekly`, local UTC+7), claiming, and the discount that applies right now |
+| `PaymentService` | Credit packages and the simulated purchase flow (`ADR-010`) |
+| `AdminCreditService` | Admin adjustment, settings, package and event management |
+
+Two rules shape all of it:
+
+1. **The invariants live in the database, not the service.** A non-negative
+   balance is a `WHERE` clause on the UPDATE; single-charge is a unique partial
+   index; a campaign cap is a `WHERE` inside the INSERT. A service-level check
+   loses to a concurrent request, and what it loses is money.
+2. **Reserve at submit, refund on failure.** `ProjectService` charges before the
+   provider is called — checking afterwards is accounting, not control, the same
+   reasoning `ADR-007` gives for the quota. Every terminal failure funnels
+   through `_mark_failed`, so the refund lives in one place. That refund
+   swallows its own errors on purpose (a raising refund would turn a failed
+   generation into a 500), which is why `GET /admin/credits/drift` exists.
+
+### 4.4 Observed evidence boundary
+
+- Android source gates: JVM tests, lint, debug APK, minified unsigned release APK, and instrumented-test compilation pass. No physical device/emulator was attached for this audit, so Keystore and UI runtime are not device-proven here.
+- Backend source gates: the credential-free suite passes; Postgres parity gates still require a disposable PostgreSQL instance.
+- Provider output: `mock` serves a bundled clip; `cloud` and `local` can generate one still and render camera motion with ffmpeg. Wan2.1 generates real text-to-video in the separate Kaggle experiment, but the Kaggle worker and scored quality acceptance remain unfinished.
