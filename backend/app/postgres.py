@@ -508,8 +508,14 @@ class PostgresDatabase:
             ).fetchall()
 
         return build_stats(
-            dict(totals), by_status, by_provider, daily,
-            daily_users, daily_credits, daily_revenue, events,
+            dict(totals),
+            by_status,
+            by_provider,
+            daily,
+            daily_users,
+            daily_credits,
+            daily_revenue,
+            events,
         )
 
     # --- projects ------------------------------------------------------------
@@ -932,7 +938,6 @@ class PostgresDatabase:
             )
         return entries, next_cursor
 
-
     # --- credits -------------------------------------------------------------
 
     def get_setting(self, key: str) -> str | None:
@@ -999,9 +1004,7 @@ class PostgresDatabase:
                         "SELECT 1 FROM public.users WHERE id = %s", (user_id,)
                     ).fetchone()
                     raise (
-                        InsufficientCreditsError(user_id)
-                        if exists
-                        else UnknownUserError(user_id)
+                        InsufficientCreditsError(user_id) if exists else UnknownUserError(user_id)
                     )
 
                 row = connection.execute(
@@ -1011,8 +1014,16 @@ class PostgresDatabase:
                     "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::timestamptz) "
                     "RETURNING *",
                     (
-                        transaction_id, user_id, delta, int(updated["credit_balance"]),
-                        reason, ref_type, ref_id, note, idempotency_key, created_at,
+                        transaction_id,
+                        user_id,
+                        delta,
+                        int(updated["credit_balance"]),
+                        reason,
+                        ref_type,
+                        ref_id,
+                        note,
+                        idempotency_key,
+                        created_at,
                     ),
                 ).fetchone()
                 if audit is not None:
@@ -1050,15 +1061,12 @@ class PostgresDatabase:
             ).fetchone()
         return _payment_like_row(row) if row else None
 
-    def find_payment_by_key(
-        self, user_id: str, idempotency_key: str
-    ) -> dict[str, Any] | None:
+    def find_payment_by_key(self, user_id: str, idempotency_key: str) -> dict[str, Any] | None:
         if not _is_uuid(user_id):
             return None
         with self.pool.connection() as connection:
             row = connection.execute(
-                "SELECT * FROM public.payments "
-                "WHERE user_id = %s AND idempotency_key = %s",
+                "SELECT * FROM public.payments WHERE user_id = %s AND idempotency_key = %s",
                 (user_id, idempotency_key),
             ).fetchone()
         return _payment_like_row(row) if row else None
@@ -1099,8 +1107,15 @@ class PostgresDatabase:
                     "VALUES (%s, %s, %s, %s, %s, %s, 'completed', %s, "
                     "        %s::timestamptz, %s::timestamptz) RETURNING *",
                     (
-                        payment_id, user_id, package_id, amount_vnd, credits_granted,
-                        method, idempotency_key, created_at, created_at,
+                        payment_id,
+                        user_id,
+                        package_id,
+                        amount_vnd,
+                        credits_granted,
+                        method,
+                        idempotency_key,
+                        created_at,
+                        created_at,
                     ),
                 ).fetchone()
                 connection.execute(
@@ -1110,9 +1125,13 @@ class PostgresDatabase:
                     "VALUES (%s, %s, %s, %s, 'purchase', 'payment', %s, %s, "
                     "        %s::timestamptz)",
                     (
-                        transaction_id, user_id, credits_granted,
-                        int(updated["credit_balance"]), payment_id,
-                        f"purchase:{payment_id}", created_at,
+                        transaction_id,
+                        user_id,
+                        credits_granted,
+                        int(updated["credit_balance"]),
+                        payment_id,
+                        f"purchase:{payment_id}",
+                        created_at,
                     ),
                 )
         except pg_errors.UniqueViolation:
@@ -1209,8 +1228,14 @@ class PostgresDatabase:
                     "       WHERE event_id = %s) < %s "
                     "ON CONFLICT DO NOTHING RETURNING *",
                     (
-                        claim_id, event_id, user_id, period_key, credits_granted,
-                        created_at, event_id, max_claims,
+                        claim_id,
+                        event_id,
+                        user_id,
+                        period_key,
+                        credits_granted,
+                        created_at,
+                        event_id,
+                        max_claims,
                     ),
                 )
             row = cursor.fetchone()
@@ -1238,9 +1263,13 @@ class PostgresDatabase:
                 "VALUES (%s, %s, %s, %s, 'event_grant', 'event', %s, %s, "
                 "        %s::timestamptz)",
                 (
-                    transaction_id, user_id, credits_granted,
-                    int(updated["credit_balance"]), event_id,
-                    f"claim:{event_id}:{user_id}:{period_key}", created_at,
+                    transaction_id,
+                    user_id,
+                    credits_granted,
+                    int(updated["credit_balance"]),
+                    event_id,
+                    f"claim:{event_id}:{user_id}:{period_key}",
+                    created_at,
                 ),
             )
 
@@ -1268,7 +1297,8 @@ class PostgresDatabase:
         parameters.append(limit + 1)
         with self.pool.connection() as connection:
             rows = connection.execute(
-                "SELECT * FROM public.credit_transactions" + clause
+                "SELECT * FROM public.credit_transactions"
+                + clause
                 + " ORDER BY created_at DESC, id DESC LIMIT %s",
                 tuple(parameters),
             ).fetchall()
@@ -1315,8 +1345,7 @@ class PostgresDatabase:
         assignments = ", ".join(f"{key} = %s" for key in fields)
         with self.pool.connection() as connection, connection.transaction():
             row = connection.execute(
-                f"UPDATE public.credit_packages SET {assignments} "
-                "WHERE id = %s RETURNING *",
+                f"UPDATE public.credit_packages SET {assignments} WHERE id = %s RETURNING *",
                 (*fields.values(), package_id),
             ).fetchone()
             if row is None:
@@ -1334,9 +1363,21 @@ class PostgresDatabase:
         audit: AuditEntry | None = None,
     ) -> dict[str, Any]:
         columns = (
-            "code", "name", "description", "kind", "bonus_credits", "discount_percent",
-            "recurrence", "active_days", "active_from_minute", "active_to_minute",
-            "starts_at", "ends_at", "max_claims", "auto_grant", "is_active",
+            "code",
+            "name",
+            "description",
+            "kind",
+            "bonus_credits",
+            "discount_percent",
+            "recurrence",
+            "active_days",
+            "active_from_minute",
+            "active_to_minute",
+            "starts_at",
+            "ends_at",
+            "max_claims",
+            "auto_grant",
+            "is_active",
         )
         payload = {column: values.get(column) for column in columns}
         payload["auto_grant"] = bool(payload.get("auto_grant"))
@@ -1348,7 +1389,9 @@ class PostgresDatabase:
             row = connection.execute(
                 "INSERT INTO public.events (id, created_at, "
                 + ", ".join(columns)
-                + ") VALUES (%s, %s::timestamptz, " + placeholders + ") RETURNING *",
+                + ") VALUES (%s, %s::timestamptz, "
+                + placeholders
+                + ") RETURNING *",
                 (event_id, created_at, *[payload[column] for column in columns]),
             ).fetchone()
             if audit is not None:
@@ -1361,18 +1404,24 @@ class PostgresDatabase:
         if not _is_uuid(event_id):
             return None
         allowed = {
-            "name", "description", "bonus_credits", "discount_percent", "active_days",
-            "active_from_minute", "active_to_minute", "starts_at", "ends_at",
-            "max_claims", "is_active",
+            "name",
+            "description",
+            "bonus_credits",
+            "discount_percent",
+            "active_days",
+            "active_from_minute",
+            "active_to_minute",
+            "starts_at",
+            "ends_at",
+            "max_claims",
+            "is_active",
         }
         fields = {key: value for key, value in changes.items() if key in allowed}
         if not fields:
             return self.get_event(event_id)
 
         casts = {"starts_at": "::timestamptz", "ends_at": "::timestamptz"}
-        assignments = ", ".join(
-            f"{key} = %s" + casts.get(key, "") for key in fields
-        )
+        assignments = ", ".join(f"{key} = %s" + casts.get(key, "") for key in fields)
         with self.pool.connection() as connection, connection.transaction():
             row = connection.execute(
                 f"UPDATE public.events SET {assignments} WHERE id = %s RETURNING *",
@@ -1415,7 +1464,8 @@ class PostgresDatabase:
         parameters.append(limit + 1)
         with self.pool.connection() as connection:
             rows = connection.execute(
-                "SELECT * FROM public.payments" + clause
+                "SELECT * FROM public.payments"
+                + clause
                 + " ORDER BY created_at DESC, id DESC LIMIT %s",
                 tuple(parameters),
             ).fetchall()

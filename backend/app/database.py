@@ -642,8 +642,14 @@ class Database:
             ).fetchall()
 
         return build_stats(
-            dict(totals), by_status, by_provider, daily,
-            daily_users, daily_credits, daily_revenue, events,
+            dict(totals),
+            by_status,
+            by_provider,
+            daily,
+            daily_users,
+            daily_credits,
+            daily_revenue,
+            events,
         )
 
     @staticmethod
@@ -893,9 +899,7 @@ class Database:
 
     def get_setting(self, key: str) -> str | None:
         with self.connect() as connection:
-            row = connection.execute(
-                "SELECT value FROM settings WHERE key = ?", (key,)
-            ).fetchone()
+            row = connection.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
         return row["value"] if row else None
 
     def set_setting(self, key: str, value: str, *, updated_by: str, updated_at: str) -> None:
@@ -960,9 +964,7 @@ class Database:
                         "SELECT 1 FROM users WHERE id = ?", (user_id,)
                     ).fetchone()
                     raise (
-                        InsufficientCreditsError(user_id)
-                        if exists
-                        else UnknownUserError(user_id)
+                        InsufficientCreditsError(user_id) if exists else UnknownUserError(user_id)
                     )
 
                 balance_after = int(updated["credit_balance"])
@@ -972,8 +974,16 @@ class Database:
                     " note, idempotency_key, created_at) "
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
-                        transaction_id, user_id, delta, balance_after, reason,
-                        ref_type, ref_id, note, idempotency_key, created_at,
+                        transaction_id,
+                        user_id,
+                        delta,
+                        balance_after,
+                        reason,
+                        ref_type,
+                        ref_id,
+                        note,
+                        idempotency_key,
+                        created_at,
                     ),
                 )
                 if audit is not None:
@@ -1014,9 +1024,7 @@ class Database:
             ).fetchone()
         return _package_row(dict(row)) if row else None
 
-    def find_payment_by_key(
-        self, user_id: str, idempotency_key: str
-    ) -> dict[str, Any] | None:
+    def find_payment_by_key(self, user_id: str, idempotency_key: str) -> dict[str, Any] | None:
         with self.connect() as connection:
             row = connection.execute(
                 "SELECT * FROM payments WHERE user_id = ? AND idempotency_key = ?",
@@ -1063,8 +1071,15 @@ class Database:
                     " completed_at) "
                     "VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?)",
                     (
-                        payment_id, user_id, package_id, amount_vnd, credits_granted,
-                        method, idempotency_key, created_at, created_at,
+                        payment_id,
+                        user_id,
+                        package_id,
+                        amount_vnd,
+                        credits_granted,
+                        method,
+                        idempotency_key,
+                        created_at,
+                        created_at,
                     ),
                 )
                 connection.execute(
@@ -1073,9 +1088,14 @@ class Database:
                     " note, idempotency_key, created_at) "
                     "VALUES (?, ?, ?, ?, 'purchase', 'payment', ?, ?, ?, ?)",
                     (
-                        transaction_id, user_id, credits_granted,
-                        int(updated["credit_balance"]), payment_id, None,
-                        f"purchase:{payment_id}", created_at,
+                        transaction_id,
+                        user_id,
+                        credits_granted,
+                        int(updated["credit_balance"]),
+                        payment_id,
+                        None,
+                        f"purchase:{payment_id}",
+                        created_at,
                     ),
                 )
                 row = connection.execute(
@@ -1106,9 +1126,7 @@ class Database:
 
     def get_event(self, event_id: str) -> dict[str, Any] | None:
         with self.connect() as connection:
-            row = connection.execute(
-                "SELECT * FROM events WHERE id = ?", (event_id,)
-            ).fetchone()
+            row = connection.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone()
         return _event_row(dict(row)) if row else None
 
     def count_event_claims(self, event_id: str) -> int:
@@ -1170,8 +1188,14 @@ class Database:
                     "SELECT ?, ?, ?, ?, ?, ? "
                     "WHERE (SELECT COUNT(*) FROM event_claims WHERE event_id = ?) < ?",
                     (
-                        claim_id, event_id, user_id, period_key, credits_granted,
-                        created_at, event_id, max_claims,
+                        claim_id,
+                        event_id,
+                        user_id,
+                        period_key,
+                        credits_granted,
+                        created_at,
+                        event_id,
+                        max_claims,
                     ),
                 )
 
@@ -1200,9 +1224,14 @@ class Database:
                 " note, idempotency_key, created_at) "
                 "VALUES (?, ?, ?, ?, 'event_grant', 'event', ?, ?, ?, ?)",
                 (
-                    transaction_id, user_id, credits_granted,
-                    int(updated["credit_balance"]), event_id, None,
-                    f"claim:{event_id}:{user_id}:{period_key}", created_at,
+                    transaction_id,
+                    user_id,
+                    credits_granted,
+                    int(updated["credit_balance"]),
+                    event_id,
+                    None,
+                    f"claim:{event_id}:{user_id}:{period_key}",
+                    created_at,
                 ),
             )
             row = connection.execute(
@@ -1232,7 +1261,8 @@ class Database:
             rows = [
                 dict(row)
                 for row in connection.execute(
-                    "SELECT * FROM credit_transactions" + clause
+                    "SELECT * FROM credit_transactions"
+                    + clause
                     + " ORDER BY created_at DESC, id DESC LIMIT ?",
                     tuple(parameters),
                 ).fetchall()
@@ -1301,9 +1331,21 @@ class Database:
         audit: AuditEntry | None = None,
     ) -> dict[str, Any]:
         columns = (
-            "code", "name", "description", "kind", "bonus_credits", "discount_percent",
-            "recurrence", "active_days", "active_from_minute", "active_to_minute",
-            "starts_at", "ends_at", "max_claims", "auto_grant", "is_active",
+            "code",
+            "name",
+            "description",
+            "kind",
+            "bonus_credits",
+            "discount_percent",
+            "recurrence",
+            "active_days",
+            "active_from_minute",
+            "active_to_minute",
+            "starts_at",
+            "ends_at",
+            "max_claims",
+            "auto_grant",
+            "is_active",
         )
         payload = {column: values.get(column) for column in columns}
         payload["auto_grant"] = int(bool(payload.get("auto_grant")))
@@ -1313,23 +1355,31 @@ class Database:
             connection.execute(
                 "INSERT INTO events (id, created_at, "
                 + ", ".join(columns)
-                + ") VALUES (?, ?, " + ", ".join("?" for _ in columns) + ")",
+                + ") VALUES (?, ?, "
+                + ", ".join("?" for _ in columns)
+                + ")",
                 (event_id, created_at, *[payload[column] for column in columns]),
             )
             if audit is not None:
                 self._insert_audit_log(connection, audit)
-            row = connection.execute(
-                "SELECT * FROM events WHERE id = ?", (event_id,)
-            ).fetchone()
+            row = connection.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone()
         return _event_row(dict(row))
 
     def update_event(
         self, event_id: str, changes: dict[str, Any], *, audit: AuditEntry | None = None
     ) -> dict[str, Any] | None:
         allowed = {
-            "name", "description", "bonus_credits", "discount_percent", "active_days",
-            "active_from_minute", "active_to_minute", "starts_at", "ends_at",
-            "max_claims", "is_active",
+            "name",
+            "description",
+            "bonus_credits",
+            "discount_percent",
+            "active_days",
+            "active_from_minute",
+            "active_to_minute",
+            "starts_at",
+            "ends_at",
+            "max_claims",
+            "is_active",
         }
         fields = {key: value for key, value in changes.items() if key in allowed}
         if "is_active" in fields:
@@ -1347,16 +1397,13 @@ class Database:
                 return None
             if audit is not None:
                 self._insert_audit_log(connection, audit)
-            row = connection.execute(
-                "SELECT * FROM events WHERE id = ?", (event_id,)
-            ).fetchone()
+            row = connection.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone()
         return _event_row(dict(row))
 
     def list_event_claims(self, event_id: str) -> list[dict[str, Any]]:
         with self.connect() as connection:
             rows = connection.execute(
-                "SELECT * FROM event_claims WHERE event_id = ? "
-                "ORDER BY created_at DESC, id DESC",
+                "SELECT * FROM event_claims WHERE event_id = ? ORDER BY created_at DESC, id DESC",
                 (event_id,),
             ).fetchall()
         return [dict(row) for row in rows]
@@ -1380,7 +1427,8 @@ class Database:
             rows = [
                 dict(row)
                 for row in connection.execute(
-                    "SELECT * FROM payments" + clause
+                    "SELECT * FROM payments"
+                    + clause
                     + " ORDER BY created_at DESC, id DESC LIMIT ?",
                     tuple(parameters),
                 ).fetchall()
@@ -1425,7 +1473,8 @@ class Database:
             rows = [
                 dict(row)
                 for row in connection.execute(
-                    "SELECT * FROM projects WHERE " + " AND ".join(where)
+                    "SELECT * FROM projects WHERE "
+                    + " AND ".join(where)
                     + " ORDER BY created_at DESC, id DESC LIMIT ?",
                     tuple(parameters),
                 ).fetchall()
@@ -1458,8 +1507,7 @@ class Database:
     ) -> dict[str, Any] | None:
         with self.connect() as connection:
             row = connection.execute(
-                "SELECT * FROM credit_transactions "
-                "WHERE user_id = ? AND idempotency_key = ?",
+                "SELECT * FROM credit_transactions WHERE user_id = ? AND idempotency_key = ?",
                 (user_id, idempotency_key),
             ).fetchone()
         return dict(row) if row else None

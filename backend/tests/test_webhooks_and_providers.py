@@ -339,8 +339,12 @@ def test_without_a_reference_image_the_still_is_still_generated(tmp_path: Path) 
     client = httpx.Client(transport=httpx.MockTransport(handler))
     try:
         _render_kenburns_from_ai_still(
-            "a lantern", "job.mp4", tmp_path, "definitely-not-ffmpeg",
-            "https://images.example", client,
+            "a lantern",
+            "job.mp4",
+            tmp_path,
+            "definitely-not-ffmpeg",
+            "https://images.example",
+            client,
         )
     finally:
         client.close()
@@ -350,7 +354,11 @@ def test_without_a_reference_image_the_still_is_still_generated(tmp_path: Path) 
 
 def test_an_unrecognisable_upload_is_refused_rather_than_written(tmp_path: Path) -> None:
     result = _render_kenburns_from_ai_still(
-        "a lantern", "job.mp4", tmp_path, "ffmpeg", "https://images.example",
+        "a lantern",
+        "job.mp4",
+        tmp_path,
+        "ffmpeg",
+        "https://images.example",
         source_still=(b"<html>not an image</html>", "application/octet-stream"),
     )
 
@@ -362,7 +370,11 @@ def test_an_unrecognisable_upload_is_refused_rather_than_written(tmp_path: Path)
 def test_a_reference_image_alone_is_enough(tmp_path: Path) -> None:
     """An image-only request has no prompt, and must not be refused for it."""
     result = _render_kenburns_from_ai_still(
-        None, "job.mp4", tmp_path, "definitely-not-ffmpeg", "https://images.example",
+        None,
+        "job.mp4",
+        tmp_path,
+        "definitely-not-ffmpeg",
+        "https://images.example",
         source_still=(_png_bytes(), "image/png"),
     )
 

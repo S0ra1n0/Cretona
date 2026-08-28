@@ -818,9 +818,7 @@ def admin_create_package(
     admin_id: AdminId,
     service: Annotated[AdminCreditService, Depends(admin_credits)],
 ) -> AdminPackage:
-    return _admin_package(
-        service.create_package(admin_id, payload.model_dump(exclude_none=True))
-    )
+    return _admin_package(service.create_package(admin_id, payload.model_dump(exclude_none=True)))
 
 
 @router.patch("/admin/credit-packages/{package_id}", response_model=AdminPackage)
@@ -836,9 +834,7 @@ def admin_update_package(
     that loses the thing purchased is not a history.
     """
     return _admin_package(
-        service.update_package(
-            admin_id, package_id, payload.model_dump(exclude_unset=True)
-        )
+        service.update_package(admin_id, package_id, payload.model_dump(exclude_unset=True))
     )
 
 
@@ -850,9 +846,7 @@ def admin_list_events(
     return AdminEventList(items=[_admin_event(row) for row in service.events()])
 
 
-@router.post(
-    "/admin/events", response_model=AdminEvent, status_code=status.HTTP_201_CREATED
-)
+@router.post("/admin/events", response_model=AdminEvent, status_code=status.HTTP_201_CREATED)
 def admin_create_event(
     payload: AdminEventCreate,
     admin_id: AdminId,
@@ -906,9 +900,7 @@ def admin_list_payments(
     cursor: str | None = None,
 ) -> AdminPaymentPage:
     """Where the revenue figure comes from. No real money moves -- ADR-010."""
-    rows, next_cursor = service.payments(
-        status=status_filter, limit=limit, cursor=cursor
-    )
+    rows, next_cursor = service.payments(status=status_filter, limit=limit, cursor=cursor)
     return AdminPaymentPage(
         items=[
             AdminPayment(

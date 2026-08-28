@@ -58,7 +58,6 @@ def test_spending_moves_the_lifetime_totals(client: TestClient) -> None:
     assert body["lifetimeSpent"] == 1
 
 
-
 # --- GET /me/credits/transactions --------------------------------------------
 
 
@@ -77,12 +76,11 @@ def test_the_ledger_is_returned_newest_first(client: TestClient) -> None:
 def test_the_ledger_pages_without_overlap(client: TestClient) -> None:
     provision(client, 20)
     for index in range(4):
-        client.app.state.credit_service.grant(USER_A, 1, reason="event_grant",
-                                              note=f"grant {index}")
+        client.app.state.credit_service.grant(
+            USER_A, 1, reason="event_grant", note=f"grant {index}"
+        )
 
-    first = client.get(
-        "/api/v1/me/credits/transactions?limit=2", headers=HEADERS
-    ).json()
+    first = client.get("/api/v1/me/credits/transactions?limit=2", headers=HEADERS).json()
     assert len(first["items"]) == 2
     assert first["nextCursor"]
 
@@ -163,9 +161,7 @@ def test_a_purchase_grants_credits_and_returns_the_new_balance(
     provision(client)
     package = client.get("/api/v1/credit-packages", headers=HEADERS).json()["items"][0]
 
-    response = client.post(
-        "/api/v1/payments", headers=key(), json={"packageId": package["id"]}
-    )
+    response = client.post("/api/v1/payments", headers=key(), json={"packageId": package["id"]})
 
     assert response.status_code == 201
     body = response.json()
@@ -213,9 +209,7 @@ def test_a_purchase_without_an_idempotency_key_is_refused(client: TestClient) ->
     provision(client)
     package = client.get("/api/v1/credit-packages", headers=HEADERS).json()["items"][0]
 
-    response = client.post(
-        "/api/v1/payments", headers=HEADERS, json={"packageId": package["id"]}
-    )
+    response = client.post("/api/v1/payments", headers=HEADERS, json={"packageId": package["id"]})
 
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "VALIDATION_ERROR"
@@ -258,9 +252,7 @@ def test_a_withdrawn_package_is_refused_with_its_own_code(client: TestClient) ->
             "UPDATE credit_packages SET is_active = 0 WHERE id = ?", (package["id"],)
         )
 
-    response = client.post(
-        "/api/v1/payments", headers=key(), json={"packageId": package["id"]}
-    )
+    response = client.post("/api/v1/payments", headers=key(), json={"packageId": package["id"]})
 
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "PACKAGE_INACTIVE"
@@ -285,16 +277,12 @@ def test_a_refused_purchase_leaves_no_payment_row(client: TestClient) -> None:
 def test_buying_makes_a_broke_account_able_to_generate(client: TestClient) -> None:
     """The whole point of the flow, end to end."""
     provision(client)
-    assert client.post(
-        "/api/v1/projects", headers=HEADERS, json={"prompt": "x"}
-    ).status_code == 402
+    assert client.post("/api/v1/projects", headers=HEADERS, json={"prompt": "x"}).status_code == 402
 
     package = client.get("/api/v1/credit-packages", headers=HEADERS).json()["items"][0]
     client.post("/api/v1/payments", headers=key(), json={"packageId": package["id"]})
 
-    assert client.post(
-        "/api/v1/projects", headers=HEADERS, json={"prompt": "x"}
-    ).status_code == 201
+    assert client.post("/api/v1/projects", headers=HEADERS, json={"prompt": "x"}).status_code == 201
 
 
 # --- GET /admin/credits/drift ------------------------------------------------
@@ -304,14 +292,10 @@ def test_drift_reports_healthy_after_a_full_cycle(client: TestClient) -> None:
     admin = "30000000-0000-4000-8000-000000000003"
     client.app.state.database.upsert_user(admin, email="admin@example.com", role="admin")
     provision(client, 10)
-    project = client.post(
-        "/api/v1/projects", headers=HEADERS, json={"prompt": "one"}
-    ).json()
+    project = client.post("/api/v1/projects", headers=HEADERS, json={"prompt": "one"}).json()
     client.post(f"/api/v1/projects/{project['id']}/cancel", headers=HEADERS)
 
-    body = client.get(
-        "/api/v1/admin/credits/drift", headers={"X-Debug-User-Id": admin}
-    ).json()
+    body = client.get("/api/v1/admin/credits/drift", headers={"X-Debug-User-Id": admin}).json()
 
     assert body["healthy"] is True
     assert body["driftedUserIds"] == []
@@ -330,9 +314,7 @@ def test_drift_reports_an_account_written_behind_the_service(client: TestClient)
     with client.app.state.database.connect() as connection:
         connection.execute("UPDATE users SET credit_balance = 4321 WHERE id = ?", (USER_A,))
 
-    body = client.get(
-        "/api/v1/admin/credits/drift", headers={"X-Debug-User-Id": admin}
-    ).json()
+    body = client.get("/api/v1/admin/credits/drift", headers={"X-Debug-User-Id": admin}).json()
 
     assert body["healthy"] is False
     assert body["driftedUserIds"] == [USER_A]

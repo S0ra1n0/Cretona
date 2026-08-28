@@ -371,9 +371,7 @@ class ProjectService:
         # reasoning ADR-007 applies to the quota allowance. The key includes the
         # attempt number, so each attempt is its own charge rather than being
         # swallowed as a replay of the first.
-        self._charge_for_generation(
-            owner_id, project_id, attempt=attempts + 1, note="Retry"
-        )
+        self._charge_for_generation(owner_id, project_id, attempt=attempts + 1, note="Retry")
 
         provider = self.providers.get(row["provider"])
         try:
@@ -703,9 +701,7 @@ class ProjectService:
         drift query in `ledger_drift()` is how that would be found.
         """
         try:
-            self.credits.refund_for(
-                owner_id, ref_type="project", ref_id=project_id, note=note
-            )
+            self.credits.refund_for(owner_id, ref_type="project", ref_id=project_id, note=note)
         except Exception:  # pragma: no cover - defensive
             logger.exception("Refund failed for project %s", project_id)
 

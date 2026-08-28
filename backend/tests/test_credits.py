@@ -206,9 +206,7 @@ def test_refund_with_nothing_to_refund_is_a_no_op(credits: CreditService) -> Non
 # --- cost and discounts ------------------------------------------------------
 
 
-def test_generation_cost_reads_the_settings_row(
-    database: Database, credits: CreditService
-) -> None:
+def test_generation_cost_reads_the_settings_row(database: Database, credits: CreditService) -> None:
     assert credits.generation_cost() == 1  # default when unset
 
     database.set_setting(
@@ -260,9 +258,7 @@ def test_totals_separate_granted_from_spent(credits: CreditService) -> None:
     assert (granted, spent) == (15, 4)
 
 
-def test_the_ledger_always_explains_the_balance(
-    database: Database, credits: CreditService
-) -> None:
+def test_the_ledger_always_explains_the_balance(database: Database, credits: CreditService) -> None:
     credits.grant(USER, 10, reason="signup_bonus")
     credits.charge(USER, 3, ref_type="project", ref_id="p1")
     credits.refund_for(USER, ref_type="project", ref_id="p1")
@@ -280,9 +276,7 @@ def test_drift_is_detectable(database: Database, credits: CreditService) -> None
     """
     credits.grant(USER, 10, reason="signup_bonus")
     with database.connect() as connection:
-        connection.execute(
-            "UPDATE users SET credit_balance = 999 WHERE id = ?", (USER,)
-        )
+        connection.execute("UPDATE users SET credit_balance = 999 WHERE id = ?", (USER,))
 
     assert database.ledger_drift() == [USER]
 

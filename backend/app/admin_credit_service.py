@@ -15,7 +15,11 @@ EDITABLE_SETTINGS = {"generation_cost_credits"}
 
 
 def _entry(
-    *, actor_id: str, action: str, target_type: str, target_id: str | None,
+    *,
+    actor_id: str,
+    action: str,
+    target_type: str,
+    target_id: str | None,
     details: dict[str, Any],
 ) -> AuditEntry:
     return AuditEntry(
@@ -48,9 +52,7 @@ class AdminCreditService:
 
     # --- credits -------------------------------------------------------------
 
-    def adjust(
-        self, actor_id: str, target_id: str, delta: int, note: str | None
-    ) -> dict[str, Any]:
+    def adjust(self, actor_id: str, target_id: str, delta: int, note: str | None) -> dict[str, Any]:
         if delta == 0:
             raise AppError(
                 400,
@@ -70,18 +72,22 @@ class AdminCreditService:
         try:
             if delta > 0:
                 row, _ = self.credits.grant(
-                    target_id, delta, reason="admin_adjustment",
-                    note=note, audit=audit,
+                    target_id,
+                    delta,
+                    reason="admin_adjustment",
+                    note=note,
+                    audit=audit,
                 )
             else:
                 row, _ = self.credits.charge(
-                    target_id, -delta, reason="admin_adjustment",
-                    note=note, audit=audit,
+                    target_id,
+                    -delta,
+                    reason="admin_adjustment",
+                    note=note,
+                    audit=audit,
                 )
         except InsufficientCreditsError:  # pragma: no cover - charge maps this
-            raise AppError(
-                409, "CONFLICT", "That would leave a negative balance."
-            ) from None
+            raise AppError(409, "CONFLICT", "That would leave a negative balance.") from None
         except UnknownUserError:
             raise AppError(404, "NOT_FOUND", "Account not found.") from None
 
@@ -104,17 +110,12 @@ class AdminCreditService:
             return self.database.list_credit_transactions(
                 user_id, limit=limit, cursor=cursor, reason=reason
             )
-        return self.database.list_all_credit_transactions(
-            limit=limit, cursor=cursor, reason=reason
-        )
+        return self.database.list_all_credit_transactions(limit=limit, cursor=cursor, reason=reason)
 
     # --- settings ------------------------------------------------------------
 
     def settings(self) -> dict[str, str]:
-        return {
-            key: self.database.get_setting(key) or ""
-            for key in sorted(EDITABLE_SETTINGS)
-        }
+        return {key: self.database.get_setting(key) or "" for key in sorted(EDITABLE_SETTINGS)}
 
     def update_setting(self, actor_id: str, key: str, value: str) -> dict[str, str]:
         if key not in EDITABLE_SETTINGS:
@@ -218,9 +219,7 @@ class AdminCreditService:
             ),
         )
 
-    def update_event(
-        self, actor_id: str, event_id: str, changes: dict[str, Any]
-    ) -> dict[str, Any]:
+    def update_event(self, actor_id: str, event_id: str, changes: dict[str, Any]) -> dict[str, Any]:
         if not changes:
             raise AppError(400, "VALIDATION_ERROR", "Nothing to change.")
         updated = self.database.update_event(

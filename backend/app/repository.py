@@ -184,8 +184,13 @@ def build_stats(
 
     def blank() -> dict[str, int]:
         return {
-            "created": 0, "completed": 0, "failed": 0,
-            "newUsers": 0, "creditsGranted": 0, "creditsUsed": 0, "revenueVnd": 0,
+            "created": 0,
+            "completed": 0,
+            "failed": 0,
+            "newUsers": 0,
+            "creditsGranted": 0,
+            "creditsUsed": 0,
+            "revenueVnd": 0,
         }
 
     buckets: dict[str, dict[str, int]] = {}
@@ -227,10 +232,7 @@ def build_stats(
         # The denominator is finished generations, not all of them: counting
         # in-flight work as a success would make the rate drift with load.
         "failureRate": 0.0 if finished == 0 else round(failed / finished, 4),
-        "daily": [
-            {"date": date, **buckets[date]}
-            for date in sorted(buckets, reverse=True)
-        ],
+        "daily": [{"date": date, **buckets[date]} for date in sorted(buckets, reverse=True)],
         "events": [
             {
                 "eventId": str(row["id"]),
@@ -241,7 +243,8 @@ def build_stats(
                 # None when uncapped, so the app shows "unlimited" rather than
                 # a number that would have to mean two things.
                 "remainingSlots": (
-                    None if row["max_claims"] is None
+                    None
+                    if row["max_claims"] is None
                     else max(0, int(row["max_claims"]) - int(row["claims"] or 0))
                 ),
             }

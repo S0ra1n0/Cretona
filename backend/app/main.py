@@ -176,9 +176,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.state.credit_service = CreditService(database)
     api.state.payment_service = PaymentService(database, api.state.credit_service)
     api.state.event_service = EventService(database, api.state.credit_service)
-    api.state.admin_credit_service = AdminCreditService(
-        database, api.state.credit_service
-    )
+    api.state.admin_credit_service = AdminCreditService(database, api.state.credit_service)
     api.state.users_service = UsersService(
         database, api.state.quota_service, storage, api.state.credit_service
     )

@@ -230,9 +230,7 @@ class CreditService:
 
     # --- internals -----------------------------------------------------------
 
-    def _find_charge(
-        self, user_id: str, *, ref_type: str, ref_id: str
-    ) -> dict[str, Any] | None:
+    def _find_charge(self, user_id: str, *, ref_type: str, ref_id: str) -> dict[str, Any] | None:
         """The charge for a reference, if it has not already been refunded.
 
         Paged rather than queried directly because the repository exposes the
@@ -243,9 +241,7 @@ class CreditService:
         cursor: str | None = None
         charge: dict[str, Any] | None = None
         while True:
-            rows, cursor = self.database.list_credit_transactions(
-                user_id, limit=100, cursor=cursor
-            )
+            rows, cursor = self.database.list_credit_transactions(user_id, limit=100, cursor=cursor)
             for row in rows:
                 if row.get("ref_type") != ref_type or row.get("ref_id") != ref_id:
                     continue

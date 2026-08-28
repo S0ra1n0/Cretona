@@ -61,9 +61,7 @@ def test_a_refund_counts_as_a_grant_not_as_negative_spend(client: TestClient) ->
     """
     setup(client)
     client.app.state.credit_service.grant(USER_A, 10, reason="purchase")
-    project = client.post(
-        "/api/v1/projects", headers=USER_HEADERS, json={"prompt": "one"}
-    ).json()
+    project = client.post("/api/v1/projects", headers=USER_HEADERS, json={"prompt": "one"}).json()
     client.post(f"/api/v1/projects/{project['id']}/cancel", headers=USER_HEADERS)
 
     totals = stats(client)["totals"]
@@ -181,9 +179,14 @@ def test_claims_and_credits_are_counted_per_event(client: TestClient) -> None:
         "/api/v1/admin/events",
         headers=ADMIN_HEADERS,
         json={
-            "code": "TAKEUP", "name": "Take-up", "kind": "grant", "bonusCredits": 12,
-            "recurrence": "once", "startsAt": "2026-08-01T00:00:00Z",
-            "endsAt": "2027-01-01T00:00:00Z", "maxClaims": 5,
+            "code": "TAKEUP",
+            "name": "Take-up",
+            "kind": "grant",
+            "bonusCredits": 12,
+            "recurrence": "once",
+            "startsAt": "2026-08-01T00:00:00Z",
+            "endsAt": "2027-01-01T00:00:00Z",
+            "maxClaims": 5,
         },
     ).json()
     client.post(f"/api/v1/events/{created['id']}/claim", headers=USER_HEADERS)

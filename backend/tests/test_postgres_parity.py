@@ -787,9 +787,7 @@ def test_the_ledger_explains_the_balance_on_postgres(postgres_client: TestClient
     assert postgres_client.app.state.database.ledger_drift() == []
 
 
-def test_drift_is_detectable_on_postgres(
-    postgres_client: TestClient, postgres_url: str
-) -> None:
+def test_drift_is_detectable_on_postgres(postgres_client: TestClient, postgres_url: str) -> None:
     """Going around CreditService is exactly what the check has to catch."""
     with psycopg.connect(postgres_url, autocommit=True) as connection:
         connection.execute(
@@ -939,9 +937,7 @@ def test_packages_list_and_fetch_on_postgres(
     assert database.get_credit_package("not-a-uuid") is None
 
 
-def test_a_purchase_is_atomic_on_postgres(
-    postgres_client: TestClient, postgres_url: str
-) -> None:
+def test_a_purchase_is_atomic_on_postgres(postgres_client: TestClient, postgres_url: str) -> None:
     package_id = seed_package(postgres_url, "PG Atomic")
     credits = postgres_client.app.state.credit_service
     payments = postgres_client.app.state.payment_service

@@ -456,9 +456,7 @@ class AdminSettingsResponse(ApiModel):
 
 
 class AdminSettingsUpdate(ApiModel):
-    generation_cost_credits: Annotated[
-        int, Field(alias="generationCostCredits", ge=1, le=1000)
-    ]
+    generation_cost_credits: Annotated[int, Field(alias="generationCostCredits", ge=1, le=1000)]
 
 
 class AdminPackageCreate(ApiModel):
@@ -495,20 +493,14 @@ class AdminEventCreate(ApiModel):
     description: str | None = None
     kind: Literal["grant", "discount"]
     bonus_credits: Annotated[int | None, Field(alias="bonusCredits", gt=0)] = None
-    discount_percent: Annotated[
-        int | None, Field(alias="discountPercent", ge=1, le=100)
-    ] = None
+    discount_percent: Annotated[int | None, Field(alias="discountPercent", ge=1, le=100)] = None
     recurrence: Literal["once", "daily", "weekly"] = "once"
     # 'sat,sun'. Free text rather than an enum list because the database stores
     # it as one string and the service parses it in one place.
     active_days: str | None = Field(default=None, alias="activeDays")
     # Minutes from local midnight: 1200 is 20:00 Vietnam time.
-    active_from_minute: Annotated[
-        int | None, Field(alias="activeFromMinute", ge=0, le=1440)
-    ] = None
-    active_to_minute: Annotated[
-        int | None, Field(alias="activeToMinute", ge=0, le=1440)
-    ] = None
+    active_from_minute: Annotated[int | None, Field(alias="activeFromMinute", ge=0, le=1440)] = None
+    active_to_minute: Annotated[int | None, Field(alias="activeToMinute", ge=0, le=1440)] = None
     starts_at: str = Field(alias="startsAt")
     ends_at: str = Field(alias="endsAt")
     max_claims: Annotated[int | None, Field(alias="maxClaims", gt=0)] = None
@@ -519,16 +511,10 @@ class AdminEventUpdate(ApiModel):
     name: str | None = None
     description: str | None = None
     bonus_credits: Annotated[int | None, Field(alias="bonusCredits", gt=0)] = None
-    discount_percent: Annotated[
-        int | None, Field(alias="discountPercent", ge=1, le=100)
-    ] = None
+    discount_percent: Annotated[int | None, Field(alias="discountPercent", ge=1, le=100)] = None
     active_days: str | None = Field(default=None, alias="activeDays")
-    active_from_minute: Annotated[
-        int | None, Field(alias="activeFromMinute", ge=0, le=1440)
-    ] = None
-    active_to_minute: Annotated[
-        int | None, Field(alias="activeToMinute", ge=0, le=1440)
-    ] = None
+    active_from_minute: Annotated[int | None, Field(alias="activeFromMinute", ge=0, le=1440)] = None
+    active_to_minute: Annotated[int | None, Field(alias="activeToMinute", ge=0, le=1440)] = None
     starts_at: str | None = Field(default=None, alias="startsAt")
     ends_at: str | None = Field(default=None, alias="endsAt")
     max_claims: Annotated[int | None, Field(alias="maxClaims", gt=0)] = None

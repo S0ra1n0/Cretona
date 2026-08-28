@@ -24,9 +24,7 @@ def ledger(client: TestClient) -> list[dict]:
 
 
 def create(client: TestClient, prompt: str = "a paper dragon", **kwargs):
-    return client.post(
-        "/api/v1/projects", headers=HEADERS, json={"prompt": prompt}, **kwargs
-    )
+    return client.post("/api/v1/projects", headers=HEADERS, json={"prompt": prompt}, **kwargs)
 
 
 def funded(client: TestClient, amount: int = 10) -> TestClient:

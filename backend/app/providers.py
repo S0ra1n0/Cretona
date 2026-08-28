@@ -86,8 +86,8 @@ STILL_EXTENSION = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"
 
 
 # Image magic numbers, as hex so no layer of quoting can mangle them.
-_MAGIC_JPEG = bytes.fromhex('ffd8ff')
-_MAGIC_PNG = bytes.fromhex('89504e470d0a1a0a')
+_MAGIC_JPEG = bytes.fromhex("ffd8ff")
+_MAGIC_PNG = bytes.fromhex("89504e470d0a1a0a")
 
 
 def _sniff_still_type(data: bytes) -> str:
@@ -667,9 +667,7 @@ class ExternalVideoProvider:
         # below: app.errors reaches back into this module's vocabulary.
         from app.errors import AppError
 
-        raise AppError(
-            404, "NOT_FOUND", "This provider does not accept webhooks."
-        )
+        raise AppError(404, "NOT_FOUND", "This provider does not accept webhooks.")
 
 
 class ProviderRegistry:

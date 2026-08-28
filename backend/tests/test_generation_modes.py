@@ -50,9 +50,9 @@ def create(client: TestClient, **body):
         ("a dragon", None, "text"),
         (None, "user/x.jpg", "image"),
         ("a dragon", "user/x.jpg", "text_image"),
-        ("", "user/x.jpg", "image"),       # blank prompt is no prompt
+        ("", "user/x.jpg", "image"),  # blank prompt is no prompt
         ("   ", "user/x.jpg", "image"),
-        (None, None, "text"),              # rejected earlier by validation
+        (None, None, "text"),  # rejected earlier by validation
     ],
 )
 def test_the_mode_follows_the_inputs(prompt, image, expected) -> None:
@@ -99,9 +99,7 @@ def test_both_inputs_are_text_image_mode(client: TestClient) -> None:
     funded(client)
     path = upload(client)
 
-    body = create(
-        client, prompt="make it flow", imagePath=path, provider="local"
-    ).json()
+    body = create(client, prompt="make it flow", imagePath=path, provider="local").json()
 
     assert body["mode"] == "text_image"
 
@@ -195,9 +193,7 @@ def test_ownership_is_checked_before_provider_capability(client: TestClient) -> 
     """
     funded(client)
 
-    response = create(
-        client, imagePath="other-user/2026-08-15/stolen.png", provider="fake"
-    )
+    response = create(client, imagePath="other-user/2026-08-15/stolen.png", provider="fake")
 
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "FORBIDDEN"

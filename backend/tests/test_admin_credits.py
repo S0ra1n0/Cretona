@@ -109,9 +109,7 @@ def test_the_adjustment_appears_in_the_users_ledger(client: TestClient) -> None:
         json={"delta": 25, "note": "compensation"},
     )
 
-    items = client.get(
-        "/api/v1/me/credits/transactions", headers=USER_HEADERS
-    ).json()["items"]
+    items = client.get("/api/v1/me/credits/transactions", headers=USER_HEADERS).json()["items"]
 
     assert items[0]["reason"] == "admin_adjustment"
     assert items[0]["note"] == "compensation"
@@ -136,9 +134,10 @@ def test_adjusting_credits_is_admin_only(client: TestClient) -> None:
 def test_an_admin_can_change_what_a_generation_costs(client: TestClient) -> None:
     """Brief §3: "cấu hình chi phí tạo video"."""
     setup(client, credits=20)
-    assert client.get("/api/v1/admin/settings", headers=ADMIN_HEADERS).json()[
-        "generationCostCredits"
-    ] == 1
+    assert (
+        client.get("/api/v1/admin/settings", headers=ADMIN_HEADERS).json()["generationCostCredits"]
+        == 1
+    )
 
     client.patch(
         "/api/v1/admin/settings",
@@ -146,9 +145,10 @@ def test_an_admin_can_change_what_a_generation_costs(client: TestClient) -> None
         json={"generationCostCredits": 5},
     )
 
-    assert client.get("/api/v1/admin/settings", headers=ADMIN_HEADERS).json()[
-        "generationCostCredits"
-    ] == 5
+    assert (
+        client.get("/api/v1/admin/settings", headers=ADMIN_HEADERS).json()["generationCostCredits"]
+        == 5
+    )
 
 
 def test_the_new_cost_takes_effect_on_the_next_generation(client: TestClient) -> None:
@@ -202,9 +202,9 @@ def test_an_admin_sees_inactive_packages_too(client: TestClient) -> None:
 
     admin_names = [
         row["name"]
-        for row in client.get(
-            "/api/v1/admin/credit-packages", headers=ADMIN_HEADERS
-        ).json()["items"]
+        for row in client.get("/api/v1/admin/credit-packages", headers=ADMIN_HEADERS).json()[
+            "items"
+        ]
     ]
     user_names = [
         row["name"]
@@ -232,9 +232,7 @@ def test_an_admin_can_create_a_package(client: TestClient) -> None:
 
 def test_an_admin_can_take_a_package_off_sale(client: TestClient) -> None:
     setup(client)
-    package = client.get(
-        "/api/v1/admin/credit-packages", headers=ADMIN_HEADERS
-    ).json()["items"][0]
+    package = client.get("/api/v1/admin/credit-packages", headers=ADMIN_HEADERS).json()["items"][0]
 
     response = client.patch(
         f"/api/v1/admin/credit-packages/{package['id']}",
@@ -273,9 +271,7 @@ def test_an_admin_can_create_a_promotion(client: TestClient) -> None:
     """Brief §3: window, conditions, credits granted, signup cap, status."""
     setup(client)
 
-    response = client.post(
-        "/api/v1/admin/events", headers=ADMIN_HEADERS, json=event_payload()
-    )
+    response = client.post("/api/v1/admin/events", headers=ADMIN_HEADERS, json=event_payload())
 
     assert response.status_code == 201
     body = response.json()
@@ -291,9 +287,7 @@ def test_a_created_promotion_is_immediately_claimable(client: TestClient) -> Non
         "/api/v1/admin/events", headers=ADMIN_HEADERS, json=event_payload()
     ).json()
 
-    claim = client.post(
-        f"/api/v1/events/{created['id']}/claim", headers=USER_HEADERS
-    )
+    claim = client.post(f"/api/v1/events/{created['id']}/claim", headers=USER_HEADERS)
 
     assert claim.status_code == 200
     assert claim.json()["creditsGranted"] == 25
@@ -322,9 +316,7 @@ def test_an_event_ending_before_it_starts_is_refused(client: TestClient) -> None
     response = client.post(
         "/api/v1/admin/events",
         headers=ADMIN_HEADERS,
-        json=event_payload(
-            startsAt="2027-01-01T00:00:00Z", endsAt="2026-01-01T00:00:00Z"
-        ),
+        json=event_payload(startsAt="2027-01-01T00:00:00Z", endsAt="2026-01-01T00:00:00Z"),
     )
 
     assert response.status_code == 400
@@ -337,8 +329,13 @@ def test_an_admin_can_create_a_hot_hours_discount(client: TestClient) -> None:
         "/api/v1/admin/events",
         headers=ADMIN_HEADERS,
         json=event_payload(
-            code="HOT2", kind="discount", bonusCredits=None, discountPercent=30,
-            recurrence="daily", activeFromMinute=1200, activeToMinute=1320,
+            code="HOT2",
+            kind="discount",
+            bonusCredits=None,
+            discountPercent=30,
+            recurrence="daily",
+            activeFromMinute=1200,
+            activeToMinute=1320,
             maxClaims=None,
         ),
     )
@@ -374,9 +371,7 @@ def test_an_admin_sees_who_claimed(client: TestClient) -> None:
     ).json()
     client.post(f"/api/v1/events/{created['id']}/claim", headers=USER_HEADERS)
 
-    body = client.get(
-        f"/api/v1/admin/events/{created['id']}/claims", headers=ADMIN_HEADERS
-    ).json()
+    body = client.get(f"/api/v1/admin/events/{created['id']}/claims", headers=ADMIN_HEADERS).json()
 
     assert body["total"] == 1
     assert body["items"][0]["userId"] == USER_A
@@ -403,9 +398,7 @@ def test_an_admin_sees_every_users_transactions(client: TestClient) -> None:
     client.app.state.database.upsert_user(other, email="b@example.com")
     client.app.state.credit_service.grant(other, 7, reason="event_grant")
 
-    items = client.get(
-        "/api/v1/admin/credit-transactions", headers=ADMIN_HEADERS
-    ).json()["items"]
+    items = client.get("/api/v1/admin/credit-transactions", headers=ADMIN_HEADERS).json()["items"]
 
     owners = {row["userId"] for row in items}
     assert owners == {USER_A, other}
@@ -448,9 +441,7 @@ def test_an_admin_sees_every_users_projects(client: TestClient) -> None:
     client.app.state.database.upsert_user(other, email="b@example.com")
     client.app.state.credit_service.grant(other, 10, reason="purchase")
     client.post("/api/v1/projects", headers=USER_HEADERS, json={"prompt": "mine"})
-    client.post(
-        "/api/v1/projects", headers={"X-Debug-User-Id": other}, json={"prompt": "theirs"}
-    )
+    client.post("/api/v1/projects", headers={"X-Debug-User-Id": other}, json={"prompt": "theirs"})
 
     items = client.get("/api/v1/admin/projects", headers=ADMIN_HEADERS).json()["items"]
 
@@ -464,12 +455,12 @@ def test_admin_projects_filter_by_status(client: TestClient) -> None:
     setup(client, credits=10)
     client.post("/api/v1/projects", headers=USER_HEADERS, json={"prompt": "one"})
 
-    pending = client.get(
-        "/api/v1/admin/projects?status=pending", headers=ADMIN_HEADERS
-    ).json()["items"]
-    completed = client.get(
-        "/api/v1/admin/projects?status=completed", headers=ADMIN_HEADERS
-    ).json()["items"]
+    pending = client.get("/api/v1/admin/projects?status=pending", headers=ADMIN_HEADERS).json()[
+        "items"
+    ]
+    completed = client.get("/api/v1/admin/projects?status=completed", headers=ADMIN_HEADERS).json()[
+        "items"
+    ]
 
     assert len(pending) == 1
     assert completed == []
@@ -490,14 +481,23 @@ def test_every_new_admin_endpoint_refuses_a_normal_user(client: TestClient) -> N
     for path in gets:
         assert client.get(path, headers=USER_HEADERS).status_code == 403, path
 
-    assert client.patch(
-        "/api/v1/admin/settings", headers=USER_HEADERS,
-        json={"generationCostCredits": 1},
-    ).status_code == 403
-    assert client.post(
-        "/api/v1/admin/events", headers=USER_HEADERS, json=event_payload()
-    ).status_code == 403
-    assert client.post(
-        "/api/v1/admin/credit-packages", headers=USER_HEADERS,
-        json={"name": "X", "credits": 1, "priceVnd": 1},
-    ).status_code == 403
+    assert (
+        client.patch(
+            "/api/v1/admin/settings",
+            headers=USER_HEADERS,
+            json={"generationCostCredits": 1},
+        ).status_code
+        == 403
+    )
+    assert (
+        client.post("/api/v1/admin/events", headers=USER_HEADERS, json=event_payload()).status_code
+        == 403
+    )
+    assert (
+        client.post(
+            "/api/v1/admin/credit-packages",
+            headers=USER_HEADERS,
+            json={"name": "X", "credits": 1, "priceVnd": 1},
+        ).status_code
+        == 403
+    )

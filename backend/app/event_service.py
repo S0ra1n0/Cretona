@@ -182,9 +182,7 @@ class EventService:
         """
         now = moment or datetime.now(UTC)
         events = self.database.list_events()
-        claimed = self.database.claimed_periods(
-            user_id, [event["id"] for event in events]
-        )
+        claimed = self.database.claimed_periods(user_id, [event["id"] for event in events])
 
         out: list[dict[str, Any]] = []
         for event in events:
@@ -243,9 +241,7 @@ class EventService:
             )
 
         if not self.is_active(event, now):
-            raise AppError(
-                409, "EVENT_NOT_ACTIVE", "This event is not running right now."
-            )
+            raise AppError(409, "EVENT_NOT_ACTIVE", "This event is not running right now.")
 
         try:
             row, status = self.database.claim_event(
@@ -262,13 +258,9 @@ class EventService:
             raise AppError(404, "NOT_FOUND", "Account not found.") from None
 
         if status == "already":
-            raise AppError(
-                409, "EVENT_ALREADY_CLAIMED", "You have already claimed this reward."
-            )
+            raise AppError(409, "EVENT_ALREADY_CLAIMED", "You have already claimed this reward.")
         if status == "full":
-            raise AppError(
-                409, "EVENT_FULL", "This event has been fully claimed."
-            )
+            raise AppError(409, "EVENT_FULL", "This event has been fully claimed.")
 
         assert row is not None
         return {

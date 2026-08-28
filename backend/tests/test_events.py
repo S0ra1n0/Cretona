@@ -70,17 +70,21 @@ def test_a_deactivated_event_is_closed_even_inside_its_window() -> None:
     ("local_time", "open_"),
     [
         ("2026-08-28T19:59", False),
-        ("2026-08-28T20:00", True),   # inclusive start
+        ("2026-08-28T20:00", True),  # inclusive start
         ("2026-08-28T21:30", True),
         ("2026-08-28T21:59", True),
         ("2026-08-28T22:00", False),  # exclusive end
-        ("2026-08-29T20:30", True),   # and again the next day
+        ("2026-08-29T20:30", True),  # and again the next day
     ],
 )
 def test_hot_hours_opens_between_2000_and_2200_local(local_time: str, open_: bool) -> None:
     hot = event(
-        kind="discount", bonus_credits=None, discount_percent=50,
-        recurrence="daily", active_from_minute=1200, active_to_minute=1320,
+        kind="discount",
+        bonus_credits=None,
+        discount_percent=50,
+        recurrence="daily",
+        active_from_minute=1200,
+        active_to_minute=1320,
     )
 
     assert EventService.is_active(hot, at(local_time)) is open_
@@ -93,8 +97,12 @@ def test_hot_hours_is_judged_in_vietnam_time_not_utc() -> None:
     have looked like "the discount is broken for some users".
     """
     hot = event(
-        kind="discount", bonus_credits=None, discount_percent=50,
-        recurrence="daily", active_from_minute=1200, active_to_minute=1320,
+        kind="discount",
+        bonus_credits=None,
+        discount_percent=50,
+        recurrence="daily",
+        active_from_minute=1200,
+        active_to_minute=1320,
     )
 
     assert EventService.is_active(hot, datetime(2026, 8, 28, 13, 30, tzinfo=UTC)) is True
@@ -118,8 +126,8 @@ def test_a_window_that_wraps_midnight_is_two_ranges() -> None:
     ("local_date", "open_"),
     [
         ("2026-08-28T12:00", False),  # Friday
-        ("2026-08-29T12:00", True),   # Saturday
-        ("2026-08-30T12:00", True),   # Sunday
+        ("2026-08-29T12:00", True),  # Saturday
+        ("2026-08-30T12:00", True),  # Sunday
         ("2026-08-31T12:00", False),  # Monday
     ],
 )
@@ -174,11 +182,22 @@ def insert_event(client: TestClient, **overrides) -> str:
             " ends_at, max_claims, auto_grant, is_active, created_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
-                row["id"], row["code"] + row["id"][:8], row["name"], row["kind"],
-                row["bonus_credits"], row["discount_percent"], row["recurrence"],
-                row["active_days"], row["active_from_minute"], row["active_to_minute"],
-                row["starts_at"], row["ends_at"], row["max_claims"],
-                int(row["auto_grant"]), int(row["is_active"]), "2026-08-01T00:00:00Z",
+                row["id"],
+                row["code"] + row["id"][:8],
+                row["name"],
+                row["kind"],
+                row["bonus_credits"],
+                row["discount_percent"],
+                row["recurrence"],
+                row["active_days"],
+                row["active_from_minute"],
+                row["active_to_minute"],
+                row["starts_at"],
+                row["ends_at"],
+                row["max_claims"],
+                int(row["auto_grant"]),
+                int(row["is_active"]),
+                "2026-08-01T00:00:00Z",
             ),
         )
     return row["id"]
@@ -245,9 +264,7 @@ def test_a_full_event_is_refused_with_its_own_code(client: TestClient) -> None:
 def test_a_discount_cannot_be_claimed(client: TestClient) -> None:
     """It applies by itself; a button here would always fail."""
     provision(client)
-    event_id = insert_event(
-        client, kind="discount", bonus_credits=None, discount_percent=50
-    )
+    event_id = insert_event(client, kind="discount", bonus_credits=None, discount_percent=50)
 
     response = client.post(f"/api/v1/events/{event_id}/claim", headers=HEADERS)
 
@@ -349,20 +366,22 @@ def test_a_discount_lowers_what_a_generation_costs(client: TestClient) -> None:
     provision(client)
     client.app.state.credit_service.grant(USER_A, 10, reason="purchase")
     with client.app.state.database.connect() as connection:
-        connection.execute("UPDATE settings SET value = '2' WHERE key = ?",
-                           ("generation_cost_credits",))
+        connection.execute(
+            "UPDATE settings SET value = '2' WHERE key = ?", ("generation_cost_credits",)
+        )
     # A discount that is open all day, so the test does not depend on the clock.
     insert_event(
-        client, kind="discount", bonus_credits=None, discount_percent=50,
+        client,
+        kind="discount",
+        bonus_credits=None,
+        discount_percent=50,
         recurrence="once",
     )
 
     client.post("/api/v1/projects", headers=HEADERS, json={"prompt": "a dragon"})
 
     assert balance(client) == 9  # 2 credits, halved to 1
-    charge = client.get(
-        "/api/v1/me/credits/transactions", headers=HEADERS
-    ).json()["items"][0]
+    charge = client.get("/api/v1/me/credits/transactions", headers=HEADERS).json()["items"][0]
     assert charge["delta"] == -1
     # The ledger has to say why this row is 1 when yesterday's was 2.
     assert "50%" in (charge["note"] or "")
@@ -371,11 +390,16 @@ def test_a_discount_lowers_what_a_generation_costs(client: TestClient) -> None:
 def test_the_balance_endpoint_reports_the_live_discount(client: TestClient) -> None:
     provision(client)
     with client.app.state.database.connect() as connection:
-        connection.execute("UPDATE settings SET value = '2' WHERE key = ?",
-                           ("generation_cost_credits",))
+        connection.execute(
+            "UPDATE settings SET value = '2' WHERE key = ?", ("generation_cost_credits",)
+        )
     insert_event(
-        client, kind="discount", bonus_credits=None, discount_percent=50,
-        recurrence="once", name="Hot Hours",
+        client,
+        kind="discount",
+        bonus_credits=None,
+        discount_percent=50,
+        recurrence="once",
+        name="Hot Hours",
     )
 
     body = client.get("/api/v1/me/credits", headers=HEADERS).json()
@@ -402,15 +426,17 @@ def test_a_refund_returns_the_discounted_amount_not_the_full_price(
     provision(client)
     client.app.state.credit_service.grant(USER_A, 10, reason="purchase")
     with client.app.state.database.connect() as connection:
-        connection.execute("UPDATE settings SET value = '2' WHERE key = ?",
-                           ("generation_cost_credits",))
+        connection.execute(
+            "UPDATE settings SET value = '2' WHERE key = ?", ("generation_cost_credits",)
+        )
     discount_id = insert_event(
-        client, kind="discount", bonus_credits=None, discount_percent=50,
+        client,
+        kind="discount",
+        bonus_credits=None,
+        discount_percent=50,
         recurrence="once",
     )
-    project = client.post(
-        "/api/v1/projects", headers=HEADERS, json={"prompt": "one"}
-    ).json()
+    project = client.post("/api/v1/projects", headers=HEADERS, json={"prompt": "one"}).json()
     assert balance(client) == 9
 
     # The campaign ends before the job does.
