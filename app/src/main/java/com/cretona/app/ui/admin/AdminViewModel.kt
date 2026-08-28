@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.cretona.app.core.result.AppError
 import com.cretona.app.core.result.AppResult
 import com.cretona.app.domain.model.AdminUser
+import com.cretona.app.domain.model.AdminEventDraft
+import com.cretona.app.domain.model.AdminPackageDraft
 import com.cretona.app.domain.repository.CretonaRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -41,6 +43,11 @@ class AdminViewModel @Inject constructor(
                 if (_state.value.healthResponse == null) runHealthCheck()
                 if (_state.value.metrics == null) loadMetrics()
             }
+            AdminTab.VIDEOS -> if (_state.value.adminProjects.isEmpty()) loadAdminProjects()
+            AdminTab.CREDITS -> if (_state.value.creditTransactions.isEmpty()) loadCreditTransactions()
+            AdminTab.EVENTS -> if (_state.value.events.isEmpty()) loadEvents()
+            AdminTab.PACKAGES -> if (_state.value.packages.isEmpty()) loadPackages()
+            AdminTab.SETTINGS -> if (_state.value.settings == null) loadSettings()
         }
     }
 
@@ -371,6 +378,245 @@ class AdminViewModel @Inject constructor(
                     }
                 }
             }
+        }
+    }
+
+    fun onProjectStatusFilterChanged(status: String?) {
+        _state.update { it.copy(projectStatusFilter = status) }
+        loadAdminProjects()
+    }
+
+    fun onProjectOwnerFilterChanged(owner: String) {
+        _state.update { it.copy(projectOwnerFilter = owner) }
+    }
+
+    fun loadAdminProjects(append: Boolean = false) {
+        val current = state.value
+        if (append && (current.projectsNextCursor == null || current.isLoadingMoreManagement)) return
+        viewModelScope.launch {
+            _state.update {
+                it.copy(
+                    isLoadingManagement = !append,
+                    isLoadingMoreManagement = append,
+                    managementError = null,
+                )
+            }
+            when (
+                val result = repository.getAdminProjects(
+                    status = current.projectStatusFilter,
+                    userId = current.projectOwnerFilter.trim().ifBlank { null },
+                    cursor = if (append) current.projectsNextCursor else null,
+                )
+            ) {
+                is AppResult.Success -> _state.update {
+                    it.copy(
+                        adminProjects = if (append) {
+                            (it.adminProjects + result.data.items).distinctBy { project -> project.id }
+                        } else {
+                            result.data.items
+                        },
+                        projectsNextCursor = result.data.nextCursor,
+                        isLoadingManagement = false,
+                        isLoadingMoreManagement = false,
+                    )
+                }
+                is AppResult.Failure -> managementFailure(result.error)
+            }
+        }
+    }
+
+    fun onCreditFiltersChanged(userId: String, reason: String?) {
+        _state.update { it.copy(creditUserFilter = userId, creditReasonFilter = reason) }
+    }
+
+    fun loadCreditTransactions(append: Boolean = false) {
+        val current = state.value
+        if (append && (current.creditTransactionsNextCursor == null || current.isLoadingMoreManagement)) return
+        viewModelScope.launch {
+            _state.update {
+                it.copy(
+                    isLoadingManagement = !append,
+                    isLoadingMoreManagement = append,
+                    managementError = null,
+                )
+            }
+            when (
+                val result = repository.getAdminCreditTransactions(
+                    userId = current.creditUserFilter.trim().ifBlank { null },
+                    reason = current.creditReasonFilter,
+                    cursor = if (append) current.creditTransactionsNextCursor else null,
+                )
+            ) {
+                is AppResult.Success -> _state.update {
+                    it.copy(
+                        creditTransactions = if (append) {
+                            (it.creditTransactions + result.data.items).distinctBy { tx -> tx.id }
+                        } else {
+                            result.data.items
+                        },
+                        creditTransactionsNextCursor = result.data.nextCursor,
+                        isLoadingManagement = false,
+                        isLoadingMoreManagement = false,
+                    )
+                }
+                is AppResult.Failure -> managementFailure(result.error)
+            }
+        }
+    }
+
+    fun adjustCredits(userId: String, delta: Int?, note: String) {
+        if (userId.isBlank() || delta == null || delta == 0 || note.isBlank()) {
+            _state.update { it.copy(managementError = "User ID, a non-zero delta, and a note are required.") }
+            return
+        }
+        viewModelScope.launch {
+            saving()
+            when (val result = repository.adjustAdminCredits(userId.trim(), delta, note.trim())) {
+                is AppResult.Success -> {
+                    _state.update {
+                        it.copy(
+                            isSavingManagement = false,
+                            managementMessage = "Balance is now ${result.data.balance} credits.",
+                        )
+                    }
+                    loadCreditTransactions()
+                }
+                is AppResult.Failure -> managementFailure(result.error)
+            }
+        }
+    }
+
+    fun loadPackages() {
+        viewModelScope.launch {
+            loadingManagement()
+            when (val result = repository.getAdminPackages()) {
+                is AppResult.Success -> _state.update {
+                    it.copy(packages = result.data, isLoadingManagement = false)
+                }
+                is AppResult.Failure -> managementFailure(result.error)
+            }
+        }
+    }
+
+    fun savePackage(id: String?, draft: AdminPackageDraft) {
+        if (draft.name.isBlank() || draft.credits <= 0 || draft.priceVnd < 0) {
+            _state.update { it.copy(managementError = "Package name, positive credits, and a non-negative price are required.") }
+            return
+        }
+        viewModelScope.launch {
+            saving()
+            val result = if (id == null) {
+                repository.createAdminPackage(draft)
+            } else {
+                repository.updateAdminPackage(id, draft)
+            }
+            when (result) {
+                is AppResult.Success -> {
+                    _state.update {
+                        it.copy(isSavingManagement = false, managementMessage = "Package saved.")
+                    }
+                    loadPackages()
+                }
+                is AppResult.Failure -> managementFailure(result.error)
+            }
+        }
+    }
+
+    fun loadEvents() {
+        viewModelScope.launch {
+            loadingManagement()
+            when (val result = repository.getAdminEvents()) {
+                is AppResult.Success -> _state.update {
+                    it.copy(events = result.data, isLoadingManagement = false)
+                }
+                is AppResult.Failure -> managementFailure(result.error)
+            }
+        }
+    }
+
+    fun saveEvent(id: String?, draft: AdminEventDraft) {
+        val value = draft.bonusCredits ?: draft.discountPercent
+        if (
+            draft.code.isBlank() || draft.name.isBlank() || draft.startsAt.isBlank() ||
+            draft.endsAt.isBlank() || value == null || value <= 0
+        ) {
+            _state.update { it.copy(managementError = "Code, name, window, and the grant/discount value are required.") }
+            return
+        }
+        viewModelScope.launch {
+            saving()
+            val result = if (id == null) {
+                repository.createAdminEvent(draft)
+            } else {
+                repository.updateAdminEvent(id, draft)
+            }
+            when (result) {
+                is AppResult.Success -> {
+                    _state.update {
+                        it.copy(isSavingManagement = false, managementMessage = "Event saved.")
+                    }
+                    loadEvents()
+                }
+                is AppResult.Failure -> managementFailure(result.error)
+            }
+        }
+    }
+
+    fun loadSettings() {
+        viewModelScope.launch {
+            loadingManagement()
+            when (val result = repository.getAdminSettings()) {
+                is AppResult.Success -> _state.update {
+                    it.copy(settings = result.data, isLoadingManagement = false)
+                }
+                is AppResult.Failure -> managementFailure(result.error)
+            }
+        }
+    }
+
+    fun updateGenerationCost(cost: Int?) {
+        if (cost == null || cost !in 1..1000) {
+            _state.update { it.copy(managementError = "Generation cost must be between 1 and 1000 credits.") }
+            return
+        }
+        viewModelScope.launch {
+            saving()
+            when (val result = repository.updateAdminSettings(cost)) {
+                is AppResult.Success -> _state.update {
+                    it.copy(
+                        settings = result.data,
+                        isSavingManagement = false,
+                        managementMessage = "Generation cost updated.",
+                    )
+                }
+                is AppResult.Failure -> managementFailure(result.error)
+            }
+        }
+    }
+
+    fun clearManagementMessage() {
+        _state.update { it.copy(managementMessage = null, managementError = null) }
+    }
+
+    private fun loadingManagement() {
+        _state.update { it.copy(isLoadingManagement = true, managementError = null) }
+    }
+
+    private fun saving() {
+        _state.update {
+            it.copy(isSavingManagement = true, managementError = null, managementMessage = null)
+        }
+    }
+
+    private fun managementFailure(error: AppError) {
+        error.markIfForbidden()
+        _state.update {
+            it.copy(
+                isLoadingManagement = false,
+                isLoadingMoreManagement = false,
+                isSavingManagement = false,
+                managementError = error.message,
+            )
         }
     }
 }

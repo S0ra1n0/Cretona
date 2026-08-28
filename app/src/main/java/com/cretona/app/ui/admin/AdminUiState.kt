@@ -7,12 +7,22 @@ import com.cretona.app.domain.model.AdminUser
 import com.cretona.app.domain.model.BackfillResult
 
 import com.cretona.app.domain.model.AdminMetrics
+import com.cretona.app.domain.model.AdminCreditTransaction
+import com.cretona.app.domain.model.AdminEvent
+import com.cretona.app.domain.model.AdminPackage
+import com.cretona.app.domain.model.AdminSettings
+import com.cretona.app.domain.model.VideoProject
 
 enum class AdminTab(val title: String) {
     STATS("Overview"),
     USERS("Users"),
     AUDIT_LOGS("Audit Logs"),
     DIAGNOSTICS("Diagnostics"),
+    VIDEOS("Videos"),
+    CREDITS("Credits & Transactions"),
+    EVENTS("Events"),
+    PACKAGES("Credit Packages"),
+    SETTINGS("Settings"),
 }
 
 data class AdminUiState(
@@ -53,4 +63,21 @@ data class AdminUiState(
     val isLoadingMetrics: Boolean = false,
     val metrics: AdminMetrics? = null,
     val diagnosticsMessage: String? = null,
+    // Manage screens
+    val adminProjects: List<VideoProject> = emptyList(),
+    val projectsNextCursor: String? = null,
+    val projectStatusFilter: String? = null,
+    val projectOwnerFilter: String = "",
+    val creditTransactions: List<AdminCreditTransaction> = emptyList(),
+    val creditTransactionsNextCursor: String? = null,
+    val creditUserFilter: String = "",
+    val creditReasonFilter: String? = null,
+    val packages: List<AdminPackage> = emptyList(),
+    val events: List<AdminEvent> = emptyList(),
+    val settings: AdminSettings? = null,
+    val isLoadingManagement: Boolean = false,
+    val isLoadingMoreManagement: Boolean = false,
+    val isSavingManagement: Boolean = false,
+    val managementError: String? = null,
+    val managementMessage: String? = null,
 )

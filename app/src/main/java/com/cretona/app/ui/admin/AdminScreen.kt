@@ -66,9 +66,14 @@ fun AdminScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Admin Panel") },
+                title = { Text(state.selectedTab.title) },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
+                    IconButton(
+                        onClick = {
+                            if (state.selectedTab == AdminTab.STATS) onNavigateBack()
+                            else viewModel.selectTab(AdminTab.STATS)
+                        },
+                    ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
@@ -83,6 +88,11 @@ fun AdminScreen(
                                 AdminTab.USERS -> viewModel.loadUsers()
                                 AdminTab.AUDIT_LOGS -> viewModel.loadAuditLogs()
                                 AdminTab.DIAGNOSTICS -> viewModel.runHealthCheck()
+                                AdminTab.VIDEOS -> viewModel.loadAdminProjects()
+                                AdminTab.CREDITS -> viewModel.loadCreditTransactions()
+                                AdminTab.EVENTS -> viewModel.loadEvents()
+                                AdminTab.PACKAGES -> viewModel.loadPackages()
+                                AdminTab.SETTINGS -> viewModel.loadSettings()
                             }
                         },
                     ) {
@@ -101,16 +111,6 @@ fun AdminScreen(
                 .fillMaxSize()
                 .padding(innerPadding),
         ) {
-            PrimaryTabRow(selectedTabIndex = state.selectedTab.ordinal) {
-                AdminTab.entries.forEach { tab ->
-                    Tab(
-                        selected = state.selectedTab == tab,
-                        onClick = { viewModel.selectTab(tab) },
-                        text = { Text(tab.title) },
-                    )
-                }
-            }
-
             if (state.isForbidden) {
                 // Defence in depth. The button that opens this screen is
                 // already gated on role, and every endpoint behind it is gated
@@ -153,6 +153,7 @@ fun AdminScreen(
                     AdminTab.STATS -> StatsTabContent(
                         state = state,
                         onRefresh = viewModel::loadStats,
+                        onManage = viewModel::selectTab,
                     )
                     AdminTab.USERS -> UsersTabContent(
                         state = state,
@@ -174,6 +175,32 @@ fun AdminScreen(
                         onCheckHealth = viewModel::runHealthCheck,
                         onLoadMetrics = viewModel::loadMetrics,
                     )
+                    AdminTab.VIDEOS -> VideosManagementContent(
+                        state = state,
+                        onStatusFilter = viewModel::onProjectStatusFilterChanged,
+                        onOwnerChanged = viewModel::onProjectOwnerFilterChanged,
+                        onSearch = { viewModel.loadAdminProjects() },
+                        onLoadMore = { viewModel.loadAdminProjects(append = true) },
+                    )
+                    AdminTab.CREDITS -> CreditsManagementContent(
+                        state = state,
+                        onFiltersChanged = viewModel::onCreditFiltersChanged,
+                        onSearch = { viewModel.loadCreditTransactions() },
+                        onLoadMore = { viewModel.loadCreditTransactions(append = true) },
+                        onAdjust = viewModel::adjustCredits,
+                    )
+                    AdminTab.EVENTS -> EventsManagementContent(
+                        state = state,
+                        onSave = viewModel::saveEvent,
+                    )
+                    AdminTab.PACKAGES -> PackagesManagementContent(
+                        state = state,
+                        onSave = viewModel::savePackage,
+                    )
+                    AdminTab.SETTINGS -> SettingsManagementContent(
+                        state = state,
+                        onSave = viewModel::updateGenerationCost,
+                    )
                 }
             }
         }
@@ -184,6 +211,7 @@ fun AdminScreen(
 private fun StatsTabContent(
     state: AdminUiState,
     onRefresh: () -> Unit,
+    onManage: (AdminTab) -> Unit,
 ) {
     if (state.isLoadingStats) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -365,6 +393,43 @@ private fun StatsTabContent(
                         Text("Projects (${stats.totalProjects})", style = MaterialTheme.typography.labelSmall)
                     }
                 }
+            }
+        }
+
+        item {
+            Text("Credit Metrics", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        }
+
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MetricCard("Granted", "${stats.creditsGranted}", "credits", Modifier.weight(1f))
+                MetricCard("Used", "${stats.creditsUsed}", "credits", Modifier.weight(1f))
+                MetricCard("Revenue", "${stats.revenueVnd}", "VND simulated", Modifier.weight(1f))
+            }
+        }
+
+        if (stats.events.isNotEmpty()) {
+            item { Text("Event Results", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+            items(stats.events, key = { it.eventId }) { event ->
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(event.name, fontWeight = FontWeight.SemiBold)
+                        Text("${event.claims} claims · ${event.creditsGranted} credits · ${event.remainingSlots?.toString() ?: "unlimited"} left")
+                    }
+                }
+            }
+        }
+
+        item { Text("Manage", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+        items(
+            AdminTab.entries.filter { it != AdminTab.STATS },
+            key = { it.name },
+        ) { tab ->
+            OutlinedButton(onClick = { onManage(tab) }, modifier = Modifier.fillMaxWidth()) {
+                Text(tab.title)
             }
         }
     }

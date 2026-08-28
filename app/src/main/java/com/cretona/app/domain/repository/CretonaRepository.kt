@@ -1,9 +1,17 @@
 package com.cretona.app.domain.repository
 
 import com.cretona.app.core.result.AppResult
+import com.cretona.app.core.result.AppError
 import com.cretona.app.data.remote.HealthResponse
 import com.cretona.app.domain.model.AdminAuditLog
+import com.cretona.app.domain.model.AdminCreditAdjustment
+import com.cretona.app.domain.model.AdminCreditTransaction
+import com.cretona.app.domain.model.AdminEvent
+import com.cretona.app.domain.model.AdminEventDraft
 import com.cretona.app.domain.model.AdminMetrics
+import com.cretona.app.domain.model.AdminPackage
+import com.cretona.app.domain.model.AdminPackageDraft
+import com.cretona.app.domain.model.AdminSettings
 import com.cretona.app.domain.model.AdminStats
 import com.cretona.app.domain.model.AdminUser
 import com.cretona.app.domain.model.BackfillResult
@@ -87,5 +95,37 @@ interface CretonaRepository {
     suspend fun checkHealth(): AppResult<HealthResponse>
 
     suspend fun getAdminMetrics(): AppResult<AdminMetrics>
+
+    suspend fun getAdminProjects(
+        status: String? = null,
+        userId: String? = null,
+        limit: Int = 20,
+        cursor: String? = null,
+    ): AppResult<CursorPage<VideoProject>> = unsupportedAdminCall()
+
+    suspend fun adjustAdminCredits(
+        userId: String,
+        delta: Int,
+        note: String,
+    ): AppResult<AdminCreditAdjustment> = unsupportedAdminCall()
+
+    suspend fun getAdminCreditTransactions(
+        userId: String? = null,
+        reason: String? = null,
+        limit: Int = 20,
+        cursor: String? = null,
+    ): AppResult<CursorPage<AdminCreditTransaction>> = unsupportedAdminCall()
+
+    suspend fun getAdminSettings(): AppResult<AdminSettings> = unsupportedAdminCall()
+    suspend fun updateAdminSettings(generationCostCredits: Int): AppResult<AdminSettings> = unsupportedAdminCall()
+    suspend fun getAdminPackages(): AppResult<List<AdminPackage>> = unsupportedAdminCall()
+    suspend fun createAdminPackage(draft: AdminPackageDraft): AppResult<AdminPackage> = unsupportedAdminCall()
+    suspend fun updateAdminPackage(id: String, draft: AdminPackageDraft): AppResult<AdminPackage> = unsupportedAdminCall()
+    suspend fun getAdminEvents(): AppResult<List<AdminEvent>> = unsupportedAdminCall()
+    suspend fun createAdminEvent(draft: AdminEventDraft): AppResult<AdminEvent> = unsupportedAdminCall()
+    suspend fun updateAdminEvent(id: String, draft: AdminEventDraft): AppResult<AdminEvent> = unsupportedAdminCall()
 }
+
+private fun <T> unsupportedAdminCall(): AppResult<T> =
+    AppResult.Failure(AppError.Unknown("This repository does not implement admin commerce."))
 

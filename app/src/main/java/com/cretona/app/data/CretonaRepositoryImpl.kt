@@ -9,6 +9,7 @@ import com.cretona.app.data.remote.ProjectCreateRequest
 import com.cretona.app.data.remote.ProjectDto
 import com.cretona.app.data.remote.PromptEnhanceRequest
 import com.cretona.app.data.remote.AdminAuditLogDto
+import com.cretona.app.data.remote.AdminCreditAdjustRequest
 import com.cretona.app.data.remote.AdminMetricsDto
 import com.cretona.app.data.remote.AdminStatsDto
 import com.cretona.app.data.remote.AdminUserDto
@@ -16,8 +17,20 @@ import com.cretona.app.data.remote.AdminUserUpdateRequestDto
 import com.cretona.app.data.remote.BackfillResponseDto
 import com.cretona.app.data.remote.DailyStatsDto
 import com.cretona.app.data.remote.HealthResponse
+import com.cretona.app.data.remote.AdminSettingsUpdateRequest
+import com.cretona.app.data.remote.toCreateRequest
+import com.cretona.app.data.remote.toDomain
+import com.cretona.app.data.remote.toUpdateRequest
 import com.cretona.app.domain.model.AdminAuditLog
+import com.cretona.app.domain.model.AdminCreditAdjustment
+import com.cretona.app.domain.model.AdminCreditTransaction
+import com.cretona.app.domain.model.AdminEvent
+import com.cretona.app.domain.model.AdminEventDraft
+import com.cretona.app.domain.model.AdminEventStat
 import com.cretona.app.domain.model.AdminMetrics
+import com.cretona.app.domain.model.AdminPackage
+import com.cretona.app.domain.model.AdminPackageDraft
+import com.cretona.app.domain.model.AdminSettings
 import com.cretona.app.domain.model.AdminStats
 import com.cretona.app.domain.model.AdminUser
 import com.cretona.app.domain.model.BackfillResult
@@ -204,6 +217,86 @@ class CretonaRepositoryImpl @Inject constructor(
     override suspend fun getAdminMetrics(): AppResult<AdminMetrics> = apiCall {
         api.getAdminMetrics().toDomain()
     }
+
+    override suspend fun getAdminProjects(
+        status: String?,
+        userId: String?,
+        limit: Int,
+        cursor: String?,
+    ): AppResult<CursorPage<VideoProject>> = apiCall {
+        val response = api.getAdminProjects(status, userId, limit, cursor)
+        CursorPage(
+            items = response.items.map(ProjectDto::toDomain),
+            nextCursor = response.page.nextCursor,
+            hasMore = response.page.hasMore,
+        )
+    }
+
+    override suspend fun adjustAdminCredits(
+        userId: String,
+        delta: Int,
+        note: String,
+    ): AppResult<AdminCreditAdjustment> = apiCall {
+        api.adjustAdminCredits(userId, AdminCreditAdjustRequest(delta, note)).toDomain()
+    }
+
+    override suspend fun getAdminCreditTransactions(
+        userId: String?,
+        reason: String?,
+        limit: Int,
+        cursor: String?,
+    ): AppResult<CursorPage<AdminCreditTransaction>> = apiCall {
+        val response = api.getAdminCreditTransactions(userId, reason, limit, cursor)
+        CursorPage(
+            items = response.items.map { it.toDomain() },
+            nextCursor = response.nextCursor,
+            hasMore = response.nextCursor != null,
+        )
+    }
+
+    override suspend fun getAdminSettings(): AppResult<AdminSettings> = apiCall {
+        api.getAdminSettings().toDomain()
+    }
+
+    override suspend fun updateAdminSettings(
+        generationCostCredits: Int,
+    ): AppResult<AdminSettings> = apiCall {
+        api.updateAdminSettings(AdminSettingsUpdateRequest(generationCostCredits)).toDomain()
+    }
+
+    override suspend fun getAdminPackages(): AppResult<List<AdminPackage>> = apiCall {
+        api.getAdminPackages().items.map { it.toDomain() }
+    }
+
+    override suspend fun createAdminPackage(
+        draft: AdminPackageDraft,
+    ): AppResult<AdminPackage> = apiCall {
+        api.createAdminPackage(draft.toCreateRequest()).toDomain()
+    }
+
+    override suspend fun updateAdminPackage(
+        id: String,
+        draft: AdminPackageDraft,
+    ): AppResult<AdminPackage> = apiCall {
+        api.updateAdminPackage(id, draft.toUpdateRequest()).toDomain()
+    }
+
+    override suspend fun getAdminEvents(): AppResult<List<AdminEvent>> = apiCall {
+        api.getAdminEvents().items.map { it.toDomain() }
+    }
+
+    override suspend fun createAdminEvent(
+        draft: AdminEventDraft,
+    ): AppResult<AdminEvent> = apiCall {
+        api.createAdminEvent(draft.toCreateRequest()).toDomain()
+    }
+
+    override suspend fun updateAdminEvent(
+        id: String,
+        draft: AdminEventDraft,
+    ): AppResult<AdminEvent> = apiCall {
+        api.updateAdminEvent(id, draft.toUpdateRequest()).toDomain()
+    }
 }
 
 internal suspend fun <T> apiCall(block: suspend () -> T): AppResult<T> = try {
@@ -274,6 +367,23 @@ internal fun AdminStatsDto.toDomain(): AdminStats = AdminStats(
             created = it.created,
             completed = it.completed,
             failed = it.failed,
+            newUsers = it.newUsers,
+            creditsGranted = it.creditsGranted,
+            creditsUsed = it.creditsUsed,
+            revenueVnd = it.revenueVnd,
+        )
+    },
+    creditsGranted = totals.creditsGranted,
+    creditsUsed = totals.creditsUsed,
+    revenueVnd = totals.revenueVnd,
+    events = events.map {
+        AdminEventStat(
+            eventId = it.eventId,
+            code = it.code,
+            name = it.name,
+            claims = it.claims,
+            creditsGranted = it.creditsGranted,
+            remainingSlots = it.remainingSlots,
         )
     },
 )

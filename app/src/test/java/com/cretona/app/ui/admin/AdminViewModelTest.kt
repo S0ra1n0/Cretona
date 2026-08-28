@@ -174,6 +174,20 @@ class AdminViewModelTest {
             assertEquals(listOf("log-1", "log-2"), viewModel.state.value.auditLogs.map { it.id })
             assertFalse(viewModel.state.value.hasMoreLogs)
         }
+
+    @Test
+    fun `credit adjustment requires an audit note before calling the repository`() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val viewModel = AdminViewModel(FakeAdminRepository())
+            advanceUntilIdle()
+
+            viewModel.adjustCredits("user-1", 10, "")
+
+            assertEquals(
+                "User ID, a non-zero delta, and a note are required.",
+                viewModel.state.value.managementError,
+            )
+        }
 }
 
 private class FakeAdminRepository(

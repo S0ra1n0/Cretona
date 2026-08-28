@@ -92,6 +92,58 @@ interface CretonaApi {
     @GET("admin/metrics")
     suspend fun getAdminMetrics(): AdminMetricsDto
 
+    @GET("admin/projects")
+    suspend fun getAdminProjects(
+        @retrofit2.http.Query("status") status: String? = null,
+        @retrofit2.http.Query("userId") userId: String? = null,
+        @retrofit2.http.Query("limit") limit: Int = 20,
+        @retrofit2.http.Query("cursor") cursor: String? = null,
+    ): ProjectPageDto
+
+    @POST("admin/users/{id}/credits")
+    suspend fun adjustAdminCredits(
+        @Path("id") userId: String,
+        @Body request: AdminCreditAdjustRequest,
+    ): AdminCreditAdjustDto
+
+    @GET("admin/credit-transactions")
+    suspend fun getAdminCreditTransactions(
+        @retrofit2.http.Query("userId") userId: String? = null,
+        @retrofit2.http.Query("reason") reason: String? = null,
+        @retrofit2.http.Query("limit") limit: Int = 20,
+        @retrofit2.http.Query("cursor") cursor: String? = null,
+    ): AdminCreditTransactionPageDto
+
+    @GET("admin/settings")
+    suspend fun getAdminSettings(): AdminSettingsDto
+
+    @retrofit2.http.PATCH("admin/settings")
+    suspend fun updateAdminSettings(@Body request: AdminSettingsUpdateRequest): AdminSettingsDto
+
+    @GET("admin/credit-packages")
+    suspend fun getAdminPackages(): AdminPackageListDto
+
+    @POST("admin/credit-packages")
+    suspend fun createAdminPackage(@Body request: AdminPackageCreateRequest): AdminPackageDto
+
+    @retrofit2.http.PATCH("admin/credit-packages/{id}")
+    suspend fun updateAdminPackage(
+        @Path("id") packageId: String,
+        @Body request: AdminPackageUpdateRequest,
+    ): AdminPackageDto
+
+    @GET("admin/events")
+    suspend fun getAdminEvents(): AdminEventListDto
+
+    @POST("admin/events")
+    suspend fun createAdminEvent(@Body request: AdminEventCreateRequest): AdminEventDto
+
+    @retrofit2.http.PATCH("admin/events/{id}")
+    suspend fun updateAdminEvent(
+        @Path("id") eventId: String,
+        @Body request: kotlinx.serialization.json.JsonObject,
+    ): AdminEventDto
+
     // --- credits, events and packages (API_CONTRACT.md Part II) --------------
 
     @GET("me/credits")
@@ -276,6 +328,7 @@ data class AdminStatsDto(
     val projectsByStatus: Map<String, Int> = emptyMap(),
     val projectsByProvider: Map<String, Int> = emptyMap(),
     val daily: List<DailyStatsDto> = emptyList(),
+    val events: List<AdminEventStatDto> = emptyList(),
 )
 
 @Serializable
@@ -283,6 +336,9 @@ data class AdminTotalsDto(
     val users: Int = 0,
     val activeUsers: Int = 0,
     val projects: Int = 0,
+    val creditsGranted: Int = 0,
+    val creditsUsed: Int = 0,
+    val revenueVnd: Int = 0,
 )
 
 @Serializable
@@ -291,6 +347,20 @@ data class DailyStatsDto(
     val created: Int = 0,
     val completed: Int = 0,
     val failed: Int = 0,
+    val newUsers: Int = 0,
+    val creditsGranted: Int = 0,
+    val creditsUsed: Int = 0,
+    val revenueVnd: Int = 0,
+)
+
+@Serializable
+data class AdminEventStatDto(
+    val eventId: String,
+    val code: String,
+    val name: String,
+    val claims: Int,
+    val creditsGranted: Int,
+    val remainingSlots: Int? = null,
 )
 
 @Serializable
