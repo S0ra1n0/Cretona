@@ -13,18 +13,21 @@ Ticket ids are stable. Use them in commit messages: `feat(credits): S-03 …`.
 
 ## 0. How the two lanes stay parallel
 
-Bruce is **not** blocked on S0ra1n0. Every screen is built against
-`API_CONTRACT.md` Part II with a fake implementation behind the existing
-`CretonaRepository` interface. `CretonaRepositoryImpl` swaps in when the real
-endpoint lands, and the screen does not change.
+> **Updated 2026-08-28.** The fake repository was insurance against Bruce
+> waiting on endpoints. He is not waiting: every endpoint his screens need
+> exists and is tested. The first integration point below was scheduled for
+> 08-30 and happened on 08-28.
 
-Three integration points, and only three:
+Bruce built B-02's `FakeCreditsRepository` so screens were buildable on day 1.
+That worked, and it is now **surplus**: the real endpoints are live, so the
+next Android work should go straight against them. See §7 for the one binding
+to change.
 
-| When | What | Who checks |
+| When | What | Status |
 |---|---|---|
-| End of 08-30 | Credits + events endpoints live; Bruce switches off fakes | Both, 30 min |
-| End of 09-02 | Worker produces a real clip; Bruce plays it in the app | Both, 30 min |
-| 09-03 18:00 | Feature freeze. Everything after is integration and docs | Both |
+| ~~End of 08-30~~ | Credits + events endpoints live; Bruce switches off fakes | ✅ **endpoints landed 08-28**, two days early. The swap is Bruce's next move |
+| End of 09-02 | Worker produces a real clip; Bruce plays it in the app | ⏸ blocked on a Kaggle session |
+| 09-03 18:00 | Feature freeze. Everything after is integration and docs | pending |
 
 ---
 
@@ -138,7 +141,8 @@ Three integration points, and only three:
   `test_sqlite_defaults_match_the_seed`, parses the Supabase seed file and fails
   if the sqlite package prices drift from it — the duplication is deliberate so
   a local demo has something to buy, and that test is what keeps it honest.
-: **492 passed, 0 skipped** with a disposable Postgres running.
+: Suite stood at **492 passed, 0 skipped** when this ticket closed; see §6 for
+  the current total.
 
 **S-08 · Generation modes** — ✅ **DONE 08-28**
 : `prompt` was already nullable with an "at least one input" validator from the
@@ -269,7 +273,8 @@ Three integration points, and only three:
   normal user gets 403 — one place to notice if a route is ever added without
   a role gate.
 
-**590 passed, 0 skipped** with a disposable Postgres running.
+Suite stood at **590 passed, 0 skipped** when this ticket closed; see §6 for
+the current total.
 
 > **Feature freeze 18:00.** Nothing new after this, in either lane.
 
@@ -373,9 +378,14 @@ sample accounts; final suite run.
 
 ### Day 6 · Wed 09-02
 
-**B-13 · Admin dashboard tiles** — 3h · *depends: S-15*
-: New users, credits granted, credits used, revenue, per-event take-up. Build
-  against the contract shape; wire to the live endpoint on 09-03.
+**B-13 · Admin dashboard tiles** — 3h · ~~*depends: S-15*~~ **unblocked**
+: New users, credits granted, credits used, revenue, per-event take-up.
+: `GET /admin/stats` already returns all of it (S-15, done 08-28), so build
+  straight against the live endpoint — there is no contract-shape phase and
+  **B-15 no longer exists**.
+: Two shapes worth handling deliberately: `remainingSlots` is `null` for an
+  uncapped event (render "unlimited", not "0"), and an empty system returns
+  zeroes rather than nulls, so a tile never renders blank.
 
 **B-14 · Screenshot pass** — 2h
 : Every screen, user and admin, light and dark. These go in the report.
@@ -385,7 +395,10 @@ sample accounts; final suite run.
 
 ### Day 7 · Thu 09-03
 
-**B-15 · Wire the dashboard to live stats** — 1h
+~~**B-15 · Wire the dashboard to live stats**~~ — **dropped.** It existed
+because `/admin/stats` was not expected until 09-03. It landed on 08-28, so
+B-13 wires to the real endpoint directly.
+
 **B-16 · Integration defects** — the rest of the day.
 
 > **Feature freeze 18:00.**
@@ -489,3 +502,102 @@ green run.
 | A fallback if the answer is "it must" | Both of you, before the reply lands. FramePack has never been run |
 | S-12 / S-13 / S-14 | A Kaggle session, and the D1 answer |
 | Bruce's lane | **Nothing.** Every endpoint his screens need now exists |
+
+---
+
+## 7. Merging this branch — for Bruce
+
+Branch `khoa` is **96 commits ahead of `main`**. Nine of those are this day's
+credit and event work (`f8803d2` → `59523d2`): 47 files, +9080/−158. The other
+87 are the earlier profile, auth, admin and EXP-005 work — check whether your
+branch already has them before assuming this merge is small.
+
+**Ten Android files, five of them new.** Modified: `AndroidManifest.xml`
+(camera permission), `res/xml/file_paths.xml` (capture cache path),
+`CretonaApi.kt` (six endpoints appended), `RepositoryModule.kt` (one binding),
+`HomeScreen.kt` (the image picker became Choose + Take photo). New:
+`Credits.kt`, `CreditsDto.kt`, `CreditsRepository.kt`,
+`FakeCreditsRepository.kt`, `CreditsSerializationTest.kt`.
+
+`HomeScreen.kt` is the only file with a real chance of conflicting with your UI
+work — the change is around the photo-picker launcher and the attach-image
+button.
+
+### Nothing to run
+
+- **No migration to apply.** `013` and its seed are already on live Supabase,
+  applied and verified on 08-28.
+- **Local SQLite migrates itself** on first start. `ADDED_COLUMNS` widens an
+  existing file and `_seed_defaults` inserts the generation cost, the signup
+  bonus and the three credit packages — so a local demo has something to buy.
+- **No new dependencies**, backend or Android. No `.env` change.
+
+### Your one-line switch
+
+`FakeCreditsRepository` is bound in `RepositoryModule.kt` with a
+`TODO(S-07/S-11)`. Those tickets are done, so write `CreditsRepositoryImpl`
+against `CretonaApi` — the endpoints already exist — and change that binding.
+Nothing else moves: the screens are written against `CreditsRepository`.
+
+The fake is worth keeping for previews and tests. It reproduces the refusals,
+not just the happy path.
+
+### What is live, and what it means for a screen
+
+| Endpoint | The bit that affects your UI |
+|---|---|
+| `GET /me/credits` | Show **`effectiveCost`**, never `generationCost`. During Hot Hours they differ, and quoting the wrong one misleads |
+| `GET /me/credits/transactions` | Cursor-paged. `reason` may be a value this app build has never seen — render the raw string rather than crashing |
+| `GET /credit-packages` | Active only. `PACKAGE_INACTIVE` on purchase means refresh, not retry |
+| `POST /payments` | **`Idempotency-Key` is required**, unlike on `/projects`. Generate it once per user intent and reuse it across retries — a fresh key on retry is the same as no key |
+| `GET /events` | Bind the button to **`claimable` alone**. Do not re-derive it from the window, the cap and the claim history: the server owns that rule, and the copy that gives credits away would be yours |
+| `POST /events/{id}/claim` | Three distinct 409s — `EVENT_NOT_ACTIVE`, `EVENT_ALREADY_CLAIMED`, `EVENT_FULL`. They need different messages |
+| `GET /admin/stats` | Everything B-13 needs, including per-event take-up |
+| 12 admin endpoints | Every screen in B-09 through B-12 |
+
+### Three behaviours that changed under you
+
+1. **A generation now costs credits.** `POST /projects` returns **402
+   `INSUFFICIENT_CREDITS`** when the balance will not cover it. That is a
+   different refusal from `429 QUOTA_EXCEEDED`, which still exists and still
+   means the rolling rate limit — B-06 has to route them differently.
+2. **An image sent to a provider that cannot use it is refused**, `502
+   PROVIDER_ERROR`, rather than quietly ignored. `real` and `local` accept
+   images; `fake` and `kaggle` do not. If your emulator default is `fake`, an
+   image submission will fail until an image-capable model exists — that is
+   deliberate (§5 of the contract), not a bug to work around.
+3. **Every project response carries `mode`** — `text`, `image` or
+   `text_image`, derived server-side. Do not send it.
+
+### Where a new account gets its first credits
+
+`GET /me` grants the signup bonus on the first read after sign-in, once, and is
+a no-op afterwards. If a fresh test account has 0 credits and cannot generate,
+call `/me` — that is the hook, not registration, because the `users` row is
+created three different ways depending on profile and only two of them run
+Python we control.
+
+### Verifying the merge
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m pytest        # expect 537 passed, 53 skipped
+```
+
+**The 53 skips are the Postgres suite, and production runs Postgres.** A green
+plain run is not a green run. The full command is in `backend/README.md`;
+with a disposable Postgres it is **590 passed, 0 skipped**.
+
+### Two things still open, for the team rather than Bruce
+
+Neither is Android work, but both affect what the demo can show, so they are
+here where they will be read:
+
+- **D1.** One message to the lecturer: *does the video have to be generated
+  from the uploaded image, or is the image an input alongside the prompt?*
+  Outstanding since the morning of 08-28. It decides S-12, and guessing wrong
+  costs a week of GPU quota. **S0ra1n0 to send.**
+- **A Kaggle session** for S-13 and S-14. Real video generation is the pass/fail
+  item and the only workstream that has not started. Until it does, the app
+  still plays `FakeVideoProvider` output — so the demo video in B-17 cannot be
+  recorded yet, whatever state the UI is in.

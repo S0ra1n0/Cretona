@@ -58,7 +58,7 @@ The request uses a 4K context, a bounded 180-token response, and
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-That leaves **31 tests skipped**: `test_postgres_parity.py` needs a real
+That leaves **53 tests skipped**: `test_postgres_parity.py` needs a real
 Postgres, and production runs Postgres. Everything with a second implementation
 in `postgres.py` — the credit ledger especially — is unexercised until you run
 them.
@@ -73,6 +73,6 @@ $env:CRETONA_TEST_DATABASE_URL = "postgresql://postgres:test@127.0.0.1:55433/cre
 docker stop cretona-pg-test
 ```
 
-Expect **468 passed, 0 skipped**. `tests/db_safety.py` refuses to apply the
+Expect **590 passed, 0 skipped** (2026-08-28). `tests/db_safety.py` refuses to apply the
 destructive test schema to anything but a local host, so this cannot be pointed
 at Supabase by accident.
