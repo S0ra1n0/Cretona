@@ -50,10 +50,16 @@ class ProjectCreate(ApiModel):
         return self
 
 
+# Which inputs the server saw. Derived from the request rather than sent by
+# the client, so the two can never disagree about what was asked for.
+GenerationMode = Literal["text", "image", "text_image"]
+
+
 class ProjectResponse(ApiModel):
     id: str
     title: str
     prompt: str | None
+    mode: GenerationMode
     image_url: str | None = Field(alias="imageUrl")
     video_url: str | None = Field(alias="videoUrl")
     thumbnail_url: str | None = Field(alias="thumbnailUrl")

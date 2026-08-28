@@ -44,6 +44,11 @@ class PollResult:
 
 class VideoProvider(Protocol):
     name: str
+    # Whether the uploaded image actually reaches the output. Declared rather
+    # than inferred, because "accepts an image_path argument" and "the image
+    # affects the video" are different things, and only the second one is what
+    # a user who uploaded a photo is asking for.
+    supports_image: bool
 
     def submit(self, *, prompt: str | None, image_path: str | None) -> SubmitResult: ...
 
@@ -265,6 +270,10 @@ class MockVideoProvider:
     offline development, and safe defense demonstration.
     """
 
+    # Returns a bundled clip, so an uploaded image could not reach the
+    # output. Saying so is what stops it being offered for image modes.
+    supports_image = False
+
     name = "fake"
 
     def __init__(
@@ -359,6 +368,11 @@ class CloudAiVideoProvider:
     generates. Wiring a genuine video API (Fal.ai, Replicate, Wan 2.1) is
     future work behind EXP-005.
     """
+
+    # Pans across the account's own uploaded still (W4). Not a video model
+    # -- see `_render_kenburns_from_ai_still` -- but the image is
+    # genuinely what appears on screen.
+    supports_image = True
 
     name = "real"
 
@@ -480,6 +494,9 @@ class LocalModelVideoProvider:
     before inference by the resource gate; until one of those clears, there is
     nothing for this tier to execute.
     """
+
+    # Same reference-still path as the cloud tier.
+    supports_image = True
 
     name = "local"
 
@@ -603,6 +620,10 @@ class ExternalVideoProvider:
 
     name = "kaggle"
     external = True
+    # Wan2.1 T2V 1.3B reads the prompt and nothing else. Until an
+    # image-conditioned model is proven on this hardware (EXP-005, D1), an
+    # image sent here would be stored and ignored.
+    supports_image = False
 
     def submit(self, *, prompt: str | None, image_path: str | None) -> SubmitResult:
         # No network, no model, no side effect. The project row created around

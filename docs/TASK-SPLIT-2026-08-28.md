@@ -140,11 +140,27 @@ Three integration points, and only three:
   a local demo has something to buy, and that test is what keeps it honest.
 : **492 passed, 0 skipped** with a disposable Postgres running.
 
-**S-08 · Generation modes** — 2h
-: `prompt` nullable; at least one of `prompt`/`imagePath` required; server
-  derives `mode` and returns it. Provider routing by mode. `image` and
-  `text_image` return `PROVIDER_ERROR` until a model exists — **never** a silent
-  fall back to text. Contract §5.
+**S-08 · Generation modes** — ✅ **DONE 08-28**
+: `prompt` was already nullable with an "at least one input" validator from the
+  W4 work. What was missing: `mode` on the response, and routing.
+: `mode` is **derived and recomputed**, never stored and never sent by the
+  client — there is no column to drift and no way for client and server to
+  disagree about what was asked for.
+: Providers now declare `supports_image`. `fake` is False (returns a bundled
+  clip), `real` and `local` are True (they pan across the account's own upload,
+  W4), `kaggle` is False (Wan2.1 T2V reads the prompt and nothing else).
+: **A provider that cannot use an image refuses the request** with
+  `PROVIDER_ERROR`, before the charge and before the row. This changed an
+  existing expectation: `test_create_project_with_image_path` sent an image to
+  `fake` and expected 201. The mock's own comment already said accepting an
+  image and returning an unrelated clip "would not be" honest — it just did it
+  silently. That test now uses `local` and asserts `mode == "text_image"`.
+: Ownership is still checked **before** capability, so the status code cannot
+  be used to probe whether someone else's storage path exists.
+: **19 tests in `test_generation_modes.py`**, including one that follows the
+  error message's own advice — remove the image, and the same prompt succeeds.
+: **D1 does not block this.** The lecturer's answer decides which *model*
+  serves image modes; `supports_image` is the line it will change.
 
 **S-09 · W2 — external provider mode** — ✅ **DONE 08-28**
 : `ExternalVideoProvider` in `providers.py`, registered as `kaggle`.
@@ -241,7 +257,7 @@ Three integration points, and only three:
   normal user gets 403 — one place to notice if a route is ever added without
   a role gate.
 
-**Final state: 557 passed, 0 skipped** with a disposable Postgres running.
+**Final state: 576 passed, 0 skipped** with a disposable Postgres running.
 
 > **Feature freeze 18:00.** Nothing new after this, in either lane.
 

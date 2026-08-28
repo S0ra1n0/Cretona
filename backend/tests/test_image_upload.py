@@ -59,7 +59,10 @@ def test_create_project_with_image_path(client: TestClient, user_headers: dict[s
         json={
             "prompt": "Animate this painting into flowing water",
             "imagePath": storage_path,
-            "provider": "fake",
+            # `local`, not `fake`: since S-08 a provider that cannot honour an
+            # image refuses the request rather than quietly dropping it, and
+            # the mock tier returns a bundled clip.
+            "provider": "local",
         },
     )
     assert proj_res.status_code == 201
@@ -67,6 +70,7 @@ def test_create_project_with_image_path(client: TestClient, user_headers: dict[s
     assert proj_data["status"] == "pending"
     assert proj_data["imageUrl"] is not None
     assert storage_path in proj_data["imageUrl"]
+    assert proj_data["mode"] == "text_image"
 
 
 def test_create_project_rejects_unowned_image_path(
@@ -78,7 +82,7 @@ def test_create_project_rejects_unowned_image_path(
         json={
             "prompt": "Steal another user's image",
             "imagePath": "other-user/2026-08-15/stolen.png",
-            "provider": "fake",
+            "provider": "local",
         },
     )
     assert proj_res.status_code == 403

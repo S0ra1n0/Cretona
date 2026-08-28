@@ -93,6 +93,22 @@ def compose_enhanced_prompt(
     return ", ".join(parts)[:1000]
 
 
+def generation_mode(prompt: str | None, image_path: str | None) -> str:
+    """What the caller actually supplied.
+
+    Derived here rather than accepted from the request: a client-declared mode
+    could disagree with the fields it sent, and then two parts of the system
+    would have different ideas about what the user asked for.
+    """
+    has_prompt = bool(prompt and prompt.strip())
+    has_image = bool(image_path)
+    if has_prompt and has_image:
+        return "text_image"
+    if has_image:
+        return "image"
+    return "text"
+
+
 def quota_cost(provider_name: str, duration_seconds: int | None) -> int:
     """Weighted cost of one submission.
 
@@ -157,6 +173,18 @@ class ProjectService:
             assert_owns_path(owner_id, request.image_path)
 
         provider = self.providers.get(request.provider)
+
+        mode = generation_mode(request.prompt, request.image_path)
+        if mode != "text" and not getattr(provider, "supports_image", False):
+            # Never silently fall back to text-only (API_CONTRACT.md §5). A
+            # user who supplied an image and received a video that ignores it
+            # has been misled, and would have no way to tell.
+            raise AppError(
+                502,
+                "PROVIDER_ERROR",
+                "Image-to-video is not available yet. "
+                "Remove the image to generate from the prompt alone.",
+            )
 
         duration = request.options.duration_seconds if request.options is not None else None
 
@@ -724,6 +752,9 @@ class ProjectService:
             id=row["id"],
             title=row["title"],
             prompt=row["prompt"],
+            # Recomputed from the stored inputs rather than persisted: there is
+            # no column that could drift out of step with them.
+            mode=generation_mode(row.get("prompt"), row.get("image_path")),
             imageUrl=media_url(row.get("image_path"), video=False),
             videoUrl=media_url(row.get("video_path")),
             thumbnailUrl=media_url(row.get("thumbnail_path")),
