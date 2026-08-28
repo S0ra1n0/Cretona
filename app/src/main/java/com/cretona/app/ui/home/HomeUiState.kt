@@ -31,6 +31,7 @@ data class HomeUiState(
     val selectedCameraMotion: String? = null,
     val selectedAspectRatio: String = "16:9",
     val isOnline: Boolean = true,
+    val creditActionRequired: Boolean = false,
 ) {
     val isQuotaExhausted: Boolean
         get() = account?.quota?.remaining == 0

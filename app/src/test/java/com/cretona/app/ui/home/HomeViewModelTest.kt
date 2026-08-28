@@ -90,9 +90,30 @@ class HomeViewModelTest {
 
         viewModel.generateVideo()
 
-        assertEquals("Enter a prompt before generating.", viewModel.state.value.errorMessage)
+        assertEquals("Enter a prompt or select a reference image.", viewModel.state.value.errorMessage)
         assertEquals(0, repository.createCalls)
     }
+
+    @Test
+    fun `insufficient credits requests navigation without showing a raw error`() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val repository = FakeRepository(
+                createFailure = AppError.Server(
+                    code = 402,
+                    message = "Insufficient credits.",
+                    apiCode = "INSUFFICIENT_CREDITS",
+                ),
+            )
+            val viewModel = HomeViewModel(repository)
+            advanceUntilIdle()
+
+            viewModel.onPromptChanged("A paper dragon")
+            viewModel.generateVideo()
+            advanceUntilIdle()
+
+            assertTrue(viewModel.state.value.creditActionRequired)
+            assertNull(viewModel.state.value.errorMessage)
+        }
 
     @Test
     fun `image picker failure is visible to the user`() {
@@ -343,12 +364,12 @@ class HomeViewModelTest {
             advanceUntilIdle()
 
             viewModel.generateVideo()
-            assertEquals("Enter a prompt before generating.", viewModel.state.value.errorMessage)
+            assertEquals("Enter a prompt or select a reference image.", viewModel.state.value.errorMessage)
 
             viewModel.refreshHistory()
             advanceUntilIdle()
 
-            assertEquals("Enter a prompt before generating.", viewModel.state.value.errorMessage)
+            assertEquals("Enter a prompt or select a reference image.", viewModel.state.value.errorMessage)
             viewModel.dismissErrorMessage()
             assertNull(viewModel.state.value.errorMessage)
         }
@@ -378,6 +399,7 @@ private class FakeRepository(
     private val accountFailure: Boolean = false,
     var historyFailure: Boolean = false,
     private val paginatedHistory: Boolean = false,
+    private val createFailure: AppError? = null,
 ) : CretonaRepository {
     private val pending = project(ProjectStatus.PENDING)
     private val completed = project(
@@ -455,6 +477,7 @@ private class FakeRepository(
         lastAspectRatio = aspectRatio
         lastStylePreset = stylePreset
         lastCameraMotion = cameraMotion
+        createFailure?.let { return AppResult.Failure(it) }
         return AppResult.Success(
             pending.copy(
                 prompt = prompt,

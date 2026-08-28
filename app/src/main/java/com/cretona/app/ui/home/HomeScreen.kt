@@ -93,6 +93,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.compose.PlayerSurface
 import coil3.compose.AsyncImage
 import com.cretona.app.domain.model.GenerationQuota
+import com.cretona.app.domain.model.CreditBalance
 import com.cretona.app.domain.model.ProjectStatus
 import com.cretona.app.domain.model.UserProfile
 import com.cretona.app.domain.model.VideoProject
@@ -115,6 +116,11 @@ fun HomeScreen(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(0.dp),
     viewModel: HomeViewModel = hiltViewModel(),
+    creditBalance: CreditBalance? = null,
+    isCreditLoading: Boolean = false,
+    creditError: String? = null,
+    onRefreshCredits: () -> Unit = {},
+    onOpenCredits: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val focusManager = LocalFocusManager.current
@@ -248,6 +254,11 @@ fun HomeScreen(
         onRefreshAccount = viewModel::refreshAccount,
         onRefresh = viewModel::refreshHistory,
         onDismissError = viewModel::dismissErrorMessage,
+        creditBalance = creditBalance,
+        isCreditLoading = isCreditLoading,
+        creditError = creditError,
+        onRefreshCredits = onRefreshCredits,
+        onOpenCredits = onOpenCredits,
         contentPadding = contentPadding,
         modifier = modifier,
     )
@@ -275,6 +286,11 @@ private fun HomeContent(
     onRefreshAccount: () -> Unit,
     onRefresh: () -> Unit,
     onDismissError: () -> Unit,
+    creditBalance: CreditBalance?,
+    isCreditLoading: Boolean,
+    creditError: String?,
+    onRefreshCredits: () -> Unit,
+    onOpenCredits: () -> Unit,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(0.dp),
 ) {
@@ -320,11 +336,13 @@ private fun HomeContent(
             }
 
             item {
-                QuotaCard(
+                CreditsCard(
                     account = state.account,
-                    isLoading = state.isAccountLoading,
-                    errorMessage = state.accountErrorMessage,
-                    onRetry = onRefreshAccount,
+                    balance = creditBalance,
+                    isLoading = isCreditLoading,
+                    errorMessage = creditError,
+                    onRetry = onRefreshCredits,
+                    onOpenCredits = onOpenCredits,
                 )
             }
 
@@ -543,6 +561,11 @@ private fun HomeContent(
                                     onClick = { onProviderSelected("local") },
                                     label = { Text("💻 Local") },
                                 )
+                                FilterChip(
+                                    selected = state.selectedProvider == "kaggle",
+                                    onClick = { onProviderSelected("kaggle") },
+                                    label = { Text("🎬 Wan2.1 Kaggle") },
+                                )
                             }
                         }
                     }
@@ -559,7 +582,7 @@ private fun HomeContent(
             }
 
             item {
-                val quotaCost = if (state.selectedProvider in listOf("real", "wan21")) 2 else 1
+                val creditCost = creditBalance?.effectiveCost
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Button(
                         onClick = onGenerate,
@@ -583,7 +606,8 @@ private fun HomeContent(
                             Text("Starting Generation...")
                         } else {
                             Text(
-                                "🚀 Generate AI Video (-$quotaCost Quota)",
+                                "🚀 Generate AI Video" +
+                                    (creditCost?.let { " (-$it credits)" } ?: ""),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                             )
@@ -592,13 +616,13 @@ private fun HomeContent(
 
                     if (state.isAccountLoading) {
                         Text(
-                            "Checking quota before generation.",
+                            "Checking account and credit limits before generation.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     } else if (state.isQuotaExhausted) {
                         Text(
-                            "Generation is unavailable until your quota resets.",
+                            "The rolling generation limit is exhausted. Credits and rate limits are separate.",
                             color = MaterialTheme.colorScheme.error,
                             style = MaterialTheme.typography.bodySmall,
                         )
@@ -652,11 +676,13 @@ private fun HomeContent(
 }
 
 @Composable
-private fun QuotaCard(
+private fun CreditsCard(
     account: UserProfile?,
+    balance: CreditBalance?,
     isLoading: Boolean,
     errorMessage: String?,
     onRetry: () -> Unit,
+    onOpenCredits: () -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -675,7 +701,7 @@ private fun QuotaCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "Studio Membership",
+                    text = "Credit Wallet",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.primary,
@@ -706,72 +732,47 @@ private fun QuotaCard(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                    Text("Checking remaining generations...", style = MaterialTheme.typography.bodySmall)
+                    Text("Checking credit balance...", style = MaterialTheme.typography.bodySmall)
                 }
 
                 errorMessage != null -> {
-                    Text("Quota unavailable: $errorMessage", style = MaterialTheme.typography.bodySmall)
-                    OutlinedButton(onClick = onRetry) { Text("Retry Quota") }
+                    Text("Credits unavailable: $errorMessage", style = MaterialTheme.typography.bodySmall)
+                    OutlinedButton(onClick = onRetry) { Text("Retry") }
                 }
 
-                account != null -> QuotaDetails(account)
+                balance != null -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Bottom,
+                    ) {
+                        Text(
+                            "⚡ ${balance.balance} credits",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        account?.let {
+                            Text(it.displayName, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    Text(
+                        "Next generation costs ${balance.effectiveCost} credits" +
+                            balance.activeDiscount?.let { " · ${it.discountPercent}% off (${it.name})" }.orEmpty(),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    account?.quota?.let {
+                        Text(
+                            "Rolling safety limit: ${it.remaining}/${it.limit} remaining",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                    OutlinedButton(onClick = onOpenCredits) { Text("Manage credits") }
+                }
             }
         }
     }
-}
-
-@Composable
-private fun QuotaDetails(account: UserProfile) {
-    val quota = account.quota
-    val fraction = if (quota.limit == 0) 0f else quota.remaining.toFloat() / quota.limit
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.Bottom,
-    ) {
-        Text(
-            text = "⚡ ${quota.remaining} of ${quota.limit} credits remaining",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-        )
-        Text(
-            text = "${account.displayName}",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-    LinearProgressIndicator(
-        progress = { fraction.coerceIn(0f, 1f) },
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(6.dp),
-        color = MaterialTheme.colorScheme.primary,
-        trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
-    )
-    Text(
-        if (quota.remaining == 0) {
-            resetCopy(quota)
-        } else {
-            "${quota.used} credits used in current rolling window."
-        },
-        color = if (quota.remaining == 0) {
-            MaterialTheme.colorScheme.error
-        } else {
-            MaterialTheme.colorScheme.onSurfaceVariant
-        },
-        style = MaterialTheme.typography.bodySmall,
-    )
-}
-
-private fun resetCopy(quota: GenerationQuota): String {
-    val formatted = quota.resetsAt?.let { value ->
-        runCatching {
-            DateTimeFormatter.ofLocalizedDateTime(FormatStyle.SHORT)
-                .format(Instant.parse(value).atZone(ZoneId.systemDefault()))
-        }.getOrNull()
-    }
-    return formatted?.let { "Quota used. Next generation becomes available after $it." }
-        ?: "Quota used. Refresh later to check when a generation becomes available."
 }
 
 private fun hideKeyboard(
@@ -794,6 +795,7 @@ private fun CurrentProjectCard(
         ) {
             Text(project.title, style = MaterialTheme.typography.titleLarge)
             ProjectStatusText(project)
+            Text("Mode: ${project.mode.replace('_', '+')}", style = MaterialTheme.typography.labelMedium)
 
             if (project.status == ProjectStatus.PENDING || project.status == ProjectStatus.GENERATING) {
                 val progressFraction = (project.progressPercent.coerceIn(0, 100)) / 100f
@@ -1150,6 +1152,18 @@ private fun HomeScreenPreview() {
             onRefreshAccount = {},
             onRefresh = {},
             onDismissError = {},
+            creditBalance = CreditBalance(
+                balance = 15,
+                generationCost = 2,
+                effectiveCost = 1,
+                activeDiscount = null,
+                lifetimeGranted = 20,
+                lifetimeSpent = 5,
+            ),
+            isCreditLoading = false,
+            creditError = null,
+            onRefreshCredits = {},
+            onOpenCredits = {},
         )
     }
 }

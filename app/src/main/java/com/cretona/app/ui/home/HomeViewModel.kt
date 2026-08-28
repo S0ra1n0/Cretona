@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cretona.app.core.result.AppResult
+import com.cretona.app.core.result.AppError
 import com.cretona.app.core.util.ImageCompressor
 import com.cretona.app.domain.model.VideoProject
 import com.cretona.app.domain.repository.CretonaRepository
@@ -208,7 +209,7 @@ class HomeViewModel @Inject constructor(
         val prompt = state.value.prompt.trim()
         val hasImage = state.value.selectedImageBytes != null
         if (prompt.isEmpty() && !hasImage) {
-            _state.update { it.copy(errorMessage = "Enter a prompt before generating.") }
+            _state.update { it.copy(errorMessage = "Enter a prompt or select a reference image.") }
             return
         }
         if (state.value.isQuotaExhausted) {
@@ -280,10 +281,20 @@ class HomeViewModel @Inject constructor(
                 }
 
                 is AppResult.Failure -> _state.update {
-                    it.copy(isSubmitting = false, errorMessage = result.error.message)
+                    val needsCredits = (result.error as? AppError.Server)?.apiCode ==
+                        "INSUFFICIENT_CREDITS"
+                    it.copy(
+                        isSubmitting = false,
+                        creditActionRequired = needsCredits,
+                        errorMessage = if (needsCredits) null else result.error.message,
+                    )
                 }
             }
         }
+    }
+
+    fun consumeCreditAction() {
+        _state.update { it.copy(creditActionRequired = false) }
     }
 
     fun refreshHistory() {

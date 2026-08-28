@@ -26,6 +26,7 @@ data class VideoProject(
     val durationSeconds: Int?,
     val aspectRatio: String,
     val createdAt: String,
+    val mode: String = "text",
 ) {
     val isTerminal: Boolean
         get() = when (status) {

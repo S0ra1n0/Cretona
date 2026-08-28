@@ -214,6 +214,11 @@ fun ProjectHistoryCard(
                                 MaterialTheme.colorScheme.outline
                             },
                         )
+                        Text(
+                            "Mode: ${project.mode.replace('_', '+')}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.outline,
+                        )
                         if (project.imageUrl != null) {
                             Text(
                                 "📷 Image-to-Video",

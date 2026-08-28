@@ -22,6 +22,7 @@ class ProjectDtoMappingTest {
             createdAt = "2026-08-10T00:00:00Z",
             updatedAt = "2026-08-10T00:00:01Z",
             completedAt = "2026-08-10T00:00:01Z",
+            mode = "text_image",
         ).toDomain()
 
         assertEquals(ProjectStatus.COMPLETED, project.status)
@@ -29,6 +30,7 @@ class ProjectDtoMappingTest {
         assertEquals("http://example.test/media/demo-thumbnail.jpg", project.thumbnailUrl)
         assertEquals(5, project.durationSeconds)
         assertEquals("9:16", project.aspectRatio)
+        assertEquals("text_image", project.mode)
         assertEquals(9f / 16f, project.thumbnailAspectRatio)
         assertNull(project.errorMessage)
     }

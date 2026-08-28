@@ -247,6 +247,7 @@ data class ProjectDto(
     val createdAt: String,
     val updatedAt: String,
     val completedAt: String? = null,
+    val mode: String = "text",
 )
 
 @Serializable

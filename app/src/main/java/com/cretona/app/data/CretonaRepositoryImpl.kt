@@ -240,6 +240,7 @@ internal fun ProjectDto.toDomain(): VideoProject = VideoProject(
     durationSeconds = durationSeconds,
     aspectRatio = aspectRatio,
     createdAt = createdAt,
+    mode = mode,
 )
 
 internal fun MeDto.toDomain(): UserProfile = UserProfile(

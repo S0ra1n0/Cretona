@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.WifiOff
@@ -31,6 +32,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,6 +49,8 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cretona.app.ui.history.HistoryScreen
+import com.cretona.app.ui.credits.CreditsScreen
+import com.cretona.app.ui.credits.CreditsViewModel
 import com.cretona.app.ui.home.HomeScreen
 import com.cretona.app.ui.home.HomeViewModel
 import com.cretona.app.ui.profile.ProfileScreen
@@ -56,6 +60,7 @@ import com.cretona.app.ui.theme.GalaxyViolet
 enum class MainTab(val label: String, val icon: ImageVector) {
     HOME("Home", Icons.Default.Home),
     HISTORY("History", Icons.AutoMirrored.Filled.List),
+    CREDITS("Credits", Icons.Default.AccountBalanceWallet),
     PROFILE("Profile", Icons.Default.Person),
 }
 
@@ -77,8 +82,10 @@ fun MainScreen(
     onEditProfile: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = hiltViewModel(),
+    creditsViewModel: CreditsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val creditsState by creditsViewModel.state.collectAsStateWithLifecycle()
     var selectedTab by rememberSaveable { mutableStateOf(MainTab.HOME) }
 
     // Returning from profile editing (or the admin screen) must not leave a
@@ -90,8 +97,21 @@ fun MainScreen(
             isFirstResume = false
         } else {
             viewModel.refreshAccount()
+            creditsViewModel.refreshAll()
         }
         onPauseOrDispose { }
+    }
+
+    LaunchedEffect(state.creditActionRequired) {
+        if (state.creditActionRequired) {
+            selectedTab = MainTab.CREDITS
+            creditsViewModel.showMessage("Add credits to continue creating your video.")
+            viewModel.consumeCreditAction()
+        }
+    }
+
+    LaunchedEffect(state.currentProject?.id) {
+        if (state.currentProject != null) creditsViewModel.refreshBalance()
     }
 
     val headerGradient = remember {
@@ -179,6 +199,11 @@ fun MainScreen(
             MainTab.HOME -> HomeScreen(
                 contentPadding = innerPadding,
                 viewModel = viewModel,
+                creditBalance = creditsState.balance,
+                isCreditLoading = creditsState.isLoading,
+                creditError = creditsState.errorMessage,
+                onRefreshCredits = creditsViewModel::refreshAll,
+                onOpenCredits = { selectedTab = MainTab.CREDITS },
             )
 
             MainTab.HISTORY -> HistoryScreen(
@@ -203,6 +228,19 @@ fun MainScreen(
                 isLoading = state.isAccountLoading,
                 errorMessage = state.accountErrorMessage,
                 onRetry = viewModel::refreshAccount,
+                contentPadding = innerPadding,
+            )
+
+            MainTab.CREDITS -> CreditsScreen(
+                state = creditsState,
+                onSectionSelected = creditsViewModel::selectSection,
+                onRefresh = creditsViewModel::refreshAll,
+                onLoadMore = creditsViewModel::loadMoreTransactions,
+                onSelectPackage = creditsViewModel::selectPackage,
+                onConfirmPurchase = creditsViewModel::confirmPurchase,
+                onDismissPurchase = creditsViewModel::dismissPurchase,
+                onClaimEvent = creditsViewModel::claimEvent,
+                onClearMessage = creditsViewModel::clearMessage,
                 contentPadding = innerPadding,
             )
         }
