@@ -15,7 +15,11 @@ sealed interface AppError {
     data class Unauthorized(override val message: String = "Session expired") : AppError
     data class Forbidden(override val message: String = "Not allowed") : AppError
     data class NotFound(override val message: String = "Not found") : AppError
-    data class Server(val code: Int, override val message: String) : AppError
+    data class Server(
+        val code: Int,
+        override val message: String,
+        val apiCode: String? = null,
+    ) : AppError
     data class Unknown(override val message: String = "Something went wrong") : AppError
 }
 

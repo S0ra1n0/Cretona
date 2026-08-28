@@ -65,7 +65,7 @@ class CretonaRepositoryMutationTest {
 
         assertTrue(result is AppResult.Failure)
         assertEquals(
-            AppError.Server(409, "A generating project cannot be deleted."),
+            AppError.Server(409, "A generating project cannot be deleted.", "CONFLICT"),
             (result as AppResult.Failure).error,
         )
     }

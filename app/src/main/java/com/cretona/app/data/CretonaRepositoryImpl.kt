@@ -204,22 +204,18 @@ class CretonaRepositoryImpl @Inject constructor(
     override suspend fun getAdminMetrics(): AppResult<AdminMetrics> = apiCall {
         api.getAdminMetrics().toDomain()
     }
+}
 
-    private suspend fun <T> apiCall(block: suspend () -> T): AppResult<T> = try {
-        AppResult.Success(block())
-    } catch (cancellation: CancellationException) {
-        // Must be rethrown, and must come before the catch-all below.
-        // CancellationException is an Exception, so swallowing it turns a
-        // deliberate cancel into a user-visible error and leaves the coroutine
-        // running instead of unwinding.
-        throw cancellation
-    } catch (error: HttpException) {
-        AppResult.Failure(error.toAppError())
-    } catch (_: IOException) {
-        AppResult.Failure(AppError.Network("Cannot reach the FastAPI server."))
-    } catch (_: Exception) {
-        AppResult.Failure(AppError.Unknown())
-    }
+internal suspend fun <T> apiCall(block: suspend () -> T): AppResult<T> = try {
+    AppResult.Success(block())
+} catch (cancellation: CancellationException) {
+    throw cancellation
+} catch (error: HttpException) {
+    AppResult.Failure(error.toAppError())
+} catch (_: IOException) {
+    AppResult.Failure(AppError.Network("Cannot reach the FastAPI server."))
+} catch (_: Exception) {
+    AppResult.Failure(AppError.Unknown())
 }
 
 internal fun ProjectDto.toDomain(): VideoProject = VideoProject(
@@ -329,11 +325,11 @@ private val errorJson = Json { ignoreUnknownKeys = true; explicitNulls = false }
  *
  * Reads the body at most once -- `errorBody().string()` consumes the stream.
  */
-private fun HttpException.serverMessage(): String? = runCatching {
+private fun HttpException.serverError(): ApiErrorBody? = runCatching {
     response()?.errorBody()?.string()
         ?.takeIf { it.isNotBlank() }
-        ?.let { errorJson.decodeFromString(ApiErrorEnvelope.serializer(), it).error?.message }
-}.getOrNull()?.takeIf { it.isNotBlank() }
+        ?.let { errorJson.decodeFromString(ApiErrorEnvelope.serializer(), it).error }
+}.getOrNull()
 
 /**
  * Translates a failed call, preferring the backend's own wording.
@@ -347,13 +343,18 @@ private fun HttpException.serverMessage(): String? = runCatching {
  * internal detail, and the caller can do nothing with it either way.
  */
 internal fun HttpException.toAppError(): AppError {
-    val detail = serverMessage()
+    val body = serverError()
+    val detail = body?.message?.takeIf { it.isNotBlank() }
     return when (code()) {
         401 -> detail?.let(AppError::Unauthorized) ?: AppError.Unauthorized()
         403 -> detail?.let(AppError::Forbidden) ?: AppError.Forbidden()
         404 -> detail?.let(AppError::NotFound) ?: AppError.NotFound()
         in 500..599 -> AppError.Server(code(), "The server could not complete the request.")
-        else -> AppError.Server(code(), detail ?: "Request failed with HTTP ${code()}.")
+        else -> AppError.Server(
+            code = code(),
+            message = detail ?: "Request failed with HTTP ${code()}.",
+            apiCode = body?.code?.takeIf { it.isNotBlank() },
+        )
     }
 }
 

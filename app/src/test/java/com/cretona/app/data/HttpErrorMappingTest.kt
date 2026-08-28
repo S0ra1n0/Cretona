@@ -20,6 +20,7 @@ class HttpErrorMappingTest {
         val error = httpError(409, """{"error":{"code":"CONFLICT","message":"That username is already taken."}}""")
 
         assertEquals("That username is already taken.", error.message)
+        assertEquals("CONFLICT", (error as AppError.Server).apiCode)
     }
 
     @Test
@@ -58,6 +59,7 @@ class HttpErrorMappingTest {
 
         assertEquals("The server could not complete the request.", error.message)
         assertTrue(error is AppError.Server)
+        assertEquals(null, (error as AppError.Server).apiCode)
     }
 
     @Test
