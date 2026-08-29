@@ -9,6 +9,14 @@
 
 Ticket ids are stable. Use them in commit messages: `feat(credits): S-03 …`.
 
+> **Audit update 2026-08-29.** Bruce's B-03 through B-13 implementations are
+> present on `main`, compile against the real repositories, and passed the
+> relevant automated gates. They are **source-complete**, not yet device-
+> accepted: B-14 and B-16 still own the final emulator journeys, screenshots
+> and live integration proof. S-12 is stretch scope because the lecturer gave
+> no model or image-conditioning mandate; S-13/S-14 are the release-critical
+> worker and real-video path. See `ROADMAP.md` for the concise current state.
+
 ---
 
 ## 0. How the two lanes stay parallel
@@ -19,13 +27,12 @@ Ticket ids are stable. Use them in commit messages: `feat(credits): S-03 …`.
 > 08-30 and happened on 08-28.
 
 Bruce built B-02's `FakeCreditsRepository` so screens were buildable on day 1.
-That worked, and it is now **surplus**: the real endpoints are live, so the
-next Android work should go straight against them. See §7 for the one binding
-to change.
+That seam worked. `CreditsRepositoryImpl` is now bound to the real FastAPI
+endpoints; the fake is no longer the application binding.
 
 | When | What | Status |
 |---|---|---|
-| ~~End of 08-30~~ | Credits + events endpoints live; Bruce switches off fakes | ✅ **endpoints landed 08-28**, two days early. The swap is Bruce's next move |
+| ~~End of 08-30~~ | Credits + events endpoints live; Bruce switches off fakes | ✅ endpoints landed 08-28; real binding and screens audited 08-29 |
 | End of 09-02 | Worker produces a real clip; Bruce plays it in the app | ⏸ blocked on a Kaggle session |
 | 09-03 18:00 | Feature freeze. Everything after is integration and docs | pending |
 
@@ -163,8 +170,9 @@ to change.
   be used to probe whether someone else's storage path exists.
 : **19 tests in `test_generation_modes.py`**, including one that follows the
   error message's own advice — remove the image, and the same prompt succeeds.
-: **D1 does not block this.** The lecturer's answer decides which *model*
-  serves image modes; `supports_image` is the line it will change.
+: **D1 does not block this.** The lecturer imposed no model requirement;
+  `supports_image` remains the honest capability gate if the team later adds
+  an image-conditioned model.
 
 **S-09 · W2 — external provider mode** — ✅ **DONE 08-28**
 : `ExternalVideoProvider` in `providers.py`, registered as `kaggle`.
@@ -208,7 +216,7 @@ to change.
 
 ### Day 5 · Tue 09-01
 
-**S-12 · D1 spike — image-to-video** — **hard stop 3h**
+**S-12 · Optional image-to-video spike** — **STRETCH, after S-14; hard stop 3h**
 : One Kaggle session. LTX-Video 2B first (T2V + I2V, distilled — may also help
   D2), then Stable Video Diffusion. **Stop at 3 hours regardless of progress**
   and record the result either way.
@@ -319,66 +327,66 @@ sample accounts; final suite run.
   that fails if anyone gives a request field a default value, which is what
   `encodeDefaults = false` silently drops.
 
-**B-03 · Credits screen** — 2h · *depends: B-02*
+**B-03 · Credits screen** — ✅ **SOURCE COMPLETE 08-29**
 : Balance, `effectiveCost`, the `activeDiscount` banner when non-null, and the
   paged transaction list. Each `reason` maps to a label and icon; an unknown
   value renders as the raw string rather than crashing.
 
 ### Day 2 · Sat 08-29
 
-**B-04 · Buy credits flow** — 3h
+**B-04 · Buy credits flow** — ✅ **SOURCE COMPLETE 08-29**
 : Package list → confirm → `POST /payments` with an `Idempotency-Key` → balance
   updates. Handle `PACKAGE_INACTIVE` by refreshing.
 
-**B-05 · Home: replace the quota chip** — 2h
+**B-05 · Home: replace the quota chip** — ✅ **SOURCE COMPLETE 08-29**
 : The chip currently reads `"⚡ ${quota.remaining} of ${quota.limit} credits
   remaining"` — that is the rate limit, not a balance. Replace with the real
   balance and the effective cost of one generation.
 
-**B-06 · `402` handling** — 1h
+**B-06 · `402` handling** — ✅ **SOURCE COMPLETE 08-29**
 : `INSUFFICIENT_CREDITS` routes to the Credits screen with an actionable
   message. Never a raw error. Keep `QUOTA_EXCEEDED` (429) distinct — different
   message, different action.
 
 ### Day 3 · Sun 08-30
 
-**B-07 · Three generation modes** — 3h
+**B-07 · Three generation modes** — ✅ **SOURCE COMPLETE 08-29**
 : Prompt optional; image optional; submit enabled when either is present. Show
   the derived `mode` back from the server. Handle `PROVIDER_ERROR` on image
   modes with an honest message — the feature is not available yet, not "try
   again".
 
-**B-08 · Admin: Manage list replaces the tab row** — 2h
+**B-08 · Admin: Manage list replaces the tab row** — ✅ **SOURCE COMPLETE 08-29**
 : Four tabs will not become ten on a phone. Stats stays the landing dashboard;
   everything else becomes a row that navigates to its own screen.
 
-**B-09 · Admin: Videos screen** — 2h
+**B-09 · Admin: Videos screen** — ✅ **SOURCE COMPLETE 08-29**
 : List with status and owner filters, from `GET /admin/projects`.
 
-> **Integration point:** switch `CretonaRepositoryImpl` off the fakes.
+> **Integration point:** completed 08-29; real repositories are bound.
 
 ### Day 4 · Mon 08-31
 
-**B-10 · Events screen** — 3h
+**B-10 · Events screen** — ✅ **SOURCE COMPLETE 08-29**
 : Cards for grants and discounts. **Bind the button to `claimable` only** — do
   not re-derive it from windows and counts; the server owns that rule.
   Discounts render as information, never as a button. Show `nextActiveAt` when
   not active.
 : Handle `EVENT_NOT_ACTIVE`, `EVENT_ALREADY_CLAIMED`, `EVENT_FULL` distinctly.
 
-**B-11 · Admin: Credits and Transactions screens** — 3h
+**B-11 · Admin: Credits and Transactions screens** — ✅ **SOURCE COMPLETE 08-29**
 : Per-user credit adjustment with a note; the global transaction list with
   filters.
 
 ### Day 5 · Tue 09-01
 
-**B-12 · Admin: Events, Packages, Settings screens** — 5h
+**B-12 · Admin: Events, Packages, Settings screens** — ✅ **SOURCE COMPLETE 08-29**
 : Event create and edit covering every field in contract §7 — kind, recurrence,
   window, minutes, days, cap. Package CRUD. Generation cost in Settings.
 
 ### Day 6 · Wed 09-02
 
-**B-13 · Admin dashboard tiles** — 3h · ~~*depends: S-15*~~ **unblocked**
+**B-13 · Admin dashboard tiles** — ✅ **SOURCE COMPLETE 08-29**
 : New users, credits granted, credits used, revenue, per-event take-up.
 : `GET /admin/stats` already returns all of it (S-15, done 08-28), so build
   straight against the live endpoint — there is no contract-shape phase and
@@ -417,8 +425,8 @@ credits, creates an event, reads the dashboard.
 
 | Item | Who | When |
 |---|---|---|
-| Ask the lecturer the D1 question | S0ra1n0 | **today** |
-| Decide the FramePack/LTX fallback if the answer is "image must drive it" | Both | before the reply arrives |
+| D1 lecturer question | — | Resolved: no model or image-conditioning mandate; S-12 is stretch scope |
+| Decide whether an image model is worth the quota | Both | after S-14 and blind Wan2.1 scoring |
 | Resolve `durationSeconds` 2–10 vs a fixed 4.06 s clip | Both | with the contract, day 1 |
 | Report writing | Both | 09-04 |
 
@@ -446,21 +454,22 @@ the report and demo video.
   read-only list with manual admin grants and keep the tables.
 - **End of 09-01** — if W3 is not claiming rows, spend 09-02 getting one clip
   through the notebook with a manual upload so §6 has a demo video, then resume.
-- **09-01, 3 hours in** — the D1 spike stops whether or not it has worked.
+- **09-01, 3 hours in** — any optional image-model spike stops whether or not it has worked.
 - **09-03 18:00** — feature freeze regardless of state.
 
 ---
 
-## 6. Progress — end of 2026-08-28
+## 6. Progress — reconciled 2026-08-29
 
-**Backend is done except the Kaggle worker.** 14 of 18 backend tickets closed in
-one day; the four left all need either a Kaggle session or the D1 answer.
+**Backend API/database work is done except the Kaggle worker.** S-12 is an
+optional image-model spike; S-13/S-14 remain the critical worker and first
+real-video path.
 
 | Ticket | | Ticket | |
 |---|---|---|---|
 | S-01 migration | ✅ | S-10 `EventService` | ✅ |
 | S-02 seed | ✅ | S-11 event endpoints + discount | ✅ |
-| S-03 `ADR-010` | ✅ | S-12 image-to-video spike | ⏸ needs D1 |
+| S-03 `ADR-010` | ✅ | S-12 image-to-video spike | stretch, timeboxed |
 | S-04 `CreditService` | ✅ | S-13 Kaggle worker | ⏸ needs Kaggle |
 | S-05 charge and refund | ✅ | S-14 first real clip | ⏸ needs Kaggle |
 | S-05a signup bonus | ✅ | S-15 `/admin/stats` | ✅ |
@@ -471,9 +480,11 @@ one day; the four left all need either a Kaggle session or the D1 answer.
 
 ### Verification
 
-**590 passed, 0 skipped** against SQLite *and* a disposable Postgres 17; ruff
-clean. Migration `013` and its seed are applied to live Supabase and verified
-there, including two constraint probes that confirm the CHECKs actually bite.
+Historical 2026-08-28 evidence records **590 passed, 0 skipped** against SQLite
+and disposable Postgres 17, with migration `013` and its seed applied and
+constraint-probed on live Supabase. The 2026-08-29 audit observed 537 passed,
+53 Postgres-only skipped and Ruff clean; a current Postgres rerun is blocked by
+the local Docker Desktop failure and must not be claimed as current evidence.
 
 Running the Postgres half is documented in `backend/README.md`. Plain `pytest`
 skips 31–66 tests, and production runs Postgres — so a green plain run is not a
@@ -498,49 +509,32 @@ green run.
 
 | | Needs |
 |---|---|
-| **D1 — must the image drive the video?** | **One message to the lecturer.** Unanswered since 08-28. It decides S-12, and a wrong guess costs a week of GPU quota |
-| A fallback if the answer is "it must" | Both of you, before the reply lands. FramePack has never been run |
-| S-12 / S-13 / S-14 | A Kaggle session, and the D1 answer |
-| Bruce's lane | **Nothing.** Every endpoint his screens need now exists |
+| **D1 — must the image drive the video?** | Resolved from lecturer scope: no specific model or image-conditioning requirement |
+| Optional image-model fallback | Only after S-13/S-14 and only if the Wan2.1 blind score is unacceptable |
+| S-13 / S-14 | A Kaggle session and the external worker |
+| Bruce's lane | B-14 screenshots, B-16 device/integration acceptance, then B-17/B-18 |
 
 ---
 
-## 7. Merging this branch — for Bruce
+## 7. Integration status — audited 2026-08-29
 
-Branch `khoa` is **96 commits ahead of `main`**. Nine of those are this day's
-credit and event work (`f8803d2` → `59523d2`): 47 files, +9080/−158. The other
-87 are the earlier profile, auth, admin and EXP-005 work — check whether your
-branch already has them before assuming this merge is small.
+The earlier `khoa` integration instructions are superseded. Local `main`
+contains patch-equivalent Khoa work plus the later Android/admin integration;
+the remaining remote branch is cleanup state, not unmerged product work.
 
-**Ten Android files, five of them new.** Modified: `AndroidManifest.xml`
-(camera permission), `res/xml/file_paths.xml` (capture cache path),
-`CretonaApi.kt` (six endpoints appended), `RepositoryModule.kt` (one binding),
-`HomeScreen.kt` (the image picker became Choose + Take photo). New:
-`Credits.kt`, `CreditsDto.kt`, `CreditsRepository.kt`,
-`FakeCreditsRepository.kt`, `CreditsSerializationTest.kt`.
+### Runtime state
 
-`HomeScreen.kt` is the only file with a real chance of conflicting with your UI
-work — the change is around the photo-picker launcher and the attach-image
-button.
-
-### Nothing to run
-
-- **No migration to apply.** `013` and its seed are already on live Supabase,
-  applied and verified on 08-28.
+- Migration `013` and its seed were applied and verified on 08-28; that is
+  historical evidence, not a new live verification from this audit.
 - **Local SQLite migrates itself** on first start. `ADDED_COLUMNS` widens an
   existing file and `_seed_defaults` inserts the generation cost, the signup
   bonus and the three credit packages — so a local demo has something to buy.
 - **No new dependencies**, backend or Android. No `.env` change.
 
-### Your one-line switch
+### Repository binding
 
-`FakeCreditsRepository` is bound in `RepositoryModule.kt` with a
-`TODO(S-07/S-11)`. Those tickets are done, so write `CreditsRepositoryImpl`
-against `CretonaApi` — the endpoints already exist — and change that binding.
-Nothing else moves: the screens are written against `CreditsRepository`.
-
-The fake is worth keeping for previews and tests. It reproduces the refusals,
-not just the happy path.
+`CreditsRepositoryImpl` already implements the FastAPI endpoints and is bound
+in `RepositoryModule.kt`. Do not recreate or rebind the fake in production.
 
 ### What is live, and what it means for a screen
 
@@ -588,16 +582,12 @@ cd backend
 plain run is not a green run. The full command is in `backend/README.md`;
 with a disposable Postgres it is **590 passed, 0 skipped**.
 
-### Two things still open, for the team rather than Bruce
+### Two things still open for the team
 
 Neither is Android work, but both affect what the demo can show, so they are
 here where they will be read:
 
-- **D1.** One message to the lecturer: *does the video have to be generated
-  from the uploaded image, or is the image an input alongside the prompt?*
-  Outstanding since the morning of 08-28. It decides S-12, and guessing wrong
-  costs a week of GPU quota. **S0ra1n0 to send.**
-- **A Kaggle session** for S-13 and S-14. Real video generation is the pass/fail
-  item and the only workstream that has not started. Until it does, the app
-  still plays `FakeVideoProvider` output — so the demo video in B-17 cannot be
-  recorded yet, whatever state the UI is in.
+- **A Kaggle session** for S-13 and S-14. Wan2.1 generation is proven in the
+  notebook, but the worker-to-FastAPI-to-Android path is not.
+- **Blind scoring.** The four distinct Wan2.1 clips are scoreable, but the
+  quality scorecard remains empty; feasibility must not be reported as quality.

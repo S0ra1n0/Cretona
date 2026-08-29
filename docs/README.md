@@ -1,7 +1,5 @@
 # Cretona Documentation
 
-# Cretona Documentation
-
 ## Start here
 
 | If you want to… | Read |
