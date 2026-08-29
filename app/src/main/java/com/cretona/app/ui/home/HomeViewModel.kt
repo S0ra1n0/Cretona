@@ -308,12 +308,18 @@ class HomeViewModel @Inject constructor(
                 }
 
                 is AppResult.Failure -> _state.update {
-                    val needsCredits = (result.error as? AppError.Server)?.apiCode ==
-                        "INSUFFICIENT_CREDITS"
+                    val apiCode = (result.error as? AppError.Server)?.apiCode
+                    val needsCredits = apiCode == "INSUFFICIENT_CREDITS"
                     it.copy(
                         isSubmitting = false,
                         creditActionRequired = needsCredits,
-                        errorMessage = if (needsCredits) null else result.error.message,
+                        errorMessage = when {
+                            needsCredits -> null
+                            hasImage && apiCode == "PROVIDER_ERROR" ->
+                                "Image-to-video is not available for this provider yet. " +
+                                    "Remove the image or choose an image-capable provider."
+                            else -> result.error.message
+                        },
                     )
                 }
             }

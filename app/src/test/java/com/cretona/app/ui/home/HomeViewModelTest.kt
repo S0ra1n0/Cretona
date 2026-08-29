@@ -149,6 +149,38 @@ class HomeViewModelTest {
         }
 
     @Test
+    fun `unsupported image mode explains the provider limitation`() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val repository = FakeRepository(
+                createFailure = AppError.Server(
+                    code = 502,
+                    message = "The server could not complete the request.",
+                    apiCode = "PROVIDER_ERROR",
+                ),
+            )
+            val viewModel = HomeViewModel(repository).apply {
+                ioDispatcher = mainDispatcherRule.dispatcher
+                imageCompressor = { bytes, mime -> bytes to mime }
+            }
+            viewModel.onImageSelected(
+                uri = null,
+                bytes = byteArrayOf(1),
+                mimeType = "image/jpeg",
+                fileName = "reference.jpg",
+            )
+            advanceUntilIdle()
+
+            viewModel.generateVideo()
+            advanceUntilIdle()
+
+            assertEquals(
+                "Image-to-video is not available for this provider yet. " +
+                    "Remove the image or choose an image-capable provider.",
+                viewModel.state.value.errorMessage,
+            )
+        }
+
+    @Test
     fun `image picker failure is visible to the user`() {
         val viewModel = HomeViewModel(FakeRepository())
 

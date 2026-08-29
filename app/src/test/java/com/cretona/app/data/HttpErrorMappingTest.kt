@@ -52,14 +52,14 @@ class HttpErrorMappingTest {
     }
 
     @Test
-    fun `a server fault keeps the generic line even when it explains itself`() {
-        // A 5xx message is an internal detail and the caller can act on none
-        // of it, so it is deliberately not surfaced.
+    fun `a server fault hides its detail but preserves its machine code`() {
+        // A 5xx message is an internal detail and is deliberately not surfaced.
+        // The stable code remains available for safe client-side routing.
         val error = httpError(500, """{"error":{"code":"INTERNAL","message":"psycopg pool exhausted"}}""")
 
         assertEquals("The server could not complete the request.", error.message)
         assertTrue(error is AppError.Server)
-        assertEquals(null, (error as AppError.Server).apiCode)
+        assertEquals("INTERNAL", (error as AppError.Server).apiCode)
     }
 
     @Test

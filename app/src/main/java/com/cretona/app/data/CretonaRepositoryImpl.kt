@@ -460,7 +460,11 @@ internal fun HttpException.toAppError(): AppError {
         401 -> detail?.let(AppError::Unauthorized) ?: AppError.Unauthorized()
         403 -> detail?.let(AppError::Forbidden) ?: AppError.Forbidden()
         404 -> detail?.let(AppError::NotFound) ?: AppError.NotFound()
-        in 500..599 -> AppError.Server(code(), "The server could not complete the request.")
+        in 500..599 -> AppError.Server(
+            code = code(),
+            message = "The server could not complete the request.",
+            apiCode = body?.code?.takeIf { it.isNotBlank() },
+        )
         else -> AppError.Server(
             code = code(),
             message = detail ?: "Request failed with HTTP ${code()}.",
