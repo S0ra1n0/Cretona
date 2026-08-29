@@ -33,8 +33,8 @@ The AI responsibilities are deliberately separate:
 |---|---|---|---|
 | FastAPI API, auth, ownership, quotas, admin | Complete in source | 537 passed, 53 Postgres-only skipped; Ruff clean on 2026-08-29 | Current Postgres parity run blocked because Docker Desktop was unavailable |
 | Credits, payments, events and refund ledger | Complete in SQLite/Postgres adapters; migration `013` and seed exist | Historical 2026-08-28 evidence records 590 passed, 0 skipped and live migration probes | Re-run Postgres parity when Docker works; do not replace the historical result with the blocked current run |
-| Android user journeys | B-01 through B-07 source-complete; real repositories are bound | Full Android gate passed before the final focused fixes; focused regression classes passed after them | Re-run the final full gate, then record emulator journeys and screenshots |
-| Android admin console | B-08 through B-13 source-complete against real endpoints | Compiles; ViewModel/serialization tests are present | Emulator acceptance, light/dark screenshots and live-endpoint walkthrough |
+| Android user journeys | B-01 through B-07 source-complete; real repositories are bound | Final full gate: 123 unit tests, lint, debug/release APK and instrumentation-test compile passed | Record emulator journeys and screenshots |
+| Android admin console | B-08 through B-13 source-complete against real endpoints | Included in the final compile/test/lint gate | Emulator acceptance, light/dark screenshots and live-endpoint walkthrough |
 | Prompt LLM | Qwen/Ollama adapter plus explicit fallback implemented | Historical live FastAPI evidence selected Qwen; not re-run in this audit | Re-run with `usedFallback=false` before the demo if Ollama is part of the demo |
 | Free generative video | Wan2.1 T2V 1.3B two-phase Kaggle notebook proven to generate | 4/4 distinct 832×480, 81-frame clips; mean 48.6 min/clip on 2×T4 | Blind quality scorecard is empty; no quality pass may be claimed |
 | Real video in the app | External `kaggle` provider contract and provider-scoped claiming exist | Contract/backend tests only | S-13 worker, S-14 first real result, storage writeback and Android playback are still required |
@@ -106,9 +106,9 @@ already proven and the scorecard shows Wan2.1 is unacceptable.
 Verified on 2026-08-29:
 
 - backend: Ruff check/format clean, `pip check` clean, 537 passed and 53 skipped;
-- Android before the final focused fixes: unit tests, lint, debug/release
-  assembly and debug-android-test compilation passed;
-- focused Android regression tests after the fixes passed;
+- Android final gate: 123 tests, 0 failures/errors/skips; lint 0 errors and 5
+  dependency/target warnings; debug/release assembly and debug-android-test
+  compilation passed;
 - dependency workflow uses least privilege, immutable action SHAs and verified
   Gradle wrapper/distribution checksums;
 - tracked secret-pattern scan found only the deliberate service-role placeholder
@@ -128,9 +128,10 @@ Blocked/not run in this audit:
 - [x] User credits, events, purchase, charge and refund paths are implemented.
 - [x] Admin user, project, credits, events, packages, settings and dashboard
       paths are implemented.
-- [ ] Final backend SQLite and Postgres gates are green at the delivered revision.
-- [ ] Final Android gate and required emulator journeys are green at the
-      delivered revision.
+- [x] Final backend SQLite gate is green at the delivered revision.
+- [ ] Final Postgres gate is green at the delivered revision.
+- [x] Final Android source/build gate is green at the delivered revision.
+- [ ] Required emulator journeys are green at the delivered revision.
 - [ ] A Wan2.1 Kaggle job submitted through FastAPI completes and its real video
       plays in Android.
 - [ ] Blind quality scorecard has both reviewers' entries and a recorded decision.
