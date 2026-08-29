@@ -38,7 +38,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -47,6 +46,10 @@ import com.cretona.app.domain.model.CreditReason
 import com.cretona.app.domain.model.CreditTransaction
 import com.cretona.app.domain.model.PromoEvent
 import java.text.NumberFormat
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import java.util.Locale
 
 @Composable
@@ -232,7 +235,7 @@ private fun TransactionCard(transaction: CreditTransaction) {
             }
             Text(
                 text = if (transaction.delta > 0) "+${transaction.delta}" else transaction.delta.toString(),
-                color = if (transaction.delta > 0) Color(0xFF2E7D32) else MaterialTheme.colorScheme.error,
+                color = if (transaction.delta > 0) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.error,
                 fontWeight = FontWeight.Bold,
             )
         }
@@ -312,4 +315,11 @@ private fun reasonIcon(reason: String): ImageVector = when (reason) {
 private fun formatVnd(amount: Int): String =
     "${NumberFormat.getIntegerInstance(Locale.forLanguageTag("vi-VN")).format(amount)} ₫"
 
-private fun displayTime(value: String): String = value.take(16).replace("T", " ")
+private val creditsDateFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM)
+
+/** Parses an ISO-8601 string and formats it in the device locale and timezone. Falls back to the raw value. */
+private fun displayTime(value: String): String = runCatching {
+    Instant.parse(value).atZone(ZoneId.systemDefault()).format(creditsDateFormatter)
+}.getOrDefault(value.take(16).replace("T", " "))
+

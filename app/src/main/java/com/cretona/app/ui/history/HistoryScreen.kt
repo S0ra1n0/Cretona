@@ -22,8 +22,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -37,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.cretona.app.domain.model.ProjectStatus
 import com.cretona.app.domain.model.VideoProject
@@ -103,7 +104,7 @@ fun HistoryScreen(
                 when (sort) {
                     HistorySort.NEWEST -> compareByDescending { it.createdAt }
                     HistorySort.OLDEST -> compareBy { it.createdAt }
-                }
+                },
             )
             .toList()
     }
@@ -129,6 +130,7 @@ fun HistoryScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
+            // Header: title + filter-aware subtitle + refresh button
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -139,10 +141,18 @@ fun HistoryScreen(
                         Text(
                             text = "🎬 Project Gallery",
                             style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                            fontWeight = FontWeight.Bold,
                         )
+                        val isFiltered = searchQuery.isNotBlank() ||
+                            statusFilter != HistoryStatusFilter.ALL ||
+                            ratioFilter != "All"
+                        val subtitle = if (isFiltered) {
+                            "${filteredProjects.size} of ${projects.size} creations (filtered)"
+                        } else {
+                            "${projects.size} creation${if (projects.size == 1) "" else "s"}"
+                        }
                         Text(
-                            text = "${filteredProjects.size} of ${projects.size} loaded creations shown",
+                            text = subtitle,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -255,7 +265,7 @@ fun HistoryScreen(
                                 searchQuery = ""
                                 statusFilter = HistoryStatusFilter.ALL
                                 ratioFilter = "All"
-                            }
+                            },
                         ) {
                             Text("Reset Filters")
                         }
@@ -276,7 +286,6 @@ fun HistoryScreen(
                         )
                     }
                 }
-
             }
 
             if (hasMoreProjects) {

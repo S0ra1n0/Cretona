@@ -622,7 +622,7 @@ private fun HomeContent(
                         )
                     } else if (state.isQuotaExhausted) {
                         Text(
-                            "The rolling generation limit is exhausted. Credits and rate limits are separate.",
+                            "Daily rate limit reached. Your credit balance is unchanged — try again later.",
                             color = MaterialTheme.colorScheme.error,
                             style = MaterialTheme.typography.bodySmall,
                         )

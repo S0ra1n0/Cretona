@@ -23,6 +23,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -113,52 +114,103 @@ fun ProjectHistoryCard(
         ),
     ) {
         Column {
-            if (project.status == ProjectStatus.COMPLETED) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(
-                            enabled = project.videoUrl != null,
-                            onClickLabel = "Play ${project.title}",
-                            role = Role.Button,
-                        ) {
-                            showFullscreenPlayer = true
-                        },
-                ) {
-                    ProjectThumbnail(
-                        thumbnailUrl = project.thumbnailUrl,
-                        title = project.title,
-                        aspectRatio = project.thumbnailAspectRatio,
-                    )
-                    if (project.videoUrl != null) {
-                        Surface(
-                            shape = CircleShape,
-                            color = Color.Black.copy(alpha = 0.65f),
-                            modifier = Modifier
-                                .align(Alignment.Center)
-                                .size(52.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.PlayArrow,
-                                contentDescription = "Play Video",
-                                tint = Color.White,
+            when (project.status) {
+                ProjectStatus.COMPLETED -> {
+                    // Completed: tappable thumbnail with play overlay and badges
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(
+                                enabled = project.videoUrl != null,
+                                onClickLabel = "Play ${project.title}",
+                                role = Role.Button,
+                            ) {
+                                showFullscreenPlayer = true
+                            },
+                    ) {
+                        ProjectThumbnail(
+                            thumbnailUrl = project.thumbnailUrl,
+                            title = project.title,
+                            aspectRatio = project.thumbnailAspectRatio,
+                        )
+                        if (project.videoUrl != null) {
+                            Surface(
+                                shape = CircleShape,
+                                color = Color.Black.copy(alpha = 0.65f),
                                 modifier = Modifier
-                                    .padding(10.dp)
-                                    .fillMaxSize(),
-                            )
+                                    .align(Alignment.Center)
+                                    .size(52.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PlayArrow,
+                                    contentDescription = "Play Video",
+                                    tint = Color.White,
+                                    modifier = Modifier
+                                        .padding(10.dp)
+                                        .fillMaxSize(),
+                                )
+                            }
+                        }
+
+                        // Aspect ratio & duration badges overlay
+                        Row(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Surface(
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
+                                color = Color.Black.copy(alpha = 0.75f),
+                            ) {
+                                Text(
+                                    text = project.aspectRatio,
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                )
+                            }
+                            if (project.durationSeconds != null) {
+                                Surface(
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
+                                    color = Color.Black.copy(alpha = 0.75f),
+                                ) {
+                                    Text(
+                                        text = "${project.durationSeconds}s",
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    )
+                                }
+                            }
                         }
                     }
+                }
 
-                    // Aspect ratio & duration badges overlay
-                    Row(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
+                ProjectStatus.PENDING, ProjectStatus.GENERATING -> {
+                    // In-progress: thumbnail placeholder (spinner) + progress strip
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        ProjectThumbnail(
+                            thumbnailUrl = null,
+                            title = project.title,
+                            aspectRatio = project.thumbnailAspectRatio,
+                            showSpinner = true,
+                        )
+                        // Indeterminate progress strip along the top edge
+                        LinearProgressIndicator(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .align(Alignment.TopCenter),
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                        )
+                        // Aspect ratio badge (bottom-end, not overlapping strip)
                         Surface(
                             shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
                             color = Color.Black.copy(alpha = 0.75f),
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(8.dp),
                         ) {
                             Text(
                                 text = project.aspectRatio,
@@ -167,22 +219,14 @@ fun ProjectHistoryCard(
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                             )
                         }
-                        if (project.durationSeconds != null) {
-                            Surface(
-                                shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
-                                color = Color.Black.copy(alpha = 0.75f),
-                            ) {
-                                Text(
-                                    text = "${project.durationSeconds}s",
-                                    color = Color.White,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                )
-                            }
-                        }
                     }
                 }
+
+                else -> {
+                    // FAILED / CANCELLED: no thumbnail, nothing to show
+                }
             }
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -201,17 +245,19 @@ fun ProjectHistoryCard(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         val providerLabel = when (project.provider) {
-                            "real" -> "🖼️ AI image + motion"
+                            "kaggle" -> "🎬 Wan2.1 Kaggle"
+                            "real", "cloud", "wan21" -> "🖼️ AI image + motion"
                             "local" -> "💻 Local (placeholder)"
-                            else -> "🎭 Demo"
+                            "mock", "fake" -> "🎭 Demo Sample"
+                            else -> "🎭 Demo Sample"
                         }
                         Text(
                             providerLabel,
                             style = MaterialTheme.typography.labelMedium,
-                            color = if (project.provider == "real") {
-                                MaterialTheme.colorScheme.secondary
-                            } else {
-                                MaterialTheme.colorScheme.outline
+                            color = when (project.provider) {
+                                "kaggle" -> MaterialTheme.colorScheme.primary
+                                "real", "cloud", "wan21" -> MaterialTheme.colorScheme.secondary
+                                else -> MaterialTheme.colorScheme.outline
                             },
                         )
                         Text(
@@ -312,11 +358,15 @@ internal fun ProjectThumbnail(
     thumbnailUrl: String?,
     title: String,
     aspectRatio: Float,
+    showSpinner: Boolean = false,
 ) {
-    var loadState by remember(thumbnailUrl) {
+    var loadState by remember(thumbnailUrl, showSpinner) {
         mutableStateOf(
-            if (thumbnailUrl == null) ThumbnailLoadState.Unavailable
-            else ThumbnailLoadState.Loading,
+            when {
+                showSpinner -> ThumbnailLoadState.Loading
+                thumbnailUrl == null -> ThumbnailLoadState.Unavailable
+                else -> ThumbnailLoadState.Loading
+            },
         )
     }
     Box(
