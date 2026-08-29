@@ -31,6 +31,19 @@ function Add-Result {
     }
 }
 
+function Test-AccessiblePath {
+    param([string]$Path)
+
+    try {
+        return Test-Path -LiteralPath $Path -ErrorAction Stop
+    } catch {
+        # Optional tools can exist outside the sandbox without being readable
+        # from this process. Treat that as unavailable instead of aborting the
+        # required-tool preflight.
+        return $false
+    }
+}
+
 function Resolve-Executable {
     param([string]$Name)
     $command = Get-Command $Name -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -122,11 +135,11 @@ function Test-CompleteModelSnapshot {
         [string[]]$RequiredRelativePaths
     )
 
-    if (-not (Test-Path -LiteralPath $SnapshotPath)) {
+    if (-not (Test-AccessiblePath $SnapshotPath)) {
         return $false
     }
     foreach ($relativePath in $RequiredRelativePaths) {
-        if (-not (Test-Path -LiteralPath (Join-Path $SnapshotPath $relativePath))) {
+        if (-not (Test-AccessiblePath (Join-Path $SnapshotPath $relativePath))) {
             return $false
         }
     }
@@ -160,7 +173,7 @@ if ($python) {
 }
 
 $fastApiPython = Join-Path $projectRoot 'backend\.venv\Scripts\python.exe'
-if (Test-Path -LiteralPath $fastApiPython) {
+if (Test-AccessiblePath $fastApiPython) {
     $probe = Invoke-Probe $fastApiPython @('-c', 'import fastapi; print(fastapi.__version__)')
     Add-Result 'FastAPI venv' ($probe.ExitCode -eq 0) "FastAPI $($probe.Line)"
 } else {
@@ -174,7 +187,7 @@ if (-not [string]::IsNullOrWhiteSpace($JavaHome)) {
     $resolvedJavaHome = @($env:JAVA_HOME, $defaultAndroidJbr) |
         Where-Object {
             -not [string]::IsNullOrWhiteSpace($_) -and
-            (Test-Path -LiteralPath (Join-Path $_ 'bin\java.exe'))
+            (Test-AccessiblePath (Join-Path $_ 'bin\java.exe'))
         } |
         Select-Object -First 1
     if ([string]::IsNullOrWhiteSpace($resolvedJavaHome)) {
@@ -182,7 +195,7 @@ if (-not [string]::IsNullOrWhiteSpace($JavaHome)) {
     }
 }
 $jbr = Join-Path $resolvedJavaHome 'bin\java.exe'
-if (Test-Path -LiteralPath $jbr) {
+if (Test-AccessiblePath $jbr) {
     $probe = Invoke-Probe $jbr @('-version')
     Add-Result 'Android JDK' ($probe.ExitCode -eq 0) "$($probe.Line) at $jbr"
 } else {
@@ -196,18 +209,18 @@ if (-not [string]::IsNullOrWhiteSpace($AndroidSdk)) {
     $resolvedAndroidSdk = @($env:ANDROID_SDK_ROOT, $env:ANDROID_HOME, $defaultAndroidSdk) |
         Where-Object {
             -not [string]::IsNullOrWhiteSpace($_) -and
-            (Test-Path -LiteralPath $_)
+            (Test-AccessiblePath $_)
         } |
         Select-Object -First 1
     if ([string]::IsNullOrWhiteSpace($resolvedAndroidSdk)) {
         $resolvedAndroidSdk = $defaultAndroidSdk
     }
 }
-Add-Result 'Android SDK' (Test-Path -LiteralPath $resolvedAndroidSdk) $resolvedAndroidSdk
-Add-Result 'Gradle wrapper' (Test-Path -LiteralPath (Join-Path $projectRoot 'gradlew.bat')) 'Repository wrapper'
+Add-Result 'Android SDK' (Test-AccessiblePath $resolvedAndroidSdk) $resolvedAndroidSdk
+Add-Result 'Gradle wrapper' (Test-AccessiblePath (Join-Path $projectRoot 'gradlew.bat')) 'Repository wrapper'
 
 $adb = Join-Path $resolvedAndroidSdk 'platform-tools\adb.exe'
-if (Test-Path -LiteralPath $adb) {
+if (Test-AccessiblePath $adb) {
     $probe = Invoke-Probe $adb @('version')
     Add-Result 'ADB device evidence' ($probe.ExitCode -eq 0) "$($probe.Line) at $adb" $false
 } else {
@@ -215,11 +228,11 @@ if (Test-Path -LiteralPath $adb) {
 }
 
 $emulator = Join-Path $resolvedAndroidSdk 'emulator\emulator.exe'
-Add-Result 'Android emulator' (Test-Path -LiteralPath $emulator) $emulator $false
+Add-Result 'Android emulator' (Test-AccessiblePath $emulator) $emulator $false
 
 foreach ($name in @('ffmpeg', 'ffprobe')) {
     $executable = Resolve-Executable $name
-    if ($executable -and (Test-Path -LiteralPath $executable)) {
+    if ($executable -and (Test-AccessiblePath $executable)) {
         $probe = Invoke-Probe $executable @('-version')
         Add-Result $name ($probe.ExitCode -eq 0) "$($probe.Line) at $executable" $false
     } else {
@@ -246,7 +259,7 @@ if ($uv) {
 $sevenZip = @(
     (Resolve-Executable '7z'),
     (Join-Path $env:ProgramFiles '7-Zip\7z.exe')
-) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and (Test-Path -LiteralPath $_) } |
+) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and (Test-AccessiblePath $_) } |
     Select-Object -First 1
 if ($sevenZip) {
     $probe = Invoke-Probe $sevenZip @('i')
@@ -260,7 +273,7 @@ if (-not $ollama) {
     $ollama = @(
         (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Programs\Ollama\ollama.exe'),
         (Join-Path (Split-Path $projectRoot -Parent) '.tools\Ollama\ollama.exe')
-    ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+    ) | Where-Object { Test-AccessiblePath $_ } | Select-Object -First 1
 }
 if ($ollama) {
     $probe = Invoke-Probe $ollama @('--version')
@@ -299,7 +312,7 @@ Add-Result 'Torch cache on D' (
 $framePackRoot = Join-Path (Split-Path $projectRoot -Parent) '.ai-runtimes\framepack_cu126_torch26'
 $framePackWebUi = Join-Path $framePackRoot 'webui'
 $framePackPython = Join-Path $framePackRoot 'system\python\python.exe'
-if ((Test-Path -LiteralPath (Join-Path $framePackWebUi '.git')) -and $git) {
+if ((Test-AccessiblePath (Join-Path $framePackWebUi '.git')) -and $git) {
     $probe = Invoke-Probe $git @('-c', "safe.directory=$framePackWebUi", '-C', $framePackWebUi, 'rev-parse', 'HEAD')
     Add-Result 'FramePack source revision' (
         $probe.ExitCode -eq 0 -and $probe.Line -eq '97fe5dbe06ac1f337ece08935b1076a35eefeeb9'
@@ -307,7 +320,7 @@ if ((Test-Path -LiteralPath (Join-Path $framePackWebUi '.git')) -and $git) {
 } else {
     Add-Result 'FramePack source revision' $false "Optional runtime not found at $framePackWebUi" $false
 }
-if (Test-Path -LiteralPath $framePackPython) {
+if (Test-AccessiblePath $framePackPython) {
     $probe = Invoke-Probe $framePackPython @(
         '-c',
         "import torch; print(f'Python CUDA runtime: torch={torch.__version__}; cuda={torch.version.cuda}; available={torch.cuda.is_available()}')"

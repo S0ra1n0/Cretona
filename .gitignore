@@ -51,6 +51,7 @@ __pycache__/
 .pytest_tmp/
 .mypy_cache/
 .ruff_cache/
+.qa-pip-audit-cache/
 .rtk-data/
 .coverage
 htmlcov/
