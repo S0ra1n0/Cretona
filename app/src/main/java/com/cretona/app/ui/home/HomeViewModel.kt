@@ -39,6 +39,8 @@ class HomeViewModel @Inject constructor(
 
     private var pollingJob: Job? = null
     private var historyVersion: Long = 0
+    private var pendingGenerationKey: String? = null
+    private var pendingImagePath: String? = null
 
     init {
         refreshAccount()
@@ -84,10 +86,12 @@ class HomeViewModel @Inject constructor(
     }
 
     fun onPromptChanged(prompt: String) {
+        resetGenerationIntent()
         _state.update { it.copy(prompt = prompt, errorMessage = null) }
     }
 
     fun onImageSelected(uri: Uri?, bytes: ByteArray, mimeType: String, fileName: String) {
+        resetGenerationIntent()
         viewModelScope.launch {
             // Compress on IO thread so the main thread stays responsive
             val (compressedBytes, finalMime) = withContext(ioDispatcher) {
@@ -106,6 +110,7 @@ class HomeViewModel @Inject constructor(
     }
 
     fun onImageCleared() {
+        resetGenerationIntent()
         _state.update {
             it.copy(
                 selectedImageUri = null,
@@ -127,18 +132,21 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(isEnhancing = true, errorMessage = null) }
             when (val result = repository.enhancePrompt(current)) {
-                is AppResult.Success -> _state.update {
-                    val source = if (result.data.usedFallback) {
-                        "Deterministic fallback (no live LLM)"
-                    } else {
-                        "Enhanced by ${result.data.provider}"
+                is AppResult.Success -> {
+                    resetGenerationIntent()
+                    _state.update {
+                        val source = if (result.data.usedFallback) {
+                            "Deterministic fallback (no live LLM)"
+                        } else {
+                            "Enhanced by ${result.data.provider}"
+                        }
+                        it.copy(
+                            prompt = result.data.text,
+                            previousPrompt = current,
+                            isEnhancing = false,
+                            enhancementNote = source,
+                        )
                     }
-                    it.copy(
-                        prompt = result.data.text,
-                        previousPrompt = current,
-                        isEnhancing = false,
-                        enhancementNote = source,
-                    )
                 }
 
                 is AppResult.Failure -> _state.update {
@@ -150,6 +158,7 @@ class HomeViewModel @Inject constructor(
 
     fun revertPrompt() {
         val prev = state.value.previousPrompt ?: return
+        resetGenerationIntent()
         _state.update {
             it.copy(
                 prompt = prev,
@@ -161,6 +170,7 @@ class HomeViewModel @Inject constructor(
     }
 
     fun onSelectPromptIdea(idea: String) {
+        resetGenerationIntent()
         _state.update {
             it.copy(
                 prompt = idea,
@@ -172,10 +182,12 @@ class HomeViewModel @Inject constructor(
     }
 
     fun onProviderSelected(provider: String) {
+        resetGenerationIntent()
         _state.update { it.copy(selectedProvider = provider, errorMessage = null) }
     }
 
     fun onStylePresetSelected(preset: String?) {
+        resetGenerationIntent()
         _state.update {
             val next = if (it.selectedStylePreset == preset) null else preset
             it.copy(selectedStylePreset = next, errorMessage = null)
@@ -183,6 +195,7 @@ class HomeViewModel @Inject constructor(
     }
 
     fun onCameraMotionSelected(motion: String?) {
+        resetGenerationIntent()
         _state.update {
             val next = if (it.selectedCameraMotion == motion) null else motion
             it.copy(selectedCameraMotion = next, errorMessage = null)
@@ -190,10 +203,12 @@ class HomeViewModel @Inject constructor(
     }
 
     fun onAspectRatioSelected(ratio: String) {
+        resetGenerationIntent()
         _state.update { it.copy(selectedAspectRatio = ratio, errorMessage = null) }
     }
 
     fun remixProject(project: VideoProject) {
+        resetGenerationIntent()
         _state.update {
             it.copy(
                 prompt = project.prompt ?: it.prompt,
@@ -206,13 +221,15 @@ class HomeViewModel @Inject constructor(
     }
 
     fun generateVideo() {
-        val prompt = state.value.prompt.trim()
-        val hasImage = state.value.selectedImageBytes != null
+        val current = state.value
+        val prompt = current.prompt.trim()
+        val currentImageBytes = current.selectedImageBytes
+        val hasImage = currentImageBytes != null
         if (prompt.isEmpty() && !hasImage) {
             _state.update { it.copy(errorMessage = "Enter a prompt or select a reference image.") }
             return
         }
-        if (state.value.isQuotaExhausted) {
+        if (current.isQuotaExhausted) {
             _state.update {
                 it.copy(
                     errorMessage = "Generation quota is exhausted. Try again after it resets.",
@@ -221,23 +238,32 @@ class HomeViewModel @Inject constructor(
             return
         }
 
-        val currentAspectRatio = state.value.selectedAspectRatio
-        val currentStylePreset = state.value.selectedStylePreset
-        val currentCameraMotion = state.value.selectedCameraMotion
+        val currentProvider = current.selectedProvider
+        val currentAspectRatio = current.selectedAspectRatio
+        val currentStylePreset = current.selectedStylePreset
+        val currentCameraMotion = current.selectedCameraMotion
+        val currentImageMimeType = current.selectedImageMimeType ?: "image/jpeg"
+        val currentImageFileName = current.selectedImageFileName ?: "reference.jpg"
+        val idempotencyKey = pendingGenerationKey
+            ?: UUID.randomUUID().toString().also { pendingGenerationKey = it }
 
         pollingJob?.cancel()
         viewModelScope.launch {
             _state.update { it.copy(isSubmitting = true, errorMessage = null) }
 
-            var imagePath: String? = null
-            val currentImageBytes = state.value.selectedImageBytes
-            if (currentImageBytes != null) {
+            var imagePath = pendingImagePath
+            if (currentImageBytes != null && imagePath == null) {
                 _state.update { it.copy(isUploadingImage = true) }
-                val mime = state.value.selectedImageMimeType ?: "image/jpeg"
-                val name = state.value.selectedImageFileName ?: "reference.jpg"
-                when (val uploadResult = repository.uploadImage(currentImageBytes, mime, name)) {
+                when (
+                    val uploadResult = repository.uploadImage(
+                        currentImageBytes,
+                        currentImageMimeType,
+                        currentImageFileName,
+                    )
+                ) {
                     is AppResult.Success -> {
                         imagePath = uploadResult.data
+                        pendingImagePath = uploadResult.data
                         _state.update { it.copy(isUploadingImage = false) }
                     }
                     is AppResult.Failure -> {
@@ -257,14 +283,15 @@ class HomeViewModel @Inject constructor(
                 val result = repository.createProject(
                     prompt = prompt.ifBlank { null },
                     imagePath = imagePath,
-                    idempotencyKey = UUID.randomUUID().toString(),
-                    provider = state.value.selectedProvider,
+                    idempotencyKey = idempotencyKey,
+                    provider = currentProvider,
                     aspectRatio = currentAspectRatio,
                     stylePreset = currentStylePreset,
                     cameraMotion = currentCameraMotion,
                 )
             ) {
                 is AppResult.Success -> {
+                    resetGenerationIntent()
                     _state.update {
                         it.copy(
                             isSubmitting = false,
@@ -295,6 +322,11 @@ class HomeViewModel @Inject constructor(
 
     fun consumeCreditAction() {
         _state.update { it.copy(creditActionRequired = false) }
+    }
+
+    private fun resetGenerationIntent() {
+        pendingGenerationKey = null
+        pendingImagePath = null
     }
 
     fun refreshHistory() {

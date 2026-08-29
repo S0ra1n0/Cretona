@@ -116,6 +116,39 @@ class HomeViewModelTest {
         }
 
     @Test
+    fun `generation retry reuses its key and upload until the input changes`() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val repository = FakeRepository(createFailure = AppError.Network("Response lost."))
+            val viewModel = HomeViewModel(repository).apply {
+                ioDispatcher = mainDispatcherRule.dispatcher
+                imageCompressor = { bytes, mime -> bytes to mime }
+            }
+            viewModel.onImageSelected(
+                uri = null,
+                bytes = byteArrayOf(1, 2, 3),
+                mimeType = "image/jpeg",
+                fileName = "reference.jpg",
+            )
+            advanceUntilIdle()
+            viewModel.onPromptChanged("A paper dragon")
+
+            viewModel.generateVideo()
+            advanceUntilIdle()
+            viewModel.generateVideo()
+            advanceUntilIdle()
+
+            assertEquals(repository.idempotencyKeys[0], repository.idempotencyKeys[1])
+            assertEquals(1, repository.uploadCalls)
+
+            viewModel.onPromptChanged("A glass dragon")
+            viewModel.generateVideo()
+            advanceUntilIdle()
+
+            assertTrue(repository.idempotencyKeys[1] != repository.idempotencyKeys[2])
+            assertEquals(2, repository.uploadCalls)
+        }
+
+    @Test
     fun `image picker failure is visible to the user`() {
         val viewModel = HomeViewModel(FakeRepository())
 
@@ -416,6 +449,7 @@ private class FakeRepository(
     var lastAspectRatio: String? = null
     var lastStylePreset: String? = null
     var lastCameraMotion: String? = null
+    val idempotencyKeys = mutableListOf<String>()
 
     override suspend fun updateProfile(
         username: String,
@@ -473,6 +507,7 @@ private class FakeRepository(
         cameraMotion: String?,
     ): AppResult<VideoProject> {
         createCalls += 1
+        idempotencyKeys += idempotencyKey
         lastCreatedImagePath = imagePath
         lastAspectRatio = aspectRatio
         lastStylePreset = stylePreset
