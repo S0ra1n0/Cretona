@@ -110,7 +110,7 @@ fun MainScreen(
         }
     }
 
-    LaunchedEffect(state.currentProject?.id) {
+    LaunchedEffect(state.currentProject?.id, state.currentProject?.status) {
         if (state.currentProject != null) creditsViewModel.refreshBalance()
     }
 
