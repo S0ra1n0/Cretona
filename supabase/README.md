@@ -8,7 +8,7 @@ Database and storage setup for Cretona. Specified in [docs/DATA_MODEL.md](../doc
 2. **Run [`bootstrap.sql`](bootstrap.sql)** — open the SQL Editor, paste the whole file, execute. It is one transaction and safe to re-run.
 
    Then apply the numbered migrations in order. The current source sequence is
-   `002_add_error_code.sql` through `012_add_user_profile_fields.sql`; never
+   `002_add_error_code.sql` through `014_add_kaggle_worker.sql`; never
    skip a number. Migrations 006 and 007 were applied and verified on
    2026-08-14, and evidence from 2026-08-17 records 008 and 009. The live state
    of 010-012 must be checked with the read-only `status` action before any
@@ -34,7 +34,7 @@ Database and storage setup for Cretona. Specified in [docs/DATA_MODEL.md](../doc
 
 ## Verification status
 
-`bootstrap.sql` was executed end to end against Postgres 16 in Docker, with `auth` and `storage` stubbed to match Supabase's real shape (`auth.uid()`, `storage.foldername()`, and Supabase's default grants on `storage.objects`). The active adapter parity fixture now mirrors migrations through 012 and is intended to run against disposable Postgres 17 before release.
+`bootstrap.sql` was executed end to end against Postgres 16 in Docker, with `auth` and `storage` stubbed to match Supabase's real shape (`auth.uid()`, `storage.foldername()`, and Supabase's default grants on `storage.objects`). The active adapter parity fixture now mirrors migrations through 014 and is intended to run against disposable Postgres 17 before release.
 
 Behaviour confirmed, not just syntax:
 
@@ -69,11 +69,11 @@ values from output:
 # Protected logical export outside the repository; requires Docker Desktop.
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/backup-live-supabase.ps1
 
-# Read-only inventory first. This reports migrations 006-012 separately.
+# Read-only inventory first. This reports migrations 006-014 separately.
 backend/.venv/Scripts/python.exe scripts/live-supabase-migration-gate.py status
 
 # Verify the latest migration only after status proves it was intentionally applied.
-backend/.venv/Scripts/python.exe scripts/live-supabase-migration-gate.py verify-012
+backend/.venv/Scripts/python.exe scripts/live-supabase-migration-gate.py verify-014
 
 # Official Supabase Security and Performance Advisors.
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-live-supabase-advisors.ps1

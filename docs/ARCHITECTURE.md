@@ -164,5 +164,11 @@ Two rules shape all of it:
 ### 4.4 Observed evidence boundary
 
 - Android source gates: JVM tests, lint, debug APK, minified unsigned release APK, and instrumented-test compilation pass. No physical device/emulator was attached for this audit, so Keystore and UI runtime are not device-proven here.
-- Backend source gates: the credential-free suite passes; Postgres parity gates still require a disposable PostgreSQL instance.
-- Provider output: `mock` serves a bundled clip; `cloud` and `local` can generate one still and render camera motion with ffmpeg. Wan2.1 generates real text-to-video in the separate Kaggle experiment, but the Kaggle worker and scored quality acceptance remain unfinished.
+- Backend source gates: 546 tests pass and 55 Postgres-only tests skip in the
+  credential-free SQLite profile; all 601 pass against disposable PostgreSQL
+  17. Ruff check/format and `pip check` are clean as of 2026-08-30.
+- Provider output: `mock` serves a bundled clip; `cloud` and `local` can generate
+  one still and render camera motion with ffmpeg. The external Wan2.1 Kaggle
+  worker, least-privilege migration and local contract/parity tests are complete
+  in source. Live Supabase application, a live worker-to-Android result and the
+  blind quality decision remain unproven.

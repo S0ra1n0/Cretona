@@ -18,10 +18,12 @@ valid session before routing; signed-out release builds fail closed instead of
 falling back to a development identity.
 
 No paid provider call is enabled by the accepted zero-additional-spend path.
-Local Qwen3-4B has passed a real FastAPI call. No temporal video model is selected:
-LTX-Video 2B was rejected by the pinned host-envelope pre-screen, and the
-installed FramePack F1 runtime is blocked before inference by resource and
-weight-license gates in `EXP-005`.
+Local Qwen3-4B has passed a real FastAPI call. The selected temporal-video path
+is pinned Wan2.1 T2V 1.3B on free Kaggle compute: the experiment generated four
+real clips, and the `kaggle` provider, worker and migration are complete in
+source. Applying migration 014, running the worker against live Supabase,
+playing its result in Android and scoring output quality are still acceptance
+steps; source tests are not evidence that those live steps happened.
 
 ## Repository layout
 

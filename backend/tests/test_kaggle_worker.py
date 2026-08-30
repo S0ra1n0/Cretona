@@ -1,0 +1,107 @@
+from __future__ import annotations
+
+import time
+from pathlib import Path
+from uuid import UUID
+
+from kaggle_worker import (
+    AuthSession,
+    Job,
+    WorkerConfig,
+    WorkerDatabase,
+    dimensions,
+    frame_count,
+    run_once,
+    storage_path,
+)
+
+WORKER = UUID("30000000-0000-4000-8000-000000000003")
+USER = UUID("10000000-0000-4000-8000-000000000001")
+PROJECT = UUID("40000000-0000-4000-8000-000000000004")
+
+
+def test_wan_profile_matches_the_proven_contract() -> None:
+    job = Job(PROJECT, USER, "a paper dragon", 5, "16:9")
+
+    assert frame_count(5) == 81
+    assert dimensions("16:9") == (832, 480)
+    assert dimensions("9:16") == (480, 832)
+    assert storage_path(job) == f"{USER}/{PROJECT}/video.mp4"
+
+
+def test_one_job_uploads_before_it_is_completed(tmp_path: Path) -> None:
+    job = Job(PROJECT, USER, "a paper dragon", 5, "16:9")
+    events: list[str] = []
+
+    class Database:
+        def claim(self, owner: UUID):
+            assert owner == WORKER
+            return job
+
+        def heartbeat(self, owner: UUID, claimed: Job, progress: int, message: str):
+            assert owner == WORKER and claimed == job and progress >= 1 and message
+            return True
+
+        def complete(self, owner: UUID, claimed: Job, sha256: str):
+            assert owner == WORKER and claimed == job and len(sha256) == 64
+            events.append("complete")
+            return True
+
+        def fail(self, *_args):  # pragma: no cover - failure would fail this test
+            raise AssertionError("successful job was marked failed")
+
+    class Supabase:
+        def session(self):
+            return AuthSession("test-token", WORKER, time.monotonic() + 3600)
+
+        def upload_video(self, session: AuthSession, path: str, source: Path):
+            assert session.user_id == WORKER
+            assert path == f"{USER}/{PROJECT}/video.mp4"
+            assert source.stat().st_size > 1024
+            events.append("upload")
+
+    def generate(_job: Job, output: Path, _progress, assert_owned):
+        assert_owned()
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(b"video" * 300)
+
+    config = WorkerConfig(
+        database_url="postgresql://worker:secret@localhost/cretona",
+        supabase_url="https://project.supabase.co",
+        publishable_key="publishable-test-key",
+        worker_email="worker@example.com",
+        worker_password="secret",
+        output_dir=tmp_path,
+    )
+
+    assert run_once(config, Database(), Supabase(), generate) is True
+    assert events == ["upload", "complete"]
+
+
+def test_a_malformed_claim_is_failed_instead_of_crashing_the_worker() -> None:
+    class Database(WorkerDatabase):
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def _fetchone(self, _statement, parameters):
+            self.calls += 1
+            if self.calls == 1:
+                return {
+                    "project_id": PROJECT,
+                    "user_id": USER,
+                    "prompt": "a dragon",
+                    "duration_seconds": 10,
+                    "aspect_ratio": "16:9",
+                }
+            assert parameters == (
+                WORKER,
+                PROJECT,
+                "invalid_input",
+                "Unsupported Kaggle job options.",
+            )
+            return {"ok": True}
+
+    database = Database()
+
+    assert database.claim(WORKER) is None
+    assert database.calls == 2

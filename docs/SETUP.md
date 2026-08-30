@@ -221,8 +221,8 @@ the missing shell-hook notice does not mean command filtering is unavailable.
 | Android points to port 3000 | Replace the stale Express URL in ignored `local.properties` with port 8000 and rebuild |
 | Java/Gradle version failure | Set `JAVA_HOME` to Android Studio's bundled JBR for that shell |
 | `requires compile against version 37` | Install Android API 37 in SDK Manager |
-| FastAPI import fails | Recreate `backend-fastapi/.venv` and install `-e ".[dev]"` |
+| FastAPI import fails | Recreate `backend/.venv` and install `-e ".[dev]"` |
 | Prompt says deterministic fallback | Ollama is disabled/unreachable; check `.env`, model availability, and `/api/tags` locally |
-| Video is a color test pattern | Expected fake-provider evidence; real AI video remains gated by EXP-005 |
+| Video is a color test pattern | Expected `fake`-provider evidence; select `kaggle` and run the external worker for Wan2.1 output |
 | `rtk gain` cannot write LocalAppData | Confirm the roaming RTK config points `database_path` at `.rtk-data/history.db` |
 | FFmpeg link is blocked in Codex | Run `check-toolchain-safe.ps1`; it resolves the WinGet symlink target before invoking the executable |

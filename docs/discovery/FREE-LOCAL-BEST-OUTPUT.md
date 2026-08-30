@@ -7,7 +7,7 @@
 - **Status:** EXP-005 active; Qwen passed, LTX pre-screen rejected, FramePack unblocked but never run, **Wan2.1 T2V generating on Kaggle 2026-08-27 — quality not yet scored**
 - **Host recheck:** `docs/evidence/EXP-005_HOST_RECHECK_2026-08-19.md`
 - **Kaggle result 2026-08-27:** `docs/evidence/EXP-005_KAGGLE_T2V_WORKING_2026-08-27.md`
-  — **Wan2.1 T2V 1.3B generates on free Kaggle**, ~10 min/clip, via a two-phase
+  — **Wan2.1 T2V 1.3B generates on free Kaggle**, ~49 min/full 81-frame clip, via a two-phase
   load that never holds the text encoder and transformer together. Quality not
   yet scored.
 - **Superseded:** `EXP-005_KAGGLE_T2V_DISCONFIRMED_2026-08-23.md` — its five

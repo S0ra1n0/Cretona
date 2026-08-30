@@ -18,10 +18,12 @@ tested Express implementation in `../backend/`.
 - bounded 180-day `generation_logs` retention with metadata-only summaries
 - atomic Postgres-backed rate-limit windows with an in-memory SQLite fallback
 
-This is a zero-spend integration profile. The fake provider proves the app and
-job lifecycle; it does not prove real AI video quality. Qwen prompt enhancement
-has passed live, but no video adapter is selected: LTX-Video 2B was rejected by
-pre-screen and FramePack remains blocked on EXP-005.
+The fake provider proves the app and job lifecycle; it does not prove real AI
+video quality. Qwen prompt enhancement has passed live. The zero-additional-
+spend real-video path is the separate `kaggle_worker.py`, which runs the pinned
+Wan2.1 T2V 1.3B model and writes results back through Supabase. Source and
+contract tests do not replace the live acceptance run in
+`docs/KAGGLE_WORKER_RUNBOOK.md`.
 
 ## Run
 
@@ -58,7 +60,8 @@ The request uses a 4K context, a bounded 180-token response, and
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-That leaves **53 tests skipped**: `test_postgres_parity.py` needs a real
+The credential-free SQLite profile currently reports **546 passed and 55
+skipped**: the skipped tests need a real
 Postgres, and production runs Postgres. Everything with a second implementation
 in `postgres.py` — the credit ledger especially — is unexercised until you run
 them.
@@ -73,6 +76,6 @@ $env:CRETONA_TEST_DATABASE_URL = "postgresql://postgres:test@127.0.0.1:55433/cre
 docker stop cretona-pg-test
 ```
 
-Expect **590 passed, 0 skipped** (2026-08-28). `tests/db_safety.py` refuses to apply the
+Expect **601 passed, 0 skipped** after migration 014. `tests/db_safety.py` refuses to apply the
 destructive test schema to anything but a local host, so this cannot be pointed
 at Supabase by accident.

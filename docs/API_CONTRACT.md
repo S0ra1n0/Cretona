@@ -106,9 +106,11 @@ All error responses adhere to the standard JSON envelope:
     }
     ```
   - **Available Options**:
-    - `provider`: `"mock"`, `"cloud"`, `"local"`, plus the aliases `"fake"`, `"real"`, `"wan21"`
-      (defaults to server default). `mock`↔`fake`, `cloud`/`wan21`↔`real`, `local`↔`local`; the
-      stored and returned value is always the canonical `fake`/`real`/`local`.
+    - `provider`: `"mock"`, `"cloud"`, `"local"`, `"kaggle"`, plus the aliases
+      `"fake"`, `"real"`, `"wan21"`, `"external"` (defaults to server default).
+      The stored value is canonical `fake`/`real`/`local`/`kaggle`; Android
+      never sends a raw model ID. `kaggle` is text-only Wan2.1 and currently
+      accepts `durationSeconds` 2–5. Longer requests fail before quota/credits.
     - `aspectRatio`: `"9:16"`, `"16:9"`, `"1:1"`.
     - `stylePreset`: `"anime"`, `"cyberpunk"`, `"3d_pixar"`, `"vintage_film"`, `"photorealistic"`.
     - `cameraMotion`: `"pan_left"`, `"pan_right"`, `"zoom_in"`, `"zoom_out"`, `"dolly_zoom"`, `"orbit"`.
@@ -211,8 +213,9 @@ stateDiagram-v2
 # Part II — Credits, Events and Generation Modes
 
 - **Added:** 2026-08-28 · **Status:** **implemented and green** as of
-  2026-08-28. Every endpoint below exists; 590 backend tests pass against
-  both SQLite and Postgres with 0 skipped.
+  2026-08-30. Every endpoint below exists; the full disposable-Postgres
+  profile passes 601 tests with 0 skipped. The credential-free SQLite profile
+  passes 546 and explicitly skips the 55 Postgres-only checks.
 - **Owners:** S0ra1n0 implements the server; Bruce codes Android against this
   document from day 1 with a fake repository implementation.
 - **Rule:** this document is the source of truth. A change here is told to the

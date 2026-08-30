@@ -7,7 +7,7 @@
 ## 1. Introduction
 
 ### 1.1 Purpose
-Cretona is a native Android application for creating short video artifacts from text prompts and optional reference images through provider-neutral FastAPI adapters. Authentication, role-based access control (RBAC), prompt enhancement, project lifecycle management, playback, gallery downloads, sharing, and remixing are implemented. The accepted zero-spend output is not temporal AI video: cloud/local tiers generate or retrieve one still and apply camera motion with ffmpeg. A frame-to-frame video model is an open product requirement.
+Cretona is a native Android application for creating short video artifacts from text prompts and optional reference images through provider-neutral FastAPI adapters. Authentication, role-based access control (RBAC), prompt enhancement, project lifecycle management, playback, gallery downloads, sharing, and remixing are implemented. Cloud/local tiers still generate or retrieve one still and apply camera motion with ffmpeg. The `kaggle` tier queues text-only Wan2.1 temporal generation; its worker is implemented in source, while live app-to-worker-to-playback acceptance remains required.
 
 Implementation truth boundary: the backend exposes an SSE endpoint, while the
 current Android client observes progress through REST polling. Android JVM,
@@ -59,6 +59,8 @@ Third-party AI/media providers are isolated behind the server-side provider boun
   - `Mock`: bundled zero-spend clip for deterministic development/testing.
   - `Cloud`: optional hosted still generation followed by ffmpeg pan/zoom; no temporal model currently runs.
   - `Local`: reserved local tier; currently the same still-plus-pan path and no local weights.
+  - `Kaggle`: external Wan2.1 T2V 1.3B worker; text-only, 2–5 seconds,
+    zero additional spend while free Kaggle GPU quota is available.
 - **FR-GEN-007 (Progress Observation)**: The backend shall expose an SSE stream (`GET /api/v1/projects/{id}/events`) with percentage and step messages. The implemented Android client may use bounded REST polling until direct SSE consumption is accepted and device-tested.
 - **FR-GEN-008 (Job Cancellation)**: The user shall be able to cancel an in-flight video generation job via `POST /api/v1/projects/{id}/cancel`.
 
@@ -83,6 +85,6 @@ Third-party AI/media providers are isolated behind the server-side provider boun
 - **NFR-SEC-003**: Row Level Security (RLS) policies in PostgreSQL must isolate project records so users can never read or modify another user's media.
 
 ### 3.2 Performance & Reliability
-- **NFR-REL-001**: The backend poller shall use database leases (`poll_lease_until`) to prevent race conditions during concurrent worker polling.
+- **NFR-REL-001**: In-process and external workers shall use provider-scoped database leases (`lease_owner`, `lease_expires_at`) to prevent duplicate claims and recover abandoned work.
 - **NFR-REL-002**: Idempotent project submission (`Idempotency-Key` header) must prevent duplicate job charges on network reconnects.
 - **NFR-REL-003**: The Android UI must remain completely responsive (60fps+) during background video polling, downloads, and playback.

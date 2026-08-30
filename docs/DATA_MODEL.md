@@ -99,7 +99,7 @@ Central record for all text-to-video and image-to-video generation tasks.
 | `progress_percent` | `smallint` | NOT NULL DEFAULT 0 | Real-time progress percentage (0–100) |
 | `step_message` | `text` | NULL allowed | Current pipeline stage description |
 | `options` | `jsonb` | NULL allowed | Style preset, camera motion, aspect ratio |
-| `provider` | `text` | NOT NULL | Provider key: `fake`, `real`, `wan21` |
+| `provider` | `text` | NOT NULL | Canonical provider key: `fake`, `real`, `local`, `kaggle` |
 | `provider_job_id` | `text` | NULL allowed | External provider job reference |
 | `error_message` | `text` | NULL allowed | User-facing failure description |
 | `error_code` | `text` | NULL allowed | Machine-readable error code |
@@ -246,3 +246,24 @@ packages, mirroring `supabase/seed_credits_and_events.sql` — without them a
 local database has the tables but no rows, and a new account can never generate
 anything. `test_sqlite_defaults_match_the_seed` parses the SQL file and fails if
 the two drift apart.
+
+---
+
+## 5. External Kaggle worker boundary
+
+Migration `014_add_kaggle_worker.sql` adds no business table. It adds a
+least-privilege execution boundary around existing `video_projects`,
+`generation_logs`, `users`, and `credit_transactions` rows:
+
+| Object | Contract |
+|---|---|
+| `cretona_kaggle_worker` | Login role with no table grants, no role/database creation, no superuser and no RLS bypass |
+| `private.cretona_kaggle_claim_job` | Atomically claims one text-only `provider='kaggle'` row with `SKIP LOCKED` and a bounded lease |
+| `private.cretona_kaggle_heartbeat` | Renews only the caller-owned lease and persists bounded progress |
+| `private.cretona_kaggle_complete` | Completes only the leased row with canonical `{user_id}/{project_id}/video.mp4` and logs its SHA-256 |
+| `private.cretona_kaggle_fail` | Fails only the leased row and atomically refunds the newest unrefunded generation charge |
+| Storage policies | Permit the dedicated Auth worker to insert/select/update only the canonical object of its active lease |
+
+The database login and Auth user are deliberately separate. The worker never
+receives `service_role`. Storage authorization reads only
+`raw_app_meta_data`/`app_metadata.cretona_worker`, not user-editable metadata.

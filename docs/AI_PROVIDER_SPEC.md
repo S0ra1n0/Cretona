@@ -1,13 +1,14 @@
 # AI Provider Integration Spec
 
-**Version:** 0.2 · **Status:** Contract accepted; one deterministic FastAPI adapter implemented
+**Version:** 0.3 · **Status:** Provider contracts implemented in source; live Kaggle acceptance pending
 
 Defines the boundary between Cretona and any third-party AI video API. Satisfies NFR-5.2: adding a provider means implementing one interface and registering it — nothing above `services/ai` changes.
 
 The TypeScript below is the original executable reference contract. The active
 Python equivalent lives in `backend/app/providers.py`; names differ by
 language, but capabilities, normalized states, and secret boundaries must stay
-behaviorally compatible. Adapters are organized into 3 clear operational tiers.
+behaviorally compatible. Four provider choices are registered across the local,
+hosted and external-worker paths.
 
 **Corrected 2026-08-17 (T0-2):** the two lines below previously claimed a
 routed multi-backend video pipeline and a local-model adapter with memory
@@ -19,7 +20,7 @@ candidates and a pre-screen rejection, respectively; the summary just
 disagreed with its own detail table.
 
 - **`mock`** (`MockVideoProvider`, alias `fake`): Deterministic instant mock generator for zero-cost testing and defense demo.
-- **`cloud`** (`CloudAiVideoProvider`, aliases `real`, `wan21`): Fetches one AI-generated still image from a hosted text-to-image endpoint (Pollinations) and pans across it for 5s with ffmpeg. No video model runs; Wan 2.1, LTX-Video, and Fal.ai are not wired in.
+- **`cloud`** (`CloudAiVideoProvider`, aliases `real`, `wan21`): Fetches one AI-generated still image from a hosted text-to-image endpoint (Pollinations) and pans across it for 5s with ffmpeg. No temporal model runs in this adapter; the separate `kaggle` provider owns Wan2.1 generation.
 - **`local`** (`LocalModelVideoProvider`): Reserved for a local model; nothing local runs yet. No GPU/memory preflight, no weights loaded — calls the identical hosted-still-plus-pan path as `cloud`, so its output is indistinguishable from it.
 
 ---
@@ -82,7 +83,7 @@ Providers disagree about almost everything. The adapter absorbs the differences 
 | **Image delivery** | Cretona always passes a **signed URL** to our Storage object. An adapter for a provider that requires raw upload or base64 does that fetch-and-forward itself. |
 | **Prompt limits** | The adapter truncates to `maxPromptLength` only if the provider hard-fails otherwise; otherwise it rejects up front with a validation error so the user sees a clear message rather than a silently altered prompt. |
 | **Unsupported mode** | Validated before submit against `supportedModes`, returning `400 VALIDATION_ERROR` — never a `502` after the fact. |
-| **Duration / aspect ratio** | Clamped into the provider's range and recorded on the project as the value actually used. |
+| **Duration / aspect ratio** | Validated against the provider's range before quota or credits are consumed; unsupported values are rejected rather than silently clamped. |
 | **Status vocabulary** | Every provider's status strings map into exactly the three `JobState` variants. An unrecognized status is treated as `running` until the timeout, then `failed`. |
 | **Result URL** | Always transient. The caller re-hosts; the adapter never persists anything. |
 
@@ -185,6 +186,7 @@ Filled in as each is integrated. Capability values must be verified against live
 | Ollama + Qwen3-4B | live prompt proof passed | text | FastAPI returned `usedFallback=false`; this enhances prompts and does not generate video |
 | LTX-Video 2B Q8 | rejected by EXP-005 pre-screen | text, image | Official dependency/runtime envelope does not fit the measured Ampere 8 GB VRAM/16 GB RAM host; weights were intentionally not downloaded |
 | FramePack F1 | runtime installed; inference blocked | image | Exact source and weights are pinned; resource preflight and weight-license review must pass before the first run or profile selection |
+| Wan2.1 T2V 1.3B on Kaggle | worker integrated in source; live app acceptance pending | text | Exact model revision and two-phase memory profile are pinned; 2–5 seconds, 16 fps, no reference-image support |
 | Real local text-to-video | unselected | text | Wan2.1 1.3B and CogVideoX 2B are research candidates only; neither is an accepted adapter |
 | Runway | not selected | text, image, text+image | Paid path; superseded as launch default by ADR-009 |
 | Kling | not selected | text, image, text+image | Paid path; not compatible with the chosen zero-additional-spend baseline |
@@ -192,7 +194,8 @@ Filled in as each is integrated. Capability values must be verified against live
 | Luma | not started | text, image | |
 | Google Veo | not started | text, image | |
 
-The old paid launch assumption in ADR-004 is superseded by the evidence gate in
-[ADR-009](adr/ADR-009-zero-spend-provider-gate.md). Qwen is the proven prompt
-LLM, but no real video model is selected until EXP-005 succeeds on the actual
-laptop.
+The old paid launch assumption in ADR-004 and the unselected-video state in
+ADR-009 are superseded by [ADR-011](adr/ADR-011-kaggle-wan-worker.md). Qwen is
+the proven prompt LLM; Wan2.1 is the selected zero-additional-spend external
+text-to-video path. Its live app journey and blind quality decision still have
+to pass before the team calls the product accepted or the output good.

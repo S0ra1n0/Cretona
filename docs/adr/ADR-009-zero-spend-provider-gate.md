@@ -1,6 +1,6 @@
 # ADR-009: Gate the zero-spend video provider on local evidence
 
-**Status:** Accepted · **Date:** 2026-08-10 · **Supersedes:** ADR-004
+**Status:** Superseded by ADR-011 · **Date:** 2026-08-10 · **Supersedes:** ADR-004
 · **Amended:** 2026-08-19 (host recheck — see §Update)
 
 ## Context

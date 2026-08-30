@@ -7,8 +7,45 @@
 -- # local host, so never point CRETONA_TEST_DATABASE_URL at Supabase.        #
 -- ############################################################################
 --
--- Mirrors the parts of supabase/bootstrap.sql + migrations 002 through 013
+-- Mirrors the parts of supabase/bootstrap.sql + migrations 002 through 014
 -- that app/postgres.py actually reads and writes.
+
+drop schema if exists private cascade;
+drop schema if exists storage cascade;
+drop schema if exists auth cascade;
+
+do $$
+begin
+  if not exists (select 1 from pg_roles where rolname = 'anon') then
+    create role anon nologin;
+  end if;
+  if not exists (select 1 from pg_roles where rolname = 'authenticated') then
+    create role authenticated nologin;
+  end if;
+end
+$$;
+
+create schema auth;
+create function auth.uid() returns uuid
+language sql stable
+as $$
+  select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid;
+$$;
+create function auth.jwt() returns jsonb
+language sql stable
+as $$
+  select coalesce(nullif(current_setting('request.jwt.claims', true), ''), '{}')::jsonb;
+$$;
+
+create schema storage;
+create table storage.objects (
+  id uuid primary key default gen_random_uuid(),
+  bucket_id text not null,
+  name text not null
+);
+alter table storage.objects enable row level security;
+grant usage on schema storage to authenticated;
+grant select, insert, update on storage.objects to authenticated;
 
 -- Migration 013 tables. `drop table public.users cascade` reaches the ones
 -- that reference users, but credit_packages and events have no foreign key to

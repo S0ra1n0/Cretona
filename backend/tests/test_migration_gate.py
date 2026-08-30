@@ -67,12 +67,13 @@ def migration_state() -> dict[str, object]:
     }
 
 
-def test_gate_pins_and_accepts_migrations_011_and_012() -> None:
+def test_gate_pins_and_accepts_migrations_011_012_and_014() -> None:
     gate = load_gate()
     state = migration_state()
 
     assert gate.migration_sql("011")
     assert gate.migration_sql("012")
+    assert gate.migration_sql("014")
     gate.assert_011(state, present=True)
     gate.assert_012(state, present=True)
 
@@ -109,10 +110,11 @@ def test_gate_allows_valid_partial_index_migration_to_resume() -> None:
 def test_latest_gate_contract_matches_disposable_postgres(postgres_url: str) -> None:
     assert_disposable_database(postgres_url)
     schema_sql = (ROOT / "backend" / "tests" / "postgres_schema.sql").read_text(encoding="utf-8")
+    gate = load_gate()
     with psycopg.connect(postgres_url, autocommit=True) as connection:
         connection.execute(schema_sql)
+        connection.execute(gate.migration_sql("014"))
 
-    gate = load_gate()
     with (
         psycopg.connect(postgres_url, row_factory=dict_row) as connection,
         connection.transaction(),
@@ -129,3 +131,13 @@ def test_latest_gate_contract_matches_disposable_postgres(postgres_url: str) -> 
     gate.assert_010(state, present=True)
     gate.assert_011(state, present=True)
     gate.assert_012(state, present=True)
+    gate.assert_014(state, present=True)
+
+    worker_insert = next(
+        policy
+        for policy in state["worker_policies"]
+        if policy["policyname"] == "videos_worker_insert_leased"
+    )
+    worker_insert["roles"] = ["authenticated", "anon"]
+    with pytest.raises(gate.GateError, match="worker privileges are unsafe"):
+        gate.assert_014(state, present=True)

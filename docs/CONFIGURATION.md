@@ -38,7 +38,7 @@ credentials it needs.
 | `SUPABASE_UPLOADS_BUCKET` / `SUPABASE_VIDEOS_BUCKET` | `uploads` / `videos` | |
 | `SIGNED_URL_TTL_SECONDS` | `3600` | Bounded to 60…604800, so a signed URL cannot be minted permanent |
 | `MEDIA_DIR` | `assets` | Local storage root |
-| `DEFAULT_VIDEO_PROVIDER` | `mock` | Accepts `mock`/`fake`, `cloud`/`real`, `local`/`wan21`. None of them runs a video model — `cloud` and `local` fetch a still from `IMAGE_ENDPOINT` and pan across it, `mock` serves the bundled clip. A real video provider is still gated by ADR-009 and EXP-005 |
+| `DEFAULT_VIDEO_PROVIDER` | `mock` | Accepts `mock`/`fake`, `cloud`/`real`, `local`/`wan21`, and `kaggle`/`external`. `cloud` and `local` pan over one still; `mock` serves the bundled clip. `kaggle` queues text-only Wan2.1 work for the separate worker in `backend/kaggle_worker.py` |
 | `IMAGE_ENDPOINT` | empty | Optional hosted text-to-image endpoint used by the `cloud` and `local` tiers. **Setting it sends user prompts off-platform.** Empty keeps prompt egress disabled and falls back to the bundled clip. When enabled, the response is rejected unless it is `image/jpeg`, `image/png`, or `image/webp` under 16 MB, because it is written to `MEDIA_DIR` and served as user media |
 | `MAX_GENERATION_ATTEMPTS` | `3` | Submissions per project before a retry is refused |
 | `GENERATION_QUOTA_LIMIT` | `10` | Per user per window. This is the spend control (ADR-007) |
@@ -114,14 +114,14 @@ Express implementation is preserved as migration evidence because it already
 defines tested auth, quota, project lifecycle, storage, provider, and job-runner
 behavior. The migration replaces the web framework, not those invariants.
 
-Supabase Auth/Postgres/Storage may remain behind FastAPI during the migration so
-the team does not rewrite working identity, data, and storage boundaries at the
-same time. Runway remains disabled; zero-cost local video providers may be
-added only behind the provider interface after `EXP-005` passes.
+Supabase Auth/Postgres/Storage remain behind FastAPI so the team does not rewrite
+working identity, data, and storage boundaries. Runway remains disabled. The
+accepted zero-additional-spend temporal path is the external `kaggle` provider;
+local or image-conditioned models still require their own EXP-005 evidence.
 
-As of 2026-08-20 that migration is behaviourally complete in `backend/`: identity,
-persistence, storage, authorization, quota, logging, rate limiting, and the job
-runner all exist. The disposable PostgreSQL 17.6 parity run passed the complete
-backend suite against the schema model through migration 012. Do not infer the
-current live Supabase state from this local result: run the read-only migration
-`status` gate before any live verification or apply action.
+As of 2026-08-30 the FastAPI migration and Kaggle worker contract are complete
+in source: identity, persistence, storage, authorization, quota, logging, rate
+limiting, the in-process runner and the external worker all exist. The full 601
+test suite passes against disposable PostgreSQL 17 through migration 014. Do
+not infer current live Supabase state from this local result: run the read-only
+migration `status` gate before any live verification or apply action.

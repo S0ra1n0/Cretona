@@ -12,8 +12,9 @@ Each ADR captures one decision, why it was made, and what it costs us. They are 
 | [006](ADR-006-environments.md) | Two deployed environments, three app configurations | Accepted; local backend/port superseded by ADR-008 | P0-4 |
 | [007](ADR-007-quota-model.md) | Per-user rolling daily generation quota | Accepted (limit provisional) | P0-6 |
 | [008](ADR-008-fastapi-migration.md) | FastAPI is the active backend; Express remains a tested migration reference until parity | Accepted | P0-7 |
-| [009](ADR-009-zero-spend-provider-gate.md) | Keep fake integration evidence and select a real local video model only through EXP-005 | Accepted | P0-2 |
+| [009](ADR-009-zero-spend-provider-gate.md) | Keep fake integration evidence and select a real local video model only through EXP-005 | Superseded by ADR-011 | P0-2 |
 | [010](ADR-010-shared-rate-limit-store.md) | Postgres-backed shared rate-limit windows; in-memory fallback for SQLite | Accepted | B-3 |
+| [011](ADR-011-kaggle-wan-worker.md) | Use free Kaggle as an external Wan2.1 worker behind FastAPI and Supabase | Accepted | S-13 |
 
 ## Status values
 

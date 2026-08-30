@@ -4,6 +4,11 @@ Status: written 2026-08-12, after FastAPI reached behavioural parity with the
 Express reference. Last updated 2026-08-14 after live Supabase migrations 006
 and 007 were applied and verified.
 
+> Historical backlog: these `B-*` identifiers predate and conflict with the
+> current delivery tickets. Use `ROADMAP.md` and `TASK-SPLIT-2026-08-28.md` for
+> current ownership and status; keep this file only as dated implementation
+> history.
+
 ## Progress
 
 | | Item | State |

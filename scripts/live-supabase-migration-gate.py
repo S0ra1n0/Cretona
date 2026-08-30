@@ -1,4 +1,4 @@
-"""Guarded preflight, apply, and verification for Cretona migrations 006-012.
+"""Guarded preflight, apply, and verification for Cretona migrations 006-014.
 
 Run this script only with the repository's pinned FastAPI virtual environment.
 It reads the ignored root ``env`` file, validates that SUPABASE_URL and
@@ -49,6 +49,10 @@ MIGRATIONS = {
     "012": (
         ROOT / "supabase" / "012_add_user_profile_fields.sql",
         "00b138555e4f59f0f9910a1285a8ac2c88f3f17a3e8e13d51c083e61c5d012e7",
+    ),
+    "014": (
+        ROOT / "supabase" / "014_add_kaggle_worker.sql",
+        "8e91ea80e4765821058c802637f149c78d2c79cc3665f589343f2c26cebb6bc3",
     ),
 }
 DATA_API_ROLES = ("anon", "authenticated", "service_role")
@@ -181,6 +185,7 @@ def collect_state(cursor: psycopg.Cursor[Any]) -> dict[str, Any]:
         select
           to_regclass('public.rate_limit_hits') is not null as rate_limit_table,
           to_regclass('public.admin_audit_logs') is not null as audit_table,
+          to_regclass('public.credit_transactions') is not null as credit_transactions_table,
           to_regclass('supabase_migrations.schema_migrations') is not null as cli_history
         """,
     )
@@ -216,6 +221,76 @@ def collect_state(cursor: psycopg.Cursor[Any]) -> dict[str, Any]:
             """
         ).fetchall()
     ]
+    worker_role = fetch_one(
+        cursor,
+        """
+        select r.oid is not null as present,
+               coalesce(r.rolcanlogin, false) as can_login,
+               coalesce(r.rolinherit, true) as inherits,
+               coalesce(r.rolsuper, false) as superuser,
+               coalesce(r.rolcreaterole, false) as create_role,
+               coalesce(r.rolcreatedb, false) as create_db,
+               coalesce(r.rolbypassrls, false) as bypass_rls,
+               coalesce(r.rolreplication, false) as replication,
+               coalesce(
+                 exists(select 1 from pg_auth_members m where m.member = r.oid), false
+               ) as role_membership,
+               coalesce(
+                 has_table_privilege(
+                   r.oid, 'public.video_projects', 'SELECT,INSERT,UPDATE,DELETE'
+                 )
+                 or has_table_privilege(
+                   r.oid, 'public.users', 'SELECT,INSERT,UPDATE,DELETE'
+                 )
+                 or has_table_privilege(
+                   r.oid, 'public.credit_transactions', 'SELECT,INSERT,UPDATE,DELETE'
+                 )
+                 or has_table_privilege(
+                   r.oid, 'public.generation_logs', 'SELECT,INSERT,UPDATE,DELETE'
+                 )
+                 or has_table_privilege(
+                   r.oid, 'storage.objects', 'SELECT,INSERT,UPDATE,DELETE'
+                 ), false
+               ) as table_access
+        from (select 1) sentinel
+        left join pg_roles r on r.rolname = 'cretona_kaggle_worker'
+        """,
+    )
+    worker_functions = cursor.execute(
+        """
+        select p.proname, p.prosecdef,
+               coalesce(has_function_privilege(worker.oid, p.oid, 'EXECUTE'), false)
+                 as worker_execute,
+               coalesce(has_function_privilege(anon_role.oid, p.oid, 'EXECUTE'), false)
+                 as anon_execute,
+               coalesce(has_function_privilege(auth_role.oid, p.oid, 'EXECUTE'), false)
+                 as authenticated_execute
+        from pg_proc p
+        join pg_namespace n on n.oid = p.pronamespace
+        left join pg_roles worker on worker.rolname = 'cretona_kaggle_worker'
+        left join pg_roles anon_role on anon_role.rolname = 'anon'
+        left join pg_roles auth_role on auth_role.rolname = 'authenticated'
+        where n.nspname = 'private'
+          and p.proname in (
+            'cretona_kaggle_claim_job', 'cretona_kaggle_heartbeat',
+            'cretona_kaggle_complete', 'cretona_kaggle_fail',
+            'cretona_kaggle_can_write_object'
+          )
+        order by p.proname
+        """
+    ).fetchall()
+    worker_policies = cursor.execute(
+        """
+        select policyname, cmd, roles, qual, with_check
+        from pg_policies
+        where schemaname = 'storage' and tablename = 'objects'
+          and policyname in (
+            'videos_worker_insert_leased', 'videos_worker_select_leased',
+            'videos_worker_update_leased'
+          )
+        order by policyname
+        """
+    ).fetchall()
     return {
         "server": server,
         "columns": columns,
@@ -223,19 +298,19 @@ def collect_state(cursor: psycopg.Cursor[Any]) -> dict[str, Any]:
         "invalid_indexes": invalid_indexes,
         "rate_limit_table": table_state["rate_limit_table"],
         "audit_table": table_state["audit_table"],
+        "credit_transactions_table": table_state["credit_transactions_table"],
         "cli_history": table_state["cli_history"],
         "error_code_constraint": (
             error_code_constraint["definition"] if error_code_constraint else None
         ),
         "status_enum_labels": status_enum_labels,
         "profile_columns": {
-            row["column_name"]: row["udt_name"]
-            for row in columns
-            if row["table_name"] == "users"
+            row["column_name"]: row["udt_name"] for row in columns if row["table_name"] == "users"
         },
-        "profile_constraints": {
-            row["conname"]: row["definition"] for row in profile_constraints
-        },
+        "profile_constraints": {row["conname"]: row["definition"] for row in profile_constraints},
+        "worker_role": worker_role,
+        "worker_functions": worker_functions,
+        "worker_policies": worker_policies,
     }
 
 
@@ -497,6 +572,91 @@ def assert_012(state: dict[str, Any], *, present: bool) -> None:
         raise GateError("MIG-012 cannot repair the existing users_birthday_iso_date constraint.")
 
 
+WORKER_FUNCTIONS = {
+    "cretona_kaggle_claim_job",
+    "cretona_kaggle_heartbeat",
+    "cretona_kaggle_complete",
+    "cretona_kaggle_fail",
+}
+WORKER_POLICIES = {
+    "videos_worker_insert_leased": "INSERT",
+    "videos_worker_select_leased": "SELECT",
+    "videos_worker_update_leased": "UPDATE",
+}
+
+
+def state_014(state: dict[str, Any]) -> dict[str, Any]:
+    def leased_video_scope(expression: Any) -> bool:
+        text = str(expression or "")
+        return (
+            "bucket_id" in text and "'videos'" in text and "cretona_kaggle_can_write_object" in text
+        )
+
+    functions = {row["proname"]: row for row in state["worker_functions"]}
+    policies = {row["policyname"]: row for row in state["worker_policies"]}
+    role = state["worker_role"]
+    work_functions_secure = all(
+        name in functions
+        and functions[name]["prosecdef"]
+        and functions[name]["worker_execute"]
+        and not functions[name]["anon_execute"]
+        and not functions[name]["authenticated_execute"]
+        for name in WORKER_FUNCTIONS
+    )
+    helper = functions.get("cretona_kaggle_can_write_object")
+    helper_secure = bool(
+        helper
+        and helper["prosecdef"]
+        and not helper["anon_execute"]
+        and helper["authenticated_execute"]
+    )
+    policies_secure = all(
+        name in policies
+        and policies[name]["cmd"] == command
+        and set(policies[name]["roles"]) == {"authenticated"}
+        and (
+            (command == "INSERT" and leased_video_scope(policies[name]["with_check"]))
+            or (command == "SELECT" and leased_video_scope(policies[name]["qual"]))
+            or (
+                command == "UPDATE"
+                and leased_video_scope(policies[name]["qual"])
+                and leased_video_scope(policies[name]["with_check"])
+            )
+        )
+        for name, command in WORKER_POLICIES.items()
+    )
+    role_secure = bool(role["present"] and role["can_login"] and not role["inherits"]) and not any(
+        role[name]
+        for name in (
+            "superuser",
+            "create_role",
+            "create_db",
+            "bypass_rls",
+            "replication",
+            "role_membership",
+            "table_access",
+        )
+    )
+    return {
+        "role_secure": role_secure,
+        "work_functions_secure": work_functions_secure,
+        "storage_helper_secure": helper_secure,
+        "storage_policies_secure": policies_secure,
+    }
+
+
+def assert_014(state: dict[str, Any], *, present: bool) -> None:
+    facts = state_014(state)
+    fully_applied = all(facts.values())
+    any_present = bool(
+        state["worker_role"]["present"] or state["worker_functions"] or state["worker_policies"]
+    )
+    if present and not fully_applied:
+        raise GateError("MIG-014 is incomplete or its worker privileges are unsafe.")
+    if not present and any_present:
+        raise GateError("MIG-014 is already present or partially applied; refusing re-apply.")
+
+
 def collect_007_verification(cursor: psycopg.Cursor[Any]) -> dict[str, Any]:
     state = collect_state(cursor)
     columns = [row for row in state["columns"] if row["table_name"] == "rate_limit_hits"]
@@ -655,6 +815,7 @@ def run_status(connection: psycopg.Connection[Any]) -> dict[str, Any]:
     indexes = index_by_name(state)
     facts = state_009(state)
     profile_facts = state_012(state)
+    worker_facts = state_014(state)
     return {
         "transaction_read_only": state["transaction_read_only"],
         "server_version": state["server"]["version"],
@@ -675,9 +836,12 @@ def run_status(connection: psycopg.Connection[Any]) -> dict[str, Any]:
                 and profile_facts["gender_constraint_valid"]
                 and profile_facts["birthday_constraint_valid"]
             ),
+            "013": bool(state["credit_transactions_table"]),
+            "014": all(worker_facts.values()),
         },
         "migration_009": facts,
         "migration_012": profile_facts,
+        "migration_014": worker_facts,
         "invalid_indexes": state["invalid_indexes"],
     }
 
@@ -715,13 +879,23 @@ def run_apply(connection: psycopg.Connection[Any], number: str) -> dict[str, Any
         assert_009(state, present=True)
         assert_010(state, present=True)
         assert_011(state, present=False)
-    else:
+    elif number == "012":
         assert_006(state, present=True)
         assert_008(state, present=True)
         assert_009(state, present=True)
         assert_010(state, present=True)
         assert_011(state, present=True)
         assert_012(state, present=False)
+    else:
+        assert_006(state, present=True)
+        assert_008(state, present=True)
+        assert_009(state, present=True)
+        assert_010(state, present=True)
+        assert_011(state, present=True)
+        assert_012(state, present=True)
+        if not state["credit_transactions_table"]:
+            raise GateError("public.credit_transactions is absent; apply 013 before 014.")
+        assert_014(state, present=False)
     if state["invalid_indexes"]:
         raise GateError("The public schema contains an invalid, unready, or non-live index.")
 
@@ -811,6 +985,18 @@ def run_verify(connection: psycopg.Connection[Any], number: str) -> dict[str, An
                     "The public schema contains an invalid, unready, or non-live index."
                 )
             result = {"state": state, "migration_012": state_012(state)}
+        elif number == "014":
+            state = collect_state(cursor)
+            assert_004_005(state)
+            assert_012(state, present=True)
+            if not state["credit_transactions_table"]:
+                raise GateError("public.credit_transactions is absent; migration 013 is required.")
+            assert_014(state, present=True)
+            if state["invalid_indexes"]:
+                raise GateError(
+                    "The public schema contains an invalid, unready, or non-live index."
+                )
+            result = {"state": state, "migration_014": state_014(state)}
         else:
             result = collect_007_verification(cursor)
             assert_004_005(result["state"])
@@ -852,6 +1038,8 @@ def main() -> int:
             "verify-011",
             "apply-012",
             "verify-012",
+            "apply-014",
+            "verify-014",
         ),
     )
     parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE)

@@ -1,12 +1,13 @@
 # Cretona — Kaggle GPU worker plan
 
 - **Document ID:** `CRETONA-KAGGLE-WORKER-001`
-- **Mode:** Design proposal; nothing here is built
+- **Mode:** Implemented source contract; live Supabase/Kaggle acceptance pending
 - **Written:** 2026-08-19
 - **Status:** **UNBLOCKED 2026-08-27.** Kaggle generates real text-to-video
   with Wan2.1 T2V 1.3B via a two-phase load, **~49 min per 5-second clip**. See
-  `docs/evidence/EXP-005_KAGGLE_T2V_WORKING_2026-08-27.md`. Build order below;
-  still gated on a scored full run.
+  `docs/evidence/EXP-005_KAGGLE_T2V_WORKING_2026-08-27.md`. The worker,
+  least-privilege migration and runbook now exist; the first live app-generated
+  clip and blind quality decision remain open.
 - **Related:** `ADR-009`, `FREE-LOCAL-BEST-OUTPUT.md` §11,
   `EXP-005_HOST_RECHECK_2026-08-19.md`
 
@@ -29,15 +30,13 @@
 > week is ~30 GPU-hours, which is **about 37 clips per week** for the whole
 > team, and peak RAM leaves only ~2.2 GiB of headroom.
 >
-> **W1 and W2 can start.** W4 is already done (2026-08-23). W3 — the worker —
-> should wait for a full run scored `distinct outputs: 4/4`, because there is
-> no point automating a model the team has not yet agreed is good enough.
+> **W1, W2, W3 source and W4 are complete.** W3 is not live-accepted until
+> migration 014 is applied and one Android-submitted clip completes and plays.
 >
-> **One correction to §4 W3 below:** it names HunyuanVideo 1.5 as the model to
-> run. That model is still rejected for this host — its transformer alone is
-> ~16.6 GB in fp16, above a single T4. The worker should run **Wan2.1 T2V
-> 1.3B**, and must use the same two-phase load the notebook uses, keeping the
-> encoder resident between jobs rather than reloading it per request.
+> **One correction to §4 W3 below:** HunyuanVideo 1.5 remains rejected for this
+> host. The implemented worker runs **Wan2.1 T2V 1.3B** and uses the measured
+> two-phase load. It cannot keep encoder and generator resident together;
+> cached prompt embeddings are the hand-off between phases.
 
 ## 1. The problem this solves
 
@@ -92,7 +91,7 @@ Every arrow out of Kaggle is **outbound**. Nothing connects *into* it.
 | Android emulator/phone | the app | yes |
 | Laptop | FastAPI backend | yes, unchanged |
 | Supabase | Postgres + Storage | yes, live since 2026-08-19 |
-| **Kaggle** | **worker loop + the video model** | **no — this is the new piece** |
+| **Kaggle** | **worker loop + the video model** | **source complete; live credentials/run pending** |
 
 The FastAPI backend is **not** deployed to Kaggle. It stays on the laptop
 exactly as it runs now.
@@ -152,7 +151,7 @@ class implementing the existing interface; no call site changes.
 The Android wire contract does not change. ADR-009's provider-neutrality
 guarantee holds.
 
-### W3 — The worker itself *(new, the bulk of the effort)*
+### W3 — The worker itself *(source complete; live acceptance pending)*
 
 A single Python file, run in a Kaggle notebook cell. Loop:
 
@@ -182,21 +181,22 @@ of margin over the slowest observed clip. Renewing on a timer is therefore
 required, not an optimisation, and the worker must renew rather than rely on a
 long initial lease.
 
-**Encoder residency:** phase 1 costs ~5 minutes and must run **once per
-session**, not once per job. The worker keeps the encoded embeddings (or the
-encoder itself, RAM permitting) alive between jobs.
+**Two-phase memory:** the measured host does not have enough RAM to keep the
+22.7 GB text encoder and generator resident together. The worker caches each
+project's embeddings, frees the encoder, runs the generator, then frees the
+generator before the next uncached prompt. This spends extra load time but
+preserves the only memory profile proven on the 31.35 GiB Kaggle host.
 
 **Progress reporting:** at 49 minutes per clip, `progress_percent` is what
 stops the app looking hung. Report per denoising step — 50 steps is roughly one
 update a minute.
 
-### W4 — Image-to-video input *(backend, blocking for I2V)*
+### W4 — Image input plumbing *(complete for image-capable providers)*
 
-Every provider's `submit()` begins `del image_path`, so the uploaded reference
-image is discarded. Until that is wired through, the worker cannot receive an
-image and only text-to-video is possible.
-
-Independent of Kaggle; needed by any real provider.
+The app, API, storage and `real`/`local` providers preserve and consume the
+reference image. The Wan2.1 worker is intentionally text-only and the backend
+rejects image/image+text requests before charging; an actual I2V model remains
+stretch scope rather than silently discarding the image.
 
 ## 5. Security — read this before writing any credentials
 
@@ -251,28 +251,16 @@ This is **not** a service, and should never be described as one:
 It is good enough for a demo, a bake-off, and a recorded walkthrough. It is not
 good enough for real users, and the README should say so.
 
-## 8. Sequencing, and the decision that comes first
+## 8. Remaining sequence
 
-**Do not start W1–W4 yet.**
+W1–W4 are complete in source. The remaining order is deliberately short:
 
-All of this is wasted if HunyuanVideo 1.5's output is not worth shipping. The
-cheap step first:
+1. Apply and verify migration 014.
+2. Create the dedicated database/Auth worker identities and Kaggle Secrets.
+3. Run S-14: submit from Android, generate, upload, complete, and play the MP4.
+4. Score the blind EXP-005 clips and record the team's quality decision.
 
-1. **Run the model manually on Kaggle.** A notebook, a few prompts, look at the
-   clips. This is the EXP-005 bake-off (`FREE-LOCAL-BEST-OUTPUT.md` §8), and
-   §11 explicitly permits Kaggle for one-off research.
-2. **Score the output** against the existing quality gate.
-3. **Only if it passes**, build W1 → W2 → W4 → W3.
-
-W1 and W2 are small and low-risk. W3 is the bulk. W4 is required for
-image-to-video and useful regardless of which provider ever wins.
-
-### What would kill this proposal
-
-- the model output is not visibly better than the current still-pan placeholder;
-- weight download consumes so much of each session that throughput is unusable;
-- the Hunyuan weight licence forbids the redistribution the demo needs
-  (`FREE-LOCAL-BEST-OUTPUT.md` §10 records this as unresolved).
-
-Any of those is a valid result and should be recorded as evidence, not worked
-around.
+Stop and preserve evidence if the worker cannot renew its lease, exceeds the
+measured memory envelope, cannot upload under the scoped Storage policy, or
+produces output the team rates below the accepted quality threshold. Do not
+work around those failures with `service_role` or broader table grants.

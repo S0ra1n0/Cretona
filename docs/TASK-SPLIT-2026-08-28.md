@@ -459,18 +459,18 @@ the report and demo video.
 
 ---
 
-## 6. Progress — reconciled 2026-08-29
+## 6. Progress — reconciled 2026-08-30
 
-**Backend API/database work is done except the Kaggle worker.** S-12 is an
-optional image-model spike; S-13/S-14 remain the critical worker and first
-real-video path.
+**Backend API/database and Kaggle worker source are done.** S-12 is an optional
+image-model spike; applying migration 014, the S-13 live worker run and S-14
+first real-video playback remain the critical path.
 
 | Ticket | | Ticket | |
 |---|---|---|---|
 | S-01 migration | ✅ | S-10 `EventService` | ✅ |
 | S-02 seed | ✅ | S-11 event endpoints + discount | ✅ |
 | S-03 `ADR-010` | ✅ | S-12 image-to-video spike | stretch, timeboxed |
-| S-04 `CreditService` | ✅ | S-13 Kaggle worker | ⏸ needs Kaggle |
+| S-04 `CreditService` | ✅ | S-13 Kaggle worker | ✅ source/local parity; live run pending |
 | S-05 charge and refund | ✅ | S-14 first real clip | ⏸ needs Kaggle |
 | S-05a signup bonus | ✅ | S-15 `/admin/stats` | ✅ |
 | S-06 W1 scoped claiming | ✅ | S-16 admin endpoints | ✅ |
@@ -480,11 +480,11 @@ real-video path.
 
 ### Verification
 
-Historical 2026-08-28 evidence records **590 passed, 0 skipped** against SQLite
-and disposable Postgres 17, with migration `013` and its seed applied and
-constraint-probed on live Supabase. The 2026-08-29 audit observed 537 passed,
-53 Postgres-only skipped and Ruff clean; a current Postgres rerun is blocked by
-the local Docker Desktop failure and must not be claimed as current evidence.
+Migration `013` and its seed were historically applied and constraint-probed on
+live Supabase. The current 2026-08-30 audit records **546 passed / 55
+Postgres-only skipped** on SQLite and **601 passed / 0 skipped** on disposable
+PostgreSQL 17, with Ruff and `pip check` clean. This local run does not prove
+that migration 014 is present on live Supabase.
 
 Running the Postgres half is documented in `backend/README.md`. Plain `pytest`
 skips 31–66 tests, and production runs Postgres — so a green plain run is not a
@@ -511,7 +511,7 @@ green run.
 |---|---|
 | **D1 — must the image drive the video?** | Resolved from lecturer scope: no specific model or image-conditioning requirement |
 | Optional image-model fallback | Only after S-13/S-14 and only if the Wan2.1 blind score is unacceptable |
-| S-13 / S-14 | A Kaggle session and the external worker |
+| S-13 / S-14 | Apply/verify migration 014, configure Kaggle Secrets, run one Kaggle session and play its result in Android |
 | Bruce's lane | B-14 screenshots, B-16 device/integration acceptance, then B-17/B-18 |
 
 ---
@@ -575,12 +575,12 @@ Python we control.
 
 ```powershell
 cd backend
-.\.venv\Scripts\python.exe -m pytest        # expect 537 passed, 53 skipped
+.\.venv\Scripts\python.exe -m pytest        # expect 546 passed, 55 skipped
 ```
 
 **The 53 skips are the Postgres suite, and production runs Postgres.** A green
 plain run is not a green run. The full command is in `backend/README.md`;
-with a disposable Postgres it is **590 passed, 0 skipped**.
+with a disposable Postgres it is **601 passed, 0 skipped**.
 
 ### Two things still open for the team
 

@@ -1,6 +1,6 @@
 # Cretona — current delivery roadmap
 
-- **Last reconciled:** 2026-08-29
+- **Last reconciled:** 2026-08-30
 - **Deadline:** 2026-09-05 (2026-09-06 is buffer only)
 - **Team:** Bruce — Android/admin UI · S0ra1n0 — FastAPI/database/Kaggle worker
 - **Detailed tickets:** [TASK-SPLIT-2026-08-28.md](TASK-SPLIT-2026-08-28.md)
@@ -24,20 +24,20 @@ The AI responsibilities are deliberately separate:
 - `fake` is deterministic test/demo output;
 - `real` and `local` are image-plus-motion placeholders, not evidence of a
   generative video model;
-- `kaggle` is an external-provider queue. Its worker is the remaining execution
-  component.
+- `kaggle` is an external-provider queue with a source-complete Wan2.1 worker;
+  migration 014 and the first live Android-to-playback run remain unproven.
 
 ## 2. Audited status
 
 | Area | Implemented | Observed evidence | Remaining boundary |
 |---|---|---|---|
-| FastAPI API, auth, ownership, quotas, admin | Complete in source | 537 passed, 53 Postgres-only skipped; Ruff clean on 2026-08-29 | Current Postgres parity run blocked because Docker Desktop was unavailable |
-| Credits, payments, events and refund ledger | Complete in SQLite/Postgres adapters; migration `013` and seed exist | Historical 2026-08-28 evidence records 590 passed, 0 skipped and live migration probes | Re-run Postgres parity when Docker works; do not replace the historical result with the blocked current run |
+| FastAPI API, auth, ownership, quotas, admin | Complete in source | 546 passed / 55 Postgres-only skipped on SQLite; 601 passed / 0 skipped on disposable PostgreSQL 17; Ruff and `pip check` clean on 2026-08-30 | Live deployment and real-client acceptance remain separate |
+| Credits, payments, events and refund ledger | Complete in SQLite/Postgres adapters; migration `013` and seed exist | Current 601-test PostgreSQL run covers charge, per-attempt refund and worker failure parity; migration 013 has historical live probes | Live state is not re-verified by the disposable database |
 | Android user journeys | B-01 through B-07 source-complete; real repositories are bound | Final full gate: 123 unit tests, lint, debug/release APK and instrumentation-test compile passed | Record emulator journeys and screenshots |
 | Android admin console | B-08 through B-13 source-complete against real endpoints | Included in the final compile/test/lint gate | Emulator acceptance, light/dark screenshots and live-endpoint walkthrough |
 | Prompt LLM | Qwen/Ollama adapter plus explicit fallback implemented | Historical live FastAPI evidence selected Qwen; not re-run in this audit | Re-run with `usedFallback=false` before the demo if Ollama is part of the demo |
 | Free generative video | Wan2.1 T2V 1.3B two-phase Kaggle notebook proven to generate | 4/4 distinct 832×480, 81-frame clips; mean 48.6 min/clip on 2×T4 | Blind quality scorecard is empty; no quality pass may be claimed |
-| Real video in the app | External `kaggle` provider contract and provider-scoped claiming exist | Contract/backend tests only | S-13 worker, S-14 first real result, storage writeback and Android playback are still required |
+| Real video in the app | External `kaggle` provider, least-privilege worker, lease heartbeat, Storage upload and atomic completion/refund exist in source | Worker tests plus current disposable-Postgres claim, Storage RLS, completion and retry/refund parity | Apply/verify migration 014, then S-14 first live result and Android playback |
 
 ## 3. Bruce lane
 
@@ -56,8 +56,8 @@ The AI responsibilities are deliberately separate:
 | B-11 admin credits/transactions | Source complete |
 | B-12 admin events/packages/settings | Source complete |
 | B-13 dashboard credit/revenue/event tiles | Source complete |
-| B-14 screenshot pass | Pending current emulator evidence |
-| B-16 integration defects | In progress; code audit fixed retry charging, refund balance refresh and provider error routing |
+| B-14 screenshot pass | Fail-fast portable script complete; current emulator screenshots still pending |
+| B-16 integration defects | Source audit complete; fixed per-attempt refunds, Kaggle read/state ownership, provider duration limits and retry validation. Device/live defects remain evidence-driven |
 | B-17 demo video | Blocked on S-14 real clip |
 | B-18 report/screenshots | Pending B-14/B-17 |
 
@@ -68,9 +68,8 @@ proof so the same UI work is not reimplemented under a new ticket.
 
 The API/database work through S-16 is present. The remaining critical path is:
 
-1. **S-13:** run the Kaggle worker that claims only `provider = 'kaggle'`, renews
-   its lease during long inference, loads Wan2.1 in two phases, uploads the
-   result, and closes the job.
+1. **S-13:** worker source is complete. Apply/verify migration 014, configure
+   the two least-privilege worker identities in Kaggle Secrets, and start it.
 2. **S-14:** submit one text job from Android, let the worker complete it, and
    play the returned real MP4 in Android. Capture IDs, timestamps and media
    metadata as evidence.
@@ -103,23 +102,28 @@ already proven and the scorecard shows Wan2.1 is unacceptable.
 
 ## 6. Current verification and blockers
 
-Verified on 2026-08-29:
+Verified on 2026-08-30:
 
-- backend: Ruff check/format clean, `pip check` clean, 537 passed and 53 skipped;
-- Android final gate: 123 tests, 0 failures/errors/skips; lint 0 errors and 5
-  dependency/target warnings; debug/release assembly and debug-android-test
-  compilation passed;
+- backend SQLite profile: 546 passed and 55 intentionally skipped;
+- backend disposable-Postgres profile: all 601 passed; the only first-run
+  failure was a missing `USAGE` grant in the local Storage test stub, fixed in
+  the owning fixture before the clean full rerun;
+- backend Ruff check/format and `pip check` are clean; PowerShell screenshot
+  script syntax is valid;
+- Android final gate remains valid because no Android source changed after its
+  run: 123 tests, 0 failures/errors/skips; lint 0 errors and 5 dependency/target
+  warnings; debug/release assembly and debug-android-test compilation passed;
 - dependency workflow uses least privilege, immutable action SHAs and verified
   Gradle wrapper/distribution checksums;
 - tracked secret-pattern scan found only the deliberate service-role placeholder
   in `backend/.env.example`, not a plaintext credential.
 
-Blocked/not run in this audit:
+Not run or not accepted in this audit:
 
-- Postgres parity: Docker Desktop daemon did not become available and the retry
-  was stopped instead of hanging;
-- live Kaggle page: this environment could not establish the page TLS session;
-  the committed 29-cell notebook and its evidence were inspected instead;
+- migration 014 was not applied to live Supabase; disposable PostgreSQL is not
+  evidence of live migration state;
+- the Kaggle worker was not run with live credentials, so no app-submitted job
+  has completed through the new worker path;
 - emulator, live Supabase and hosted CI acceptance: still require a current run.
 
 ## 7. Definition of done
@@ -129,7 +133,7 @@ Blocked/not run in this audit:
 - [x] Admin user, project, credits, events, packages, settings and dashboard
       paths are implemented.
 - [x] Final backend SQLite gate is green at the delivered revision.
-- [ ] Final Postgres gate is green at the delivered revision.
+- [x] Final Postgres gate is green at the delivered revision.
 - [x] Final Android source/build gate is green at the delivered revision.
 - [ ] Required emulator journeys are green at the delivered revision.
 - [ ] A Wan2.1 Kaggle job submitted through FastAPI completes and its real video

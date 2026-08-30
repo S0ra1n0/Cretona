@@ -135,6 +135,11 @@ def postgres_client(tmp_path: Path, postgres_url: str) -> Iterator[TestClient]:
     # reporting that it cannot connect.
     with psycopg.connect(postgres_url, autocommit=True, connect_timeout=5) as connection:
         connection.execute(schema)
+        connection.execute(
+            (Path(__file__).parents[2] / "supabase" / "014_add_kaggle_worker.sql").read_text(
+                encoding="utf-8"
+            )
+        )
         for user_id, email in ((USER_A, "a@example.com"), (USER_B, "b@example.com")):
             connection.execute(
                 "INSERT INTO public.users (id, email) VALUES (%s, %s)",

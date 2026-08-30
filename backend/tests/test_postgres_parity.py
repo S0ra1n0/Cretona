@@ -1094,3 +1094,100 @@ def test_an_active_discount_is_found_on_postgres(
         )
 
     assert postgres_client.app.state.event_service.discount_percent() == 40
+
+
+def test_kaggle_worker_claim_storage_and_complete_on_postgres(
+    postgres_client: TestClient,
+    postgres_url: str,
+    bearer: BearerFactory,
+) -> None:
+    response = postgres_client.post(
+        "/api/v1/projects",
+        headers=bearer(subject=USER_A),
+        json={
+            "prompt": "a paper dragon flying over lanterns",
+            "provider": "kaggle",
+            "options": {"durationSeconds": 5, "aspectRatio": "16:9"},
+        },
+    )
+    assert response.status_code == 201, response.text
+    project_id = response.json()["id"]
+    worker_id = "30000000-0000-4000-8000-000000000003"
+    object_name = f"{USER_A}/{project_id}/video.mp4"
+
+    with psycopg.connect(postgres_url) as connection, connection.transaction():
+        connection.execute("set local role cretona_kaggle_worker")
+        claimed = connection.execute(
+            "select * from private.cretona_kaggle_claim_job(%s, 180)", (worker_id,)
+        ).fetchone()
+        assert claimed is not None
+        assert str(claimed[0]) == project_id
+        assert connection.execute(
+            "select private.cretona_kaggle_heartbeat(%s, %s, 180, 50, 'step 25/50')",
+            (worker_id, project_id),
+        ).fetchone()[0]
+
+        connection.execute("reset role")
+        connection.execute("set local role authenticated")
+        connection.execute("select set_config('request.jwt.claim.sub', %s, true)", (worker_id,))
+        connection.execute(
+            "select set_config('request.jwt.claims', %s, true)",
+            ('{"app_metadata":{"cretona_worker":true}}',),
+        )
+        connection.execute(
+            "insert into storage.objects (bucket_id, name) values ('videos', %s)",
+            (object_name,),
+        )
+
+        connection.execute("reset role")
+        connection.execute("set local role cretona_kaggle_worker")
+        assert connection.execute(
+            "select private.cretona_kaggle_complete(%s, %s, %s)",
+            (worker_id, project_id, "a" * 64),
+        ).fetchone()[0]
+
+    completed = postgres_client.get(
+        f"/api/v1/projects/{project_id}", headers=bearer(subject=USER_A)
+    ).json()
+    assert completed["status"] == "completed"
+    assert completed["videoUrl"] is not None
+
+
+def test_kaggle_worker_failure_refunds_every_attempt_once_on_postgres(
+    postgres_client: TestClient,
+    postgres_url: str,
+    bearer: BearerFactory,
+) -> None:
+    headers = bearer(subject=USER_A)
+    credits = postgres_client.app.state.credit_service
+    starting_balance = credits.balance(USER_A)
+    created = postgres_client.post(
+        "/api/v1/projects",
+        headers=headers,
+        json={"prompt": "a dragon", "provider": "kaggle"},
+    ).json()
+    worker_id = "30000000-0000-4000-8000-000000000003"
+
+    def claim_and_fail() -> None:
+        with psycopg.connect(postgres_url) as connection, connection.transaction():
+            connection.execute("set local role cretona_kaggle_worker")
+            assert connection.execute(
+                "select * from private.cretona_kaggle_claim_job(%s, 180)", (worker_id,)
+            ).fetchone()
+            assert connection.execute(
+                "select private.cretona_kaggle_fail(%s, %s, 'provider_error', 'failed')",
+                (worker_id, created["id"]),
+            ).fetchone()[0]
+
+    claim_and_fail()
+    assert credits.balance(USER_A) == starting_balance
+
+    retried = postgres_client.post(f"/api/v1/projects/{created['id']}/retry", headers=headers)
+    assert retried.status_code == 202, retried.text
+    claim_and_fail()
+
+    rows, _ = credits.history(USER_A, limit=100)
+    project_rows = [row for row in rows if row.get("ref_id") == created["id"]]
+    assert sum(row["reason"] == "generation" for row in project_rows) == 2
+    assert sum(row["reason"] == "refund" for row in project_rows) == 2
+    assert credits.balance(USER_A) == starting_balance
