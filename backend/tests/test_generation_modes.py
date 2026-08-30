@@ -164,6 +164,71 @@ def test_the_same_prompt_still_works_without_the_image(client: TestClient) -> No
     assert create(client, prompt="a dragon", provider="fake").status_code == 201
 
 
+def test_kaggle_rejects_unproven_long_video_before_charging(client: TestClient) -> None:
+    funded(client, 10)
+
+    response = create(
+        client,
+        prompt="a dragon",
+        provider="kaggle",
+        options={"durationSeconds": 10, "aspectRatio": "16:9"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert client.app.state.credit_service.balance(USER_A) == 10
+    assert client.get("/api/v1/projects", headers=HEADERS).json()["items"] == []
+
+
+def test_kaggle_rejects_a_legacy_long_video_retry_before_charging(client: TestClient) -> None:
+    funded(client, 10)
+    created = create(client, prompt="a dragon", provider="kaggle").json()
+    database = client.app.state.database
+    database.update_project(
+        created["id"],
+        USER_A,
+        {"status": "failed", "duration_seconds": 10, "error_code": "provider_error"},
+        expected_status="pending",
+    )
+    client.app.state.credit_service.refund_for(
+        USER_A,
+        ref_type="project",
+        ref_id=created["id"],
+    )
+
+    response = client.post(f"/api/v1/projects/{created['id']}/retry", headers=HEADERS)
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert client.app.state.credit_service.balance(USER_A) == 10
+
+
+def test_reading_kaggle_job_does_not_overwrite_worker_state_or_timeout(
+    client: TestClient,
+) -> None:
+    funded(client, 10)
+    created = create(client, prompt="a dragon", provider="kaggle").json()
+    database = client.app.state.database
+    database.update_project(
+        created["id"],
+        USER_A,
+        {
+            "status": "generating",
+            "progress_percent": 73,
+            "step_message": "Wan2.1 denoising step 37/50",
+            "started_at": "2000-01-01T00:00:00+00:00",
+        },
+        expected_status="pending",
+    )
+
+    response = client.get(f"/api/v1/projects/{created['id']}", headers=HEADERS)
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "generating"
+    assert response.json()["progressPercent"] == 73
+    assert response.json()["stepMessage"] == "Wan2.1 denoising step 37/50"
+
+
 # --- validation --------------------------------------------------------------
 
 

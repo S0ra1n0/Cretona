@@ -60,3 +60,8 @@ def test_third_party_image_endpoint_is_opt_in() -> None:
     settings = Settings(_env_file=None)
 
     assert settings.image_endpoint == ""
+
+
+@pytest.mark.parametrize("provider", ["kaggle", "external"])
+def test_external_worker_can_be_the_default_provider(provider: str) -> None:
+    assert Settings(default_video_provider=provider).default_video_provider == provider

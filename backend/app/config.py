@@ -61,7 +61,9 @@ class Settings(BaseSettings):
     generation_quota_window_hours: int = Field(default=24, ge=1, le=720)
     database_path: Path = BACKEND_ROOT / "data" / "cretona.db"
     media_dir: Path = BACKEND_ROOT / "assets"
-    default_video_provider: Literal["mock", "cloud", "local", "fake", "real", "wan21"] = "mock"
+    default_video_provider: Literal[
+        "mock", "cloud", "local", "fake", "real", "wan21", "kaggle", "external"
+    ] = "mock"
     real_ai_api_key: SecretStr = SecretStr("")
     real_ai_endpoint: str = ""
     cloud_ai_api_key: SecretStr = SecretStr("")

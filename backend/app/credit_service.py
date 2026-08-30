@@ -188,7 +188,10 @@ class CreditService:
             ref_type=ref_type,
             ref_id=ref_id,
             note=note or f"Refund for {ref_type} {ref_id}",
-            idempotency_key=f"refund:{ref_type}:{ref_id}",
+            # A retry is a second charge for the same project. Keying only by
+            # project made the first refund permanently suppress every later
+            # retry refund. One refund per charge is the actual invariant.
+            idempotency_key=f"refund:charge:{charge['id']}",
         )
         return row
 
@@ -239,19 +242,21 @@ class CreditService:
         across two adapters.
         """
         cursor: str | None = None
-        charge: dict[str, Any] | None = None
+        charges: list[dict[str, Any]] = []
+        refund_count = 0
         while True:
             rows, cursor = self.database.list_credit_transactions(user_id, limit=100, cursor=cursor)
             for row in rows:
                 if row.get("ref_type") != ref_type or row.get("ref_id") != ref_id:
                     continue
                 if row["reason"] == "refund":
-                    # Already refunded. Stop rather than refund again.
-                    return None
-                if int(row["delta"]) < 0 and charge is None:
-                    charge = row
+                    refund_count += 1
+                elif row["reason"] == "generation" and int(row["delta"]) < 0:
+                    charges.append(row)
             if not cursor:
-                return charge
+                # Refunds close the oldest failed attempts. If a new retry was
+                # charged after them, the newest charge remains refundable.
+                return charges[0] if len(charges) > refund_count else None
 
     def _apply(
         self,

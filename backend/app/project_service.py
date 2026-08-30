@@ -187,6 +187,7 @@ class ProjectService:
             )
 
         duration = request.options.duration_seconds if request.options is not None else None
+        self._assert_duration_supported(provider, duration)
 
         # Before the provider call, never after: checking afterwards is
         # accounting, not control (ADR-007).
@@ -359,6 +360,9 @@ class ProjectService:
         if attempts >= self.settings.max_generation_attempts:
             raise AppError(409, "CONFLICT", "This generation has been retried too many times.")
 
+        provider = self.providers.get(row["provider"])
+        self._assert_duration_supported(provider, row["duration_seconds"])
+
         # A retry is a real provider call, so it costs an allowance (ADR-007) —
         # and it is charged at the same weight the row will be counted at, or a
         # weighted retry could take a user past the limit.
@@ -373,7 +377,6 @@ class ProjectService:
         # swallowed as a replay of the first.
         self._charge_for_generation(owner_id, project_id, attempt=attempts + 1, note="Retry")
 
-        provider = self.providers.get(row["provider"])
         try:
             submitted = provider.submit(prompt=row["prompt"], image_path=row["image_path"])
         except Exception:
@@ -414,6 +417,13 @@ class ProjectService:
         return self._advance(row, row["owner_id"])
 
     def _advance(self, row: dict[str, Any], owner_id: str) -> dict[str, Any]:
+        provider = self.providers.get(row["provider"])
+        if getattr(provider, "external", False):
+            # The external worker is the sole owner of its state machine. A
+            # read must not reset worker progress or apply the ten-minute
+            # in-process timeout to a proven ~49-minute Kaggle generation.
+            return row
+
         # Checked before anything else, so a provider that accepted a job and
         # then went quiet cannot hold a project in flight forever. Without
         # this the poller re-polls a dead job on every pass, indefinitely.
@@ -439,7 +449,6 @@ class ProjectService:
         if row["status"] != "generating":
             return row
 
-        provider = self.providers.get(row["provider"])
         poll_count = int(row["poll_count"]) + 1
         result = provider.poll(
             job_id=row["provider_job_id"],
@@ -723,6 +732,17 @@ class ProjectService:
         except Exception:  # pragma: no cover - defensive
             logger.exception("Could not resolve the active discount")
             return None
+
+    @staticmethod
+    def _assert_duration_supported(provider: Any, duration: int | None) -> None:
+        max_duration = getattr(provider, "max_duration_seconds", None)
+        if duration is not None and max_duration is not None and duration > max_duration:
+            raise AppError(
+                400,
+                "VALIDATION_ERROR",
+                f"{provider.name} currently supports videos up to {max_duration} seconds.",
+                [{"field": "body.options.durationSeconds", "issue": "provider_limit"}],
+            )
 
     def _owned(self, owner_id: str, project_id: str) -> dict[str, Any]:
         row = self.database.get_project(project_id, owner_id)

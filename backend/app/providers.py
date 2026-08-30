@@ -620,6 +620,10 @@ class ExternalVideoProvider:
 
     name = "kaggle"
     external = True
+    # The only proven Wan2.1 profile is 81 frames at 16 fps (5.06 seconds).
+    # Refuse a longer request before quota/credits are consumed instead of
+    # silently returning a shorter clip or gambling on an unmeasured workload.
+    max_duration_seconds = 5
     # Wan2.1 T2V 1.3B reads the prompt and nothing else. Until an
     # image-conditioned model is proven on this hardware (EXP-005, D1), an
     # image sent here would be stored and ignored.
@@ -671,9 +675,7 @@ class ExternalVideoProvider:
 
 
 class ProviderRegistry:
-    """Central registry with support for 3 canonical tiers: mock, cloud, local
-    and backward-compatible alias resolution ('fake', 'real', 'wan21').
-    """
+    """Central registry for the configured providers and compatibility aliases."""
 
     ALIASES: ClassVar[dict[str, str]] = {
         "fake": "fake",

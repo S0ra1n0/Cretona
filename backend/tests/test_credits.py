@@ -196,6 +196,32 @@ def test_refunding_twice_gives_back_one_refund(credits: CreditService) -> None:
     assert credits.balance(USER) == 10
 
 
+def test_a_failed_retry_can_refund_its_own_charge(credits: CreditService) -> None:
+    credits.grant(USER, 10, reason="signup_bonus")
+    credits.charge(
+        USER,
+        3,
+        ref_type="project",
+        ref_id="p1",
+        idempotency_key="generation:p1:1",
+    )
+    credits.refund_for(USER, ref_type="project", ref_id="p1")
+    credits.charge(
+        USER,
+        2,
+        ref_type="project",
+        ref_id="p1",
+        idempotency_key="generation:p1:2",
+    )
+
+    refund = credits.refund_for(USER, ref_type="project", ref_id="p1")
+
+    assert refund is not None
+    assert refund["delta"] == 2
+    assert credits.balance(USER) == 10
+    assert credits.refund_for(USER, ref_type="project", ref_id="p1") is None
+
+
 def test_refund_with_nothing_to_refund_is_a_no_op(credits: CreditService) -> None:
     """A job that failed before it was ever charged."""
     credits.grant(USER, 5, reason="signup_bonus")
