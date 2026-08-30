@@ -5,6 +5,7 @@
 | If you want to… | Read |
 |---|---|
 | Get the project running on your machine | [SETUP.md](SETUP.md) |
+| Resume or hand off current work | [ROADMAP.md](ROADMAP.md), then [KAGGLE_WORKER_RUNBOOK.md](KAGGLE_WORKER_RUNBOOK.md) |
 | Know what the system must do | [SRS.md](SRS.md) |
 | Know what to build next | [ROADMAP.md](ROADMAP.md) |
 | Call or implement an endpoint | [API_CONTRACT.md](API_CONTRACT.md) |
@@ -35,3 +36,8 @@ Requirements have ids (`FR-2.1`, `NFR-2.3`) and everything else refers back to t
 - Adding a `local.properties` or `.env` key? Add it to [SETUP.md](SETUP.md) and `.env.example`, or the next person's build breaks in a way that is hard to diagnose.
 
 Progress against the plan is tracked in [ROADMAP.md](ROADMAP.md), which is the file to update when a task lands.
+
+Dated `HANDOVER-*.md` files preserve historical snapshots and must not be used
+as the current branch, revision, test-count, CI or migration source. A receiver
+starts from `main`, verifies the revision in `ROADMAP.md`, and continues at its
+first unchecked acceptance item.

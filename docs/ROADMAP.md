@@ -4,7 +4,9 @@
 - **Deadline:** 2026-09-05 (2026-09-06 is buffer only)
 - **Team:** Bruce — Android/admin UI · S0ra1n0 — FastAPI/database/Kaggle worker
 - **Detailed tickets:** [TASK-SPLIT-2026-08-28.md](TASK-SPLIT-2026-08-28.md)
-- **Containing commit:** binds this snapshot to the exact source revision
+- **Source evidence revision:** `4028d182ba0dbd0c8c9c01c4d9db7c125690f88d`
+- **Hosted CI:** [run 33313146316](https://github.com/S0ra1n0/Cretona/actions/runs/33313146316)
+  passed Android/JVM 17, FastAPI/Python 3.12 and FastAPI/PostgreSQL 17 parity
 
 This is the progress source of truth. Requirements remain in `SRS.md`, wire
 formats in `API_CONTRACT.md`, and schema rules in `DATA_MODEL.md`.
@@ -41,7 +43,7 @@ The AI responsibilities are deliberately separate:
 
 ## 3. Bruce lane
 
-| Ticket | Status on 2026-08-29 |
+| Ticket | Current source status |
 |---|---|
 | B-01 camera capture | Source complete |
 | B-02 credit contracts and repository seam | Source complete; real repository now bound |
@@ -115,6 +117,8 @@ Verified on 2026-08-30:
   warnings; debug/release assembly and debug-android-test compilation passed;
 - dependency workflow uses least privilege, immutable action SHAs and verified
   Gradle wrapper/distribution checksums;
+- hosted CI run 33313146316 passed all Android, SQLite-backend and
+  PostgreSQL-parity jobs for source revision `4028d18`;
 - tracked secret-pattern scan found only the deliberate service-role placeholder
   in `backend/.env.example`, not a plaintext credential.
 
@@ -124,7 +128,7 @@ Not run or not accepted in this audit:
   evidence of live migration state;
 - the Kaggle worker was not run with live credentials, so no app-submitted job
   has completed through the new worker path;
-- emulator, live Supabase and hosted CI acceptance: still require a current run.
+- emulator and live Supabase acceptance still require a current run.
 
 ## 7. Definition of done
 
@@ -135,6 +139,7 @@ Not run or not accepted in this audit:
 - [x] Final backend SQLite gate is green at the delivered revision.
 - [x] Final Postgres gate is green at the delivered revision.
 - [x] Final Android source/build gate is green at the delivered revision.
+- [x] Hosted CI is green at the delivered revision.
 - [ ] Required emulator journeys are green at the delivered revision.
 - [ ] A Wan2.1 Kaggle job submitted through FastAPI completes and its real video
       plays in Android.

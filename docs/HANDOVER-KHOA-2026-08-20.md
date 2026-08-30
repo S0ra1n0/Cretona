@@ -1,5 +1,11 @@
 # Cretona temporary handover to Khoa — 2026-08-20
 
+> **Superseded historical handover.** Its branch, cached remote, CI token and
+> test-count statements no longer describe the repository. Khoa should pull
+> current `main`, verify the revision in [ROADMAP.md](ROADMAP.md), and execute
+> the live acceptance sequence in
+> [KAGGLE_WORKER_RUNBOOK.md](KAGGLE_WORKER_RUNBOOK.md).
+
 This is a temporary continuation note, not a permanent ownership transfer.
 It is revision-bound to audited source commit
 `0617bae0e6152aab0380e27299bb4560feddc232`; the commit containing this note is

@@ -4,6 +4,12 @@ Cretona is a Mobile 1 project by Bruce and S0ra1n0 for creating short AI
 videos from text and, after the text path is proven, an optional reference
 image.
 
+Source revision `4028d18` is clean on local and live `main`. GitHub Actions
+[run 33313146316](https://github.com/S0ra1n0/Cretona/actions/runs/33313146316)
+passed the Android/JVM 17, FastAPI/Python 3.12 and FastAPI/PostgreSQL 17 jobs.
+This proves the committed source/build gates, not live Supabase, Kaggle or
+device acceptance.
+
 ## Current integration status
 
 The active implementation is an Android app (Kotlin, Jetpack Compose, MVVM,
@@ -40,6 +46,9 @@ Cretona/             open this folder in Android Studio
 ## Documentation
 
 - Start with [docs/README.md](docs/README.md) for the teammate implementation.
+- Use [docs/ROADMAP.md](docs/ROADMAP.md) as the current handover/status source.
+- Use [docs/KAGGLE_WORKER_RUNBOOK.md](docs/KAGGLE_WORKER_RUNBOOK.md) for the
+  first live worker-to-Android acceptance run.
 - See [docs/DECISIONS.md](docs/DECISIONS.md) for reconciled team decisions.
 - See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for credential boundaries.
 - See [docs/evidence/ANDROID_FASTAPI_E2E.md](docs/evidence/ANDROID_FASTAPI_E2E.md)
