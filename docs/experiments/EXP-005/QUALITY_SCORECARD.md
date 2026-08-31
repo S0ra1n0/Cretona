@@ -2,7 +2,9 @@
 
 Score only after two complete runs from a candidate have passed the technical
 checks. Rename the clips to neutral labels before Bruce and S0ra1n0 score them
-independently. Do not reveal the model name until both score sheets are locked.
+independently. This run has one known model, so the neutral labels hide only the
+seed within each prompt pair. Do not open `BLIND_KEY.json` until both score
+sheets are locked.
 
 ## Rubric
 
@@ -10,8 +12,8 @@ independently. Do not reveal the model name until both score sheets are locked.
 |---|---:|---|---|
 | Composition | 20 | Main subject or scene is unusable | Clear subject, stable framing, readable scene |
 | Motion coherence | 25 | Static, chaotic, or severe temporal drift | Intentional smooth motion with stable geometry |
-| Prompt adherence | 20 | Motion/camera request is ignored | Dragon, flight direction, lantern motion, and camera intent are present |
-| Reference consistency | 20 | Subject/scene identity is lost | Dragon, moon, lighting, and city remain recognizably consistent |
+| Prompt adherence | 20 | Requested subject, scene motion, or camera intent is ignored | A: dragon/lanterns/dolly; B: sailboat/swells/sail/orbit are recognizably present |
+| Reference consistency | 20 | Subject/scene identity is lost | Subject, background and lighting remain recognizably stable through the clip |
 | Artifact control | 15 | Severe morphing, duplication, tearing, or flicker | No distracting temporal or structural artifact |
 
 Use whole-number scores from zero up to each dimension's weight. The total is
@@ -61,7 +63,7 @@ against the `>= 65` standard bar alone, noting that `PB-FRAMEPACK-QUALITY` sets
 
 ## Locked result
 
-| Candidate revealed after scoring | Mean score | Standard pass (>=65) | Delta over Standard | Quality pass (>=8 delta) |
+| Candidate | Mean score | Standard pass (>=65) | Delta over Standard | Quality pass (>=8 delta) |
 |---|---:|---|---:|---|
 |  |  |  |  |  |
 
