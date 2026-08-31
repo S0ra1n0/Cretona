@@ -16,6 +16,10 @@ Kaggle 2×T4 host. The worker is not an always-on service.
 > at section 3 if the team still has both credential values; otherwise reset
 > only the missing password in section 2. Evidence:
 > [`LIVE_SUPABASE_MIGRATION_014_2026-08-31.md`](evidence/LIVE_SUPABASE_MIGRATION_014_2026-08-31.md).
+>
+> The authenticated `bruce335/cretona-wan2-1` notebook showed **No secrets
+> added** during the 2026-08-31 non-device preflight. Start at section 3; do not
+> start a GPU session before all five names are present and enabled.
 
 ## 1. Verify migration 014; apply only if absent
 
@@ -129,7 +133,10 @@ completed:
 
 1. Start FastAPI in its Supabase/Postgres/Storage profile.
 2. Sign in to Android, choose **Kaggle · Wan2.1**, keep the request text-only,
-   choose 2–5 seconds, and press Generate.
+   choose **4 seconds**, and press Generate. The pinned worker uses 16 fps and
+   50 denoising steps, so this first acceptance clip is 65 frames. If that
+   measured run exceeds the available session window, retry once at 3 seconds
+   (49 frames); do not change model constants during acceptance.
 3. Confirm the project moves `pending → generating`, progress changes while the
    notebook runs, and the worker reports only project IDs—not prompts/secrets.
 4. Wait for `completed`; open the project and play the signed MP4 in Android.

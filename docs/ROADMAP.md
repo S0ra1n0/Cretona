@@ -4,9 +4,10 @@
 - **Deadline:** 2026-09-05 (2026-09-06 is buffer only)
 - **Team:** Bruce — Android/admin UI · S0ra1n0 — FastAPI/database/Kaggle worker
 - **Detailed tickets:** [TASK-SPLIT-2026-08-28.md](TASK-SPLIT-2026-08-28.md)
-- **Source evidence revision:** `a7b625147cbff81ae7789e237b7300618046f376`
-- **Hosted CI:** [run 33356499355](https://github.com/S0ra1n0/Cretona/actions/runs/33356499355)
+- **Evidence baseline:** `ed4c1723a4335ca2c55d34aec174da39da8b26b3`
+- **Hosted CI:** [run 33366381890](https://github.com/S0ra1n0/Cretona/actions/runs/33366381890)
   passed Android/JVM 17, FastAPI/Python 3.12 and FastAPI/PostgreSQL 17 parity
+- **Fresh local gate:** [non-device preflight](evidence/NON_DEVICE_PREFLIGHT_2026-08-31.md)
 
 This is the progress source of truth. Requirements remain in `SRS.md`, wire
 formats in `API_CONTRACT.md`, and schema rules in `DATA_MODEL.md`.
@@ -34,7 +35,7 @@ The AI responsibilities are deliberately separate:
 
 | Area | Implemented | Observed evidence | Remaining boundary |
 |---|---|---|---|
-| FastAPI API, auth, ownership, quotas, admin | Complete in source | 546 passed / 55 Postgres-only skipped on SQLite; 601 passed / 0 skipped on disposable PostgreSQL 17; Ruff and `pip check` clean on 2026-08-30 | Live deployment and real-client acceptance remain separate |
+| FastAPI API, auth, ownership, quotas, admin | Complete in source | Fresh 2026-08-31 gate: 546 passed / 55 Postgres-only skipped on SQLite, Ruff and `pip check` clean; 601 passed / 0 skipped on disposable PostgreSQL 17 in hosted CI | Live deployment and real-client acceptance remain separate |
 | Credits, payments, events and refund ledger | Complete in SQLite/Postgres adapters; migration `013` and seed exist | Current 601-test PostgreSQL run covers charge, per-attempt refund and worker failure parity; migration 013 has historical live probes | Live state is not re-verified by the disposable database |
 | Android user journeys | B-01 through B-07 source-complete; real repositories are bound | Final full gate: 123 unit tests, lint, debug/release APK and instrumentation-test compile passed | Record emulator journeys and screenshots |
 | Android admin console | B-08 through B-13 source-complete against real endpoints | Included in the final compile/test/lint gate | Emulator acceptance, light/dark screenshots and live-endpoint walkthrough |
@@ -76,7 +77,11 @@ The API/database work through S-16 is present. The remaining critical path is:
 2. **S-14:** submit one text job from Android, let the worker complete it, and
    play the returned real MP4 in Android. Capture IDs, timestamps and media
    metadata as evidence.
-3. **S-17/S-18:** finish the evidence ledger, report and submission package.
+3. **S-17:** the non-device evidence and canonical docs are reconciled. Append
+   the live worker result and locked blind score when those runs exist.
+4. **S-18:** verify the current bootstrap plus seed from an empty disposable
+   Supabase-compatible database, then assemble the secret-free report and
+   submission package after B-14/B-17.
 
 S-12 image-conditioned model research is now **stretch scope**, not a release
 gate. The lecturer gave no model or image-conditioning mandate. The app/API may
@@ -115,13 +120,13 @@ Verified through 2026-08-31:
   the owning fixture before the clean full rerun;
 - backend Ruff check/format and `pip check` are clean; PowerShell screenshot
   script syntax is valid;
-- Android final gate remains valid because no Android source changed after its
-  run: 123 tests, 0 failures/errors/skips; lint 0 errors and 5 dependency/target
-  warnings; debug/release assembly and debug-android-test compilation passed;
+- Android final gate was rerun on 2026-08-31: 123 tests, 0
+  failures/errors/skips; lint 0 errors and 5 dependency/target warnings;
+  debug/release assembly and debug-android-test compilation passed;
 - dependency workflow uses least privilege, immutable action SHAs and verified
   Gradle wrapper/distribution checksums;
-- hosted CI run 33356499355 passed all Android, SQLite-backend and
-  PostgreSQL-parity jobs for source revision `a7b6251`;
+- hosted CI run 33366381890 passed all Android, SQLite-backend and
+  PostgreSQL-parity jobs for evidence baseline `ed4c172`;
 - the live Supabase gate ran with `transaction_read_only=on` against PostgreSQL
   17.6: migrations 006-014 are present, the worker role has no superuser,
   database, role, bypass-RLS, replication, membership or direct table power,
@@ -137,8 +142,12 @@ Verified through 2026-08-31:
 Not run or not accepted in this audit:
 
 - the database role has a password and exactly one Auth user has protected
-  `cretona_worker=true` metadata, but the five Kaggle Secrets and actual
-  authentication have not yet been accepted as a complete live identity set;
+  `cretona_worker=true` metadata, but the authenticated notebook showed **No
+  secrets added** on 2026-08-31; its five Kaggle Secrets and actual
+  authentication therefore remain open;
+- the current bootstrap plus seed was not re-executed from an empty database in
+  this gate because Docker/Postgres was unavailable locally; historical
+  bootstrap evidence and hosted adapter parity do not close that S-18 rerun;
 - the Kaggle worker was not run with live credentials, so no app-submitted job
   has completed through the new worker path;
 - emulator and live Supabase acceptance still require a current run.
@@ -149,10 +158,10 @@ Not run or not accepted in this audit:
 - [x] User credits, events, purchase, charge and refund paths are implemented.
 - [x] Admin user, project, credits, events, packages, settings and dashboard
       paths are implemented.
-- [x] Final backend SQLite gate is green at the delivered revision.
-- [x] Final Postgres gate is green at the delivered revision.
-- [x] Final Android source/build gate is green at the delivered revision.
-- [x] Hosted CI is green at the delivered revision.
+- [x] Final backend SQLite gate is green at the evidence baseline.
+- [x] Final Postgres gate is green at the evidence baseline.
+- [x] Final Android source/build gate is green at the evidence baseline.
+- [x] Hosted CI is green at the evidence baseline.
 - [x] Live Supabase migration 014 passes its read-only security verification.
 - [ ] Required emulator journeys are green at the delivered revision.
 - [ ] A Wan2.1 Kaggle job submitted through FastAPI completes and its real video

@@ -231,23 +231,26 @@ endpoints; the fake is no longer the application binding.
 **S-13 · W3 — the Kaggle worker** — the rest of the day
 : Claim → `generating` → generate → upload → `completed`, honouring
   `transitions.py`.
-: Three things it must get right: **renew the lease on a timer**
-  (`poll_lease_seconds` is 120 by default, ceiling 3600 — a 15-minute job at the
-  default is re-claimed seven times); **keep the encoder resident between jobs**
-  (phase 1 is ~5 min); **report progress per denoising step**.
+: Three things it must get right: **renew the lease on a timer**; encode on CPU
+  and free the text encoder before the generator loads; cache validated prompt
+  embeddings for safe retries; and **report progress per denoising step**. The
+  encoder cannot remain resident beside the generator within the measured free
+  Kaggle memory envelope.
 : Credentials: a dedicated Postgres role that can execute only the private
   queue functions, plus a dedicated Auth user whose lease-scoped token can
   write the canonical object in `videos`; both live in Kaggle Secrets. **Never
   the `service_role` key.**
 : **Current 08-31:** source/local parity, live migration 014, a password-set
-  database role and one marked Auth worker are present. Kaggle Secrets,
+  database role and one marked Auth worker are present. The authenticated
+  notebook currently reports **No secrets added**; the five Kaggle Secrets,
   authentication and the first worker run remain.
 
 ### Day 6 · Wed 09-02
 
 **S-14 · W3 finish + first real clip** — all day
-: Settings: 65 frames, 30 steps. **Measure the first clip** — 65 frames is
-  interpolated, not measured (D2). If it exceeds ~20 min, drop to 49 frames.
+: Current worker settings: 16 fps and 50 steps. Start with **4 seconds = 65
+  frames** and measure it; if it exceeds the session window, retry once with
+  **3 seconds = 49 frames**. Do not silently tune the worker during acceptance.
 : **Done when:** a video generated on Kaggle plays in the Android app. Tell
   Bruce the moment it works — the demo recording starts immediately.
 
@@ -297,11 +300,13 @@ the current total.
 
 ### Days 8–9 · Fri 09-04, Sat 09-05
 
-**S-17 · Evidence and docs** — update `DATA_MODEL.md`, `API_CONTRACT.md` §2.x,
-`ARCHITECTURE.md`; evidence-ledger entries for the worker and the first real
-generation.
-**S-18 · Submission package** — `bootstrap.sql` + seed verified from empty;
-sample accounts; final suite run.
+**S-17 · Evidence and docs** — **IN PROGRESS.** Canonical source and non-device
+evidence are reconciled; append evidence-ledger entries for the live worker,
+first real generation and locked blind score when they exist.
+**S-18 · Submission package** — **IN PROGRESS.** The final suite is green.
+Current `bootstrap.sql` + seed still need a fresh empty disposable
+Supabase-compatible run; sample accounts, screenshots, demo and final package
+remain acceptance deliverables.
 
 ---
 
@@ -486,7 +491,7 @@ real-video playback remain the critical path.
 | S-05a signup bonus | ✅ | S-15 `/admin/stats` | ✅ |
 | S-06 W1 scoped claiming | ✅ | S-16 admin endpoints | ✅ |
 | S-07 credit endpoints | ✅ | S-17 evidence and docs | in progress |
-| S-08 generation modes | ✅ | S-18 submission package | pending |
+| S-08 generation modes | ✅ | S-18 submission package | in progress |
 | S-09 W2 external provider | ✅ | | |
 
 ### Verification

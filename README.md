@@ -4,11 +4,12 @@ Cretona is a Mobile 1 project by Bruce and S0ra1n0 for creating short AI
 videos from text and, after the text path is proven, an optional reference
 image.
 
-Product source through revision `a7b6251` is on local and live `main`. GitHub
-Actions [run 33356499355](https://github.com/S0ra1n0/Cretona/actions/runs/33356499355)
-passed the Android/JVM 17, FastAPI/Python 3.12 and FastAPI/PostgreSQL 17 jobs.
-Live Supabase migration 014 was separately verified read-only on 2026-08-31.
-Neither result proves Kaggle worker execution or Android device acceptance.
+Product implementation is verified through the `ed4c172` evidence baseline.
+GitHub Actions [run 33366381890](https://github.com/S0ra1n0/Cretona/actions/runs/33366381890)
+passed the Android/JVM 17, FastAPI/Python 3.12 and FastAPI/PostgreSQL 17 jobs;
+the same baseline also passed a fresh local non-device gate on 2026-08-31.
+Live Supabase migration 014 was separately verified read-only. None of those
+results proves Kaggle worker execution or Android device acceptance.
 
 ## Current integration status
 
@@ -55,6 +56,8 @@ Cretona/             open this folder in Android Studio
 - See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for credential boundaries.
 - See [docs/evidence/ANDROID_FASTAPI_E2E.md](docs/evidence/ANDROID_FASTAPI_E2E.md)
   for the verified emulator-to-video vertical slice and its evidence limits.
+- See [docs/evidence/NON_DEVICE_PREFLIGHT_2026-08-31.md](docs/evidence/NON_DEVICE_PREFLIGHT_2026-08-31.md)
+  for the latest backend, Android build, APK and hosted-CI evidence.
 - See [docs/discovery/FREE-LOCAL-BEST-OUTPUT.md](docs/discovery/FREE-LOCAL-BEST-OUTPUT.md)
   for the evidence-gated local model strategy.
 

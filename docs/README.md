@@ -14,6 +14,7 @@
 | Add an AI provider | [AI_PROVIDER_SPEC.md](AI_PROVIDER_SPEC.md) |
 | Handle a key, token, or user data | [SECURITY.md](SECURITY.md) |
 | Inspect executed Android/FastAPI evidence | [evidence/ANDROID_FASTAPI_E2E.md](evidence/ANDROID_FASTAPI_E2E.md) |
+| Inspect the latest non-device release gate | [evidence/NON_DEVICE_PREFLIGHT_2026-08-31.md](evidence/NON_DEVICE_PREFLIGHT_2026-08-31.md) |
 | Inspect the local-model feasibility gate | [experiments/EXP-005/](experiments/EXP-005/README.md) |
 | Know why something is the way it is | [adr/](adr/README.md) |
 
