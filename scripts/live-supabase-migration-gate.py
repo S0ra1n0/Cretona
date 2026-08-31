@@ -52,7 +52,7 @@ MIGRATIONS = {
     ),
     "014": (
         ROOT / "supabase" / "014_add_kaggle_worker.sql",
-        "8e91ea80e4765821058c802637f149c78d2c79cc3665f589343f2c26cebb6bc3",
+        "047e9d4c43d081c4b29b2a0d7c3b7c57bceda7b493e2dbaea5db2a4789e006e7",
     ),
 }
 DATA_API_ROLES = ("anon", "authenticated", "service_role")

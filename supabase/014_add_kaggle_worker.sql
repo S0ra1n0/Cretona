@@ -18,8 +18,15 @@ begin
 end
 $$;
 
+-- Re-asserted so a role that already existed with looser attributes is
+-- normalised. `nosuperuser` is deliberately absent here even though CREATE
+-- above sets it: PostgreSQL treats *any* mention of SUPERUSER/NOSUPERUSER in
+-- ALTER ROLE as changing the superuser attribute, which only a superuser may
+-- do -- and Supabase's `postgres` is not one. CREATE ROLE ... NOSUPERUSER is
+-- allowed, so the role still cannot be created with superuser, and `postgres`
+-- has no way to grant it afterwards either.
 alter role cretona_kaggle_worker
-  login nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls;
+  login nocreatedb nocreaterole noinherit noreplication nobypassrls;
 alter role cretona_kaggle_worker set statement_timeout = '15s';
 
 revoke all on schema private from public;
