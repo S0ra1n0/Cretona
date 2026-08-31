@@ -4,11 +4,11 @@ Cretona is a Mobile 1 project by Bruce and S0ra1n0 for creating short AI
 videos from text and, after the text path is proven, an optional reference
 image.
 
-Source revision `4028d18` is clean on local and live `main`. GitHub Actions
-[run 33313146316](https://github.com/S0ra1n0/Cretona/actions/runs/33313146316)
+Product source through revision `a7b6251` is on local and live `main`. GitHub
+Actions [run 33356499355](https://github.com/S0ra1n0/Cretona/actions/runs/33356499355)
 passed the Android/JVM 17, FastAPI/Python 3.12 and FastAPI/PostgreSQL 17 jobs.
-This proves the committed source/build gates, not live Supabase, Kaggle or
-device acceptance.
+Live Supabase migration 014 was separately verified read-only on 2026-08-31.
+Neither result proves Kaggle worker execution or Android device acceptance.
 
 ## Current integration status
 
@@ -27,9 +27,11 @@ No paid provider call is enabled by the accepted zero-additional-spend path.
 Local Qwen3-4B has passed a real FastAPI call. The selected temporal-video path
 is pinned Wan2.1 T2V 1.3B on free Kaggle compute: the experiment generated four
 real clips, and the `kaggle` provider, worker and migration are complete in
-source. Applying migration 014, running the worker against live Supabase,
-playing its result in Android and scoring output quality are still acceptance
-steps; source tests are not evidence that those live steps happened.
+source. Migration 014 is live and passes its security gate; the database role
+has a password and exactly one Auth user is marked as the worker. Configuring
+and validating the five Kaggle Secrets, running the worker, playing its result
+in Android and scoring output quality are still acceptance steps;
+source tests are not evidence that those live steps happened.
 
 ## Repository layout
 

@@ -342,7 +342,7 @@ entries:
     workflow_or_deployment_run: "Kaggle interactive session, 2026-08-27 10:47Z - 14:41Z"
     executed_by: "S0ra1n0 on Kaggle, notebook authored by Claude"
     independently_verified_by: "Container parse of all four MP4 files off Kaggle confirmed avc1 832x480, 81 frames, 5.063 s, four distinct digests, and no near-empty frames."
-    receiver_verified_by: null
+    receiver_verified_by: "Bruce workstation, 2026-08-31: all four received MP4s matched the four pinned SHA-256 digests; ffprobe confirmed H.264 avc1, 832x480, 81 frames, 5.06 s at 16 fps."
     limitations:
       - "This is a generation-validity result, not a quality result. QUALITY_SCORECARD.md is unscored, so the model remains unverified on quality and no pass against PB-FRAMEPACK-QUALITY's 73/100 bar is claimed."
       - "Latency is 48.6 min per clip, 2.7x the earlier ~10.4 min figure, which was measured at 50 frames and on a run later invalidated by the grey-clip bug. 81 frames is 1.62x the frames for 4.7x the time; attention cost is superlinear in frame count."

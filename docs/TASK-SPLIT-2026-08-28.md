@@ -17,6 +17,11 @@ Ticket ids are stable. Use them in commit messages: `feat(credits): S-03 …`.
 > no model or image-conditioning mandate; S-13/S-14 are the release-critical
 > worker and real-video path. See `ROADMAP.md` for the concise current state.
 
+> **Live update 2026-08-31.** Migration 014 is present and passed its read-only
+> security verification. The role password is set and exactly one Auth worker
+> is marked. S-13 now starts at Kaggle Secrets/authentication; it must not
+> reapply the migration or create duplicate identities.
+
 ---
 
 ## 0. How the two lanes stay parallel
@@ -230,9 +235,13 @@ endpoints; the fake is no longer the application binding.
   (`poll_lease_seconds` is 120 by default, ceiling 3600 — a 15-minute job at the
   default is re-claimed seven times); **keep the encoder resident between jobs**
   (phase 1 is ~5 min); **report progress per denoising step**.
-: Credentials: a dedicated Postgres role with `SELECT`/`UPDATE` on
-  `video_projects` only, and a storage credential scoped to the `videos` bucket,
-  both in Kaggle Secrets. **Never the `service_role` key.**
+: Credentials: a dedicated Postgres role that can execute only the private
+  queue functions, plus a dedicated Auth user whose lease-scoped token can
+  write the canonical object in `videos`; both live in Kaggle Secrets. **Never
+  the `service_role` key.**
+: **Current 08-31:** source/local parity, live migration 014, a password-set
+  database role and one marked Auth worker are present. Kaggle Secrets,
+  authentication and the first worker run remain.
 
 ### Day 6 · Wed 09-02
 
@@ -414,7 +423,8 @@ B-13 wires to the real endpoint directly.
 ### Days 8–9 · Fri 09-04, Sat 09-05
 
 **B-17 · Demo video** — the full flow in one take: register → signup bonus →
-claim a weekend gift → buy a package → generate with an image → watch the
+claim a weekend gift → buy a package → generate a real text-to-video clip with
+Kaggle Wan2.1 → watch the
 charge in the ledger → play, download, share → admin locks a user, adjusts
 credits, creates an event, reads the dashboard.
 **B-18 · Report and screenshots.**
@@ -459,18 +469,19 @@ the report and demo video.
 
 ---
 
-## 6. Progress — reconciled 2026-08-30
+## 6. Progress — reconciled 2026-08-31
 
-**Backend API/database and Kaggle worker source are done.** S-12 is an optional
-image-model spike; applying migration 014, the S-13 live worker run and S-14
-first real-video playback remain the critical path.
+**Backend API/database and Kaggle worker source are done.** Migration 014 is
+live and verified, and both identity records are present. S-12 is an optional
+image-model spike; finishing S-13 Kaggle Secrets/runtime and S-14 first
+real-video playback remain the critical path.
 
 | Ticket | | Ticket | |
 |---|---|---|---|
 | S-01 migration | ✅ | S-10 `EventService` | ✅ |
 | S-02 seed | ✅ | S-11 event endpoints + discount | ✅ |
 | S-03 `ADR-010` | ✅ | S-12 image-to-video spike | stretch, timeboxed |
-| S-04 `CreditService` | ✅ | S-13 Kaggle worker | ✅ source/local parity; live run pending |
+| S-04 `CreditService` | ✅ | S-13 Kaggle worker | ✅ source/local parity + live migration/identities; secrets/auth/run pending |
 | S-05 charge and refund | ✅ | S-14 first real clip | ⏸ needs Kaggle |
 | S-05a signup bonus | ✅ | S-15 `/admin/stats` | ✅ |
 | S-06 W1 scoped claiming | ✅ | S-16 admin endpoints | ✅ |
@@ -480,11 +491,11 @@ first real-video playback remain the critical path.
 
 ### Verification
 
-Migration `013` and its seed were historically applied and constraint-probed on
-live Supabase. The current 2026-08-30 audit records **546 passed / 55
+Migrations `013` and `014` are live; `014` passed the read-only role/function/
+Storage-policy security gate on 2026-08-31. The current audit records **546 passed / 55
 Postgres-only skipped** on SQLite and **601 passed / 0 skipped** on disposable
-PostgreSQL 17, with Ruff and `pip check` clean. This local run does not prove
-that migration 014 is present on live Supabase.
+PostgreSQL 17, with Ruff and `pip check` clean. These are separate source/parity
+and live-schema evidence tiers; neither proves a Kaggle job completed.
 
 Running the Postgres half is documented in `backend/README.md`. Plain `pytest`
 skips 31–66 tests, and production runs Postgres — so a green plain run is not a
@@ -511,16 +522,16 @@ green run.
 |---|---|
 | **D1 — must the image drive the video?** | Resolved from lecturer scope: no specific model or image-conditioning requirement |
 | Optional image-model fallback | Only after S-13/S-14 and only if the Wan2.1 blind score is unacceptable |
-| S-13 / S-14 | Apply/verify migration 014, configure Kaggle Secrets, run one Kaggle session and play its result in Android |
+| S-13 / S-14 | Configure/validate Kaggle Secrets for the existing identities, run one Kaggle session and play its result in Android |
 | Bruce's lane | B-14 screenshots, B-16 device/integration acceptance, then B-17/B-18 |
 
 ---
 
-## 7. Integration status — audited 2026-08-29
+## 7. Integration status — audited 2026-08-31
 
 The earlier `khoa` integration instructions are superseded. Local `main`
 contains patch-equivalent Khoa work plus the later Android/admin integration;
-the remaining remote branch is cleanup state, not unmerged product work.
+remote now exposes only `main`; there is no remaining product branch to merge.
 
 ### Runtime state
 
@@ -578,7 +589,7 @@ cd backend
 .\.venv\Scripts\python.exe -m pytest        # expect 546 passed, 55 skipped
 ```
 
-**The 53 skips are the Postgres suite, and production runs Postgres.** A green
+**The 55 skips are the Postgres suite, and production runs Postgres.** A green
 plain run is not a green run. The full command is in `backend/README.md`;
 with a disposable Postgres it is **601 passed, 0 skipped**.
 

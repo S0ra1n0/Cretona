@@ -10,10 +10,10 @@ Database and storage setup for Cretona. Specified in [docs/DATA_MODEL.md](../doc
    Then apply the numbered migrations in order. The current source sequence is
    `002_add_error_code.sql` through `014_add_kaggle_worker.sql`; never
    skip a number. Migrations 006 and 007 were applied and verified on
-   2026-08-14, and evidence from 2026-08-17 records 008 and 009. The live state
-   of 010-012 must be checked with the read-only `status` action before any
-   apply action; source presence is not deployment proof. Never edit an
-   executed migration because that invalidates its pinned execution hash.
+   2026-08-14, evidence from 2026-08-17 records 008 and 009, and the read-only
+   live gate on 2026-08-31 verified 006-014. Re-run `status` before any future
+   apply action; source presence is not deployment proof. Never edit an executed
+   migration because that invalidates its pinned execution hash.
 3. **Run the verification queries** at the bottom of that file. All must pass before moving on.
 
    > The RLS check filters on `relnamespace = 'public'::regnamespace` deliberately. `auth.users` is *also* called `users` and has RLS off, so an unfiltered query returns two `users` rows and looks like a failure when nothing is wrong.
@@ -58,6 +58,11 @@ sequence privileges for `anon`, `authenticated`, and `service_role`. It did not
 deploy or smoke-test FastAPI, read business rows, test Storage object bytes, or
 prove restore viability. See
 [`LIVE_SUPABASE_MIGRATIONS_006_007_2026-08-14.md`](../docs/evidence/LIVE_SUPABASE_MIGRATIONS_006_007_2026-08-14.md).
+
+The 2026-08-31 read-only verification proved migration 014's worker role,
+private functions and lease-scoped Storage policies on live PostgreSQL 17.6.
+It did not prove worker credentials, a Kaggle run or Android playback. See
+[`LIVE_SUPABASE_MIGRATION_014_2026-08-31.md`](../docs/evidence/LIVE_SUPABASE_MIGRATION_014_2026-08-31.md).
 
 ## Live operator commands
 

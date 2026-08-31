@@ -9,7 +9,15 @@ The model is `Wan-AI/Wan2.1-T2V-1.3B-Diffusers` at revision
 2–5 seconds, and the measured 5-second profile takes about 49 minutes on the
 Kaggle 2×T4 host. The worker is not an always-on service.
 
-## 1. Apply migration 014 once
+> **Live checkpoint, 2026-08-31:** migration 014 is already present on the
+> Cretona Supabase project and `verify-014` passed in a read-only transaction.
+> The database role has a password and exactly one Auth user is marked as a
+> worker. Do not reapply the migration or create duplicate identities. Continue
+> at section 3 if the team still has both credential values; otherwise reset
+> only the missing password in section 2. Evidence:
+> [`LIVE_SUPABASE_MIGRATION_014_2026-08-31.md`](evidence/LIVE_SUPABASE_MIGRATION_014_2026-08-31.md).
+
+## 1. Verify migration 014; apply only if absent
 
 Do this only from the repository root and only after reviewing the selected
 Supabase project. The gate reads the ignored local env file and never prints
@@ -17,6 +25,7 @@ credential values:
 
 ```powershell
 .\backend\.venv\Scripts\python.exe .\scripts\live-supabase-migration-gate.py status
+# Run apply-014 only when status reports migration 014 as false.
 .\backend\.venv\Scripts\python.exe .\scripts\live-supabase-migration-gate.py apply-014 `
   --confirm-project-ref <exact-project-ref>
 .\backend\.venv\Scripts\python.exe .\scripts\live-supabase-migration-gate.py verify-014
@@ -27,6 +36,10 @@ functions, and three lease-scoped Storage policies. It does **not** set a
 password and does not create an Auth account.
 
 ## 2. Create the two worker identities
+
+Skip creation when the live checkpoint above remains true. Presence does not
+prove the team still knows either password, so reset only a lost value rather
+than creating a second worker.
 
 In Supabase Authentication, create one dedicated email/password user for the
 worker. Do not reuse a developer or admin account. Then set only its protected
@@ -92,6 +105,7 @@ for name in (
 ```bash
 !git clone https://github.com/S0ra1n0/Cretona.git
 %cd /kaggle/working/Cretona
+!git checkout a7b625147cbff81ae7789e237b7300618046f376
 !python -m pip install -q -r backend/requirements-kaggle.txt
 ```
 
