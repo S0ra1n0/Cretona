@@ -52,7 +52,7 @@ function Resolve-Executable {
     }
     $item = Get-Item -LiteralPath $command.Source -Force
     if ($item.LinkType -eq 'SymbolicLink' -and $item.Target) {
-        return [string]$item.Target[0]
+        return [string]@($item.Target)[0]
     }
     return $command.Source
 }
