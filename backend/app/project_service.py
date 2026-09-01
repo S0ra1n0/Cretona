@@ -773,7 +773,11 @@ class ProjectService:
             mode=generation_mode(row.get("prompt"), row.get("image_path")),
             imageUrl=media_url(row.get("image_path"), video=False),
             videoUrl=media_url(row.get("video_path")),
-            thumbnailUrl=media_url(row.get("thumbnail_path")),
+            # video=False on purpose: `SupabaseStorage.store_thumbnail` writes
+            # into the uploads bucket, so signing this against `videos` finds
+            # nothing and returns None -- which the app renders as
+            # "Preview unavailable" even when the thumbnail exists.
+            thumbnailUrl=media_url(row.get("thumbnail_path"), video=False),
             status=row["status"],
             provider=row["provider"],
             errorMessage=row.get("error_message"),
