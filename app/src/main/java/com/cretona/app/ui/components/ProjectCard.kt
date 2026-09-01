@@ -41,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.cretona.app.core.util.MediaDownloader
@@ -227,20 +228,29 @@ fun ProjectHistoryCard(
                 }
             }
 
-            Row(
+            // One column, not a title/actions Row. The action buttons carry no
+            // weight, so they took their full intrinsic width first and left the
+            // text column a narrow remainder -- which wrapped the title over six
+            // lines and broke "Mode: text" one character per line.
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(14.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Column(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    Text(project.title, style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        project.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                     ProjectStatusText(project)
                     Row(
+                        modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -254,6 +264,8 @@ fun ProjectHistoryCard(
                         Text(
                             providerLabel,
                             style = MaterialTheme.typography.labelMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                             color = when (project.provider) {
                                 "kaggle" -> MaterialTheme.colorScheme.primary
                                 "real", "cloud", "wan21" -> MaterialTheme.colorScheme.secondary
@@ -263,12 +275,16 @@ fun ProjectHistoryCard(
                         Text(
                             "Mode: ${project.mode.replace('_', '+')}",
                             style = MaterialTheme.typography.labelMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                             color = MaterialTheme.colorScheme.outline,
                         )
                         if (project.imageUrl != null) {
                             Text(
                                 "📷 Image-to-Video",
                                 style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                                 color = MaterialTheme.colorScheme.primary,
                             )
                         }
@@ -276,7 +292,8 @@ fun ProjectHistoryCard(
                 }
 
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     OutlinedButton(onClick = onRemix) {
