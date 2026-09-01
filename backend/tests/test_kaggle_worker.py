@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import ast
+import inspect
 import time
 from pathlib import Path
 from uuid import UUID
 
+import kaggle_worker
 from kaggle_worker import (
     AuthSession,
     Job,
@@ -18,6 +21,22 @@ from kaggle_worker import (
 WORKER = UUID("30000000-0000-4000-8000-000000000003")
 USER = UUID("10000000-0000-4000-8000-000000000001")
 PROJECT = UUID("40000000-0000-4000-8000-000000000004")
+
+
+def test_model_loaders_use_the_diffusers_precision_keyword() -> None:
+    tree = ast.parse(inspect.getsource(kaggle_worker))
+    precision_keywords = [
+        keyword.arg
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "from_pretrained"
+        for keyword in node.keywords
+        if keyword.arg in {"dtype", "torch_dtype"}
+    ]
+
+    assert precision_keywords.count("torch_dtype") == 3
+    assert "dtype" not in precision_keywords
 
 
 def test_wan_profile_matches_the_proven_contract() -> None:

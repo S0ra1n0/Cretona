@@ -357,7 +357,7 @@ def _encode_prompt(job: Job, cache_dir: Path, progress: Progress) -> tuple[Any, 
             MODEL_REPO,
             revision=MODEL_REVISION,
             transformer=None,
-            dtype=torch.bfloat16,
+            torch_dtype=torch.bfloat16,
         )
         encoder = pipe.text_encoder
         if (
@@ -433,7 +433,7 @@ def generate_video(
             MODEL_REPO,
             subfolder="vae",
             revision=MODEL_REVISION,
-            dtype=torch.float32,
+            torch_dtype=torch.float32,
         )
         pipe = WanPipeline.from_pretrained(
             MODEL_REPO,
@@ -441,7 +441,7 @@ def generate_video(
             vae=vae,
             text_encoder=None,
             tokenizer=None,
-            dtype=torch.float16,
+            torch_dtype=torch.float16,
         )
         pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, flow_shift=5.0)
         pipe.to("cuda")
