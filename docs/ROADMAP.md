@@ -1,6 +1,6 @@
 # Cretona — current delivery roadmap
 
-- **Last reconciled:** 2026-09-01
+- **Last reconciled:** 2026-09-02
 - **Deadline:** 2026-09-05 (2026-09-06 is buffer only)
 - **Team:** Bruce — Android/admin UI · S0ra1n0 — FastAPI/database/Kaggle worker
 - **Detailed tickets:** [TASK-SPLIT-2026-08-28.md](TASK-SPLIT-2026-08-28.md)
@@ -43,7 +43,7 @@ The AI responsibilities are deliberately separate:
 | Android admin console | B-08 through B-13 source-complete against real endpoints | Included in the final compile/test/lint gate | Emulator acceptance, light/dark screenshots and live-endpoint walkthrough |
 | Prompt LLM | Qwen/Ollama adapter plus explicit fallback implemented | Historical live FastAPI evidence selected Qwen; not re-run in this audit | Re-run with `usedFallback=false` before the demo if Ollama is part of the demo |
 | Free generative video | Wan2.1 T2V 1.3B two-phase Kaggle notebook proven to generate | 4/4 distinct 832×480, 81-frame clips; mean 48.6 min/clip on 2×T4 | Blind quality scorecard is empty; no quality pass may be claimed |
-| Real video in the app | External `kaggle` provider, least-privilege worker, lease heartbeat, Storage upload and atomic completion/refund exist in source | Worker tests, disposable-Postgres parity, live migration 014, five enabled Kaggle Secrets, Auth 200 and live empty-queue claim smoke exit 0 | Complete S-14 with a real queued result and Android playback |
+| Real video in the app | External `kaggle` provider, least-privilege worker, lease heartbeat, Storage upload and atomic completion/refund exist in source | **S-14 generation accepted 2026-09-01:** an Android-submitted job completed through the worker; the MP4 is in Storage and parses as avc1 832x480, 65 frames, 4.06 s. See [S14_FIRST_LIVE_CLIP_2026-09-01.md](evidence/S14_FIRST_LIVE_CLIP_2026-09-01.md) | Android playback of that completed project is still unobserved |
 
 ## 3. Bruce lane
 
@@ -64,7 +64,7 @@ The AI responsibilities are deliberately separate:
 | B-13 dashboard credit/revenue/event tiles | Source complete |
 | B-14 screenshot pass | Fail-fast portable script complete; current emulator screenshots still pending |
 | B-16 integration defects | Source audit complete; fixed per-attempt refunds, Kaggle read/state ownership, provider duration limits and retry validation. Device/live defects remain evidence-driven |
-| B-17 demo video | Blocked on S-14 real clip |
+| B-17 demo video | Unblocked — the S-14 clip exists. Record after B-14 reshoots the app in its completed state |
 | B-18 report/screenshots | Pending B-14/B-17 |
 
 “Source complete” does not mean device-accepted. B-14 and B-16 own that last
@@ -76,9 +76,12 @@ The API/database work through S-16 is present. The remaining critical path is:
 
 1. **S-13:** complete. Five Kaggle Secrets are enabled; the revision-bound
    worker passed Supabase Auth and the empty PostgreSQL claim path live.
-2. **S-14:** submit one text job from Android, let the worker complete it, and
-   play the returned real MP4 in Android. Capture IDs, timestamps and media
-   metadata as evidence.
+2. **S-14:** generation is **accepted**. Job `4ad038f6…` was submitted from
+   Android on 2026-09-01, completed by the worker at 14:11 UTC, and its MP4 is
+   in Storage — IDs, timestamps and media metadata are captured in
+   [S14_FIRST_LIVE_CLIP_2026-09-01.md](evidence/S14_FIRST_LIVE_CLIP_2026-09-01.md).
+   What remains is opening that project in Android and watching the signed URL
+   play through Media3; nothing else in the chain is unproven.
 3. **S-17:** the non-device evidence and canonical docs are reconciled. Append
    the live worker result and locked blind score when those runs exist.
 4. **S-18:** verify the current bootstrap plus seed from an empty disposable
@@ -150,8 +153,14 @@ Not run or not accepted in this audit:
 - the current bootstrap plus seed was not re-executed from an empty database in
   this gate because Docker/Postgres was unavailable locally; historical
   bootstrap evidence and hosted adapter parity do not close that S-18 rerun;
-- the connectivity-only worker run had an empty queue, so no model was loaded
-  and no app-submitted job has completed through the worker path;
+- the 2026-09-01 connectivity smoke had an empty queue and loaded no model, but
+  a **later** run on the same day completed a real app-submitted job:
+  `4ad038f6-081d-4e81-894a-01301391ed36`, `completed` at 14:11 UTC, MP4 in the
+  private `videos` bucket at the canonical path, charged once with no refund and
+  no ledger drift. The `_test/screenshots/cretona-s14-*.png` pair was captured at
+  13:38 while it was still `pending`, so those images predate the result rather
+  than contradict it. Detail:
+  [S14_FIRST_LIVE_CLIP_2026-09-01.md](evidence/S14_FIRST_LIVE_CLIP_2026-09-01.md);
 - emulator and live Supabase acceptance still require a current run.
 
 ## 7. Definition of done
@@ -167,8 +176,10 @@ Not run or not accepted in this audit:
 - [x] Live Supabase migration 014 passes its read-only security verification.
 - [x] Five Kaggle Secrets and the live Auth/empty-queue claim smoke pass.
 - [ ] Required emulator journeys are green at the delivered revision.
-- [ ] A Wan2.1 Kaggle job submitted through FastAPI completes and its real video
-      plays in Android.
+- [x] A Wan2.1 Kaggle job submitted through FastAPI completes and its real video
+      reaches Storage (`4ad038f6…`, 2026-09-01, verified by container parse).
+- [ ] That completed project is opened in Android and the signed MP4 plays.
+      This is the last unproven link in the chain and needs a device.
 - [ ] Blind quality scorecard has both reviewers' entries and a recorded decision.
 - [ ] Current screenshots, demo video, report, sample accounts and submission
       package are complete and secret-free.
