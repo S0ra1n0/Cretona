@@ -95,14 +95,35 @@ the charge when the generation succeeds.
 **Closes:** a Wan2.1 job submitted through FastAPI completes and its real video
 reaches Supabase Storage.
 
-**Does not close:** *Android playback.* Nobody has yet opened the completed
-project in the app and watched the signed URL play through Media3. That is the
-last unproven link in the chain and the only remaining part of the §7
-definition-of-done line, and it needs a device or emulator.
+**Also closes, as of 2026-09-01 11:36 local:** *Android playback.* The project
+was opened on the `Pixel_10_Pro` emulator against the live Supabase profile and
+the signed MP4 played through Media3 — captured mid-playback at 0:01 of 0:04 in
+`_test/screenshots/s14-playback.png`. The frame shows a red paper boat on a calm
+blue lake, which is the prompt. The whole chain is now proven end to end:
 
-Until that is observed, report this as **live generation accepted, playback not
-yet accepted** — the same discipline `KAGGLE_WORKER_S13_2026-09-01.md` applied
-to its own narrower claim.
+    Android → FastAPI → Supabase queue → Kaggle worker → Wan2.1
+           → Storage → signed URL → Media3
+
+**Does not close:** the gallery card shows **"Preview unavailable"** where the
+thumbnail belongs. `thumbnail_path` is `NULL` for this project, and
+`backend/kaggle_worker.py` contains no thumbnail logic at all — the worker
+uploads `video.mp4` and nothing else. Playback is unaffected; the card art is
+not. `POST /admin/thumbnails/backfill` exists and ffmpeg is on the host, so this
+is fixable without touching the worker.
+
+### A layout defect the screenshot exposed
+
+The first `s14-completed-history.png` capture showed the card's metadata
+rendering one character per line — `M / o / d / e / : / t / e / x / t`. The
+title wrapped over six lines and truncated mid-word.
+
+Cause: `ProjectCard.kt` laid the card out as a `Row` holding a `Column(weight=1f)`
+for the text and an unweighted `Row` of action buttons. The buttons took their
+full intrinsic width first, leaving the text column a narrow remainder, and
+inside that remainder the provider label consumed what little was left. Fixed by
+making the card a single `Column` so the title and metadata get the full width
+and the actions sit on their own right-aligned row. The screenshot in the
+repository is the corrected capture.
 
 ## 7. How this was verified
 

@@ -43,7 +43,7 @@ The AI responsibilities are deliberately separate:
 | Android admin console | B-08 through B-13 source-complete against real endpoints | Included in the final compile/test/lint gate | Emulator acceptance, light/dark screenshots and live-endpoint walkthrough |
 | Prompt LLM | Qwen/Ollama adapter plus explicit fallback implemented | Historical live FastAPI evidence selected Qwen; not re-run in this audit | Re-run with `usedFallback=false` before the demo if Ollama is part of the demo |
 | Free generative video | Wan2.1 T2V 1.3B two-phase Kaggle notebook proven to generate | 4/4 distinct 832×480, 81-frame clips; mean 48.6 min/clip on 2×T4 | Blind quality scorecard is empty; no quality pass may be claimed |
-| Real video in the app | External `kaggle` provider, least-privilege worker, lease heartbeat, Storage upload and atomic completion/refund exist in source | **S-14 generation accepted 2026-09-01:** an Android-submitted job completed through the worker; the MP4 is in Storage and parses as avc1 832x480, 65 frames, 4.06 s. See [S14_FIRST_LIVE_CLIP_2026-09-01.md](evidence/S14_FIRST_LIVE_CLIP_2026-09-01.md) | Android playback of that completed project is still unobserved |
+| Real video in the app | External `kaggle` provider, least-privilege worker, lease heartbeat, Storage upload and atomic completion/refund exist in source | **S-14 generation accepted 2026-09-01:** an Android-submitted job completed through the worker; the MP4 is in Storage and parses as avc1 832x480, 65 frames, 4.06 s. See [S14_FIRST_LIVE_CLIP_2026-09-01.md](evidence/S14_FIRST_LIVE_CLIP_2026-09-01.md) | **Playback accepted 2026-09-01.** Remaining: the worker writes no thumbnail, so the gallery card reads "Preview unavailable" |
 
 ## 3. Bruce lane
 
@@ -178,8 +178,10 @@ Not run or not accepted in this audit:
 - [ ] Required emulator journeys are green at the delivered revision.
 - [x] A Wan2.1 Kaggle job submitted through FastAPI completes and its real video
       reaches Storage (`4ad038f6…`, 2026-09-01, verified by container parse).
-- [ ] That completed project is opened in Android and the signed MP4 plays.
-      This is the last unproven link in the chain and needs a device.
+- [x] That completed project is opened in Android and the signed MP4 plays.
+      Observed on the Pixel_10_Pro emulator, 2026-09-01 11:36: the clip plays at
+      0:01 of 0:04 and its content matches the prompt.
+      `_test/screenshots/s14-playback.png`.
 - [ ] Blind quality scorecard has both reviewers' entries and a recorded decision.
 - [ ] Current screenshots, demo video, report, sample accounts and submission
       package are complete and secret-free.
