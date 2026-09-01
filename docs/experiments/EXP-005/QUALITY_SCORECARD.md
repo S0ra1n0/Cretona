@@ -48,6 +48,66 @@ no second passing candidate to compare against. Record them as `n/a` and judge
 against the `>= 65` standard bar alone, noting that `PB-FRAMEPACK-QUALITY` sets
 73/100 for the local FramePack path.
 
+## Scope decision — 2026-09-02
+
+**The full two-reviewer blind protocol was deliberately descoped.** The exam
+brief requires that the app generates and plays a video; it sets no quality
+threshold, and the delivery window closes 2026-09-05. Scoring four clips across
+five dimensions with two independent reviewers was judged to cost more than the
+decision it would inform.
+
+Replaced by a **single-reviewer non-blind review**, recorded below. This is a
+weaker instrument and is labelled as one. No numeric score is claimed, and
+`PB-FRAMEPACK-QUALITY`'s 73/100 bar is neither met nor failed — it was not
+measured.
+
+The reviewer sheets are left empty rather than deleted, so the protocol that was
+designed stays visible next to the decision not to run it.
+
+## Abbreviated review — S0ra1n0, 2026-09-02
+
+All four clips watched: `A1 A2 B1 B2`, 5.06 s each.
+
+**What holds.** Subject and setting match both prompts. A1/A2 show the origami
+dragon over the lantern city; B1/B2 show the wooden sailboat on a calm dawn sea.
+The two seeds per prompt differ from each other, so the model is producing
+genuine variation rather than one memorised output.
+
+**What fails, and it is systematic.** Directional and camera instructions are
+ignored in **all four clips**:
+
+| Prompt asked for | Observed |
+|---|---|
+| A: dragon glides **left to right** | Right to left in *both* A1 and A2 |
+| A: camera **dollies forward** | No forward dolly in either |
+| B: camera **orbits right** | No orbit in either |
+| B: (direction unspecified for the boat) | B1 and B2 travel in *opposite* directions |
+
+Two different failure shapes: prompt A is **consistently wrong** — both seeds
+picked the same incorrect direction — while prompt B is **inconsistent**, with
+the two seeds disagreeing. Neither is random noise on a single clip; the model
+is not honouring directional or camera-motion language at all.
+
+**Decision: adequate for the demo, with a constraint on prompts.** The clips are
+coherent, artefact-free at a glance, and recognisably the requested subject —
+enough for the §6 demo video and the live walkthrough. But **demo prompts must
+not depend on a direction or a camera move**, because the model will not deliver
+one and the mismatch would be visible to anyone reading the prompt alongside the
+result.
+
+## Locked result
+
+| Candidate | Instrument | Outcome | Numeric score | Notes |
+|---|---|---|---|---|
+| Wan2.1 T2V 1.3B @ `0fad780a` | Single-reviewer non-blind, 2026-09-02 | **Adequate for demo** | not measured | Subject and scene adhere; direction and camera motion do not, across all four clips |
+
+`Delta over Standard` and `Quality pass (>=8 delta)` are **n/a**: only one
+candidate was generated, so there is nothing to compare against.
+
+An abbreviated review is not a blind score. The honest status of this model is
+**demo-adequate, quality unverified** — and that is what any report or viva
+answer should say.
+
 ## Reviewer sheets
 
 | Neutral clip | Reviewer | Composition /20 | Motion /25 | Prompt /20 | Reference /20 | Artifacts /15 | Total /100 | Notes |
@@ -61,11 +121,6 @@ against the `>= 65` standard bar alone, noting that `PB-FRAMEPACK-QUALITY` sets
 | B1 | S0ra1n0 |  |  |  |  |  |  |  |
 | B2 | S0ra1n0 |  |  |  |  |  |  |  |
 
-## Locked result
-
-| Candidate | Mean score | Standard pass (>=65) | Delta over Standard | Quality pass (>=8 delta) |
-|---|---:|---|---:|---|
-|  |  |  |  |  |
-
-Both reviewers sign/date the locked result in the pull request or submission
-record. An unscored model is `unverified`, not `passed`.
+The sheets above stay empty on purpose: they are the protocol that was designed
+and deliberately not run, kept beside the decision in "Scope decision" rather
+than deleted. The recorded outcome is the abbreviated review, not this table.

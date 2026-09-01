@@ -107,9 +107,14 @@ The committed Kaggle experiment proves feasibility, not selection quality:
   29.13 GiB peak RAM;
 - received: all four blind MP4s were copied into the ignored run directory and
   receiver-verified by SHA-256 plus H.264 metadata on 2026-08-31;
-- unresolved: Bruce and S0ra1n0 must score the blind clips independently in
-  `experiments/EXP-005/QUALITY_SCORECARD.md` before calling output quality
-  acceptable.
+- **reviewed 2026-09-02, abbreviated:** subject and setting adhere to both
+  prompts and the two seeds per prompt differ, but **direction and camera motion
+  are ignored in all four clips** — the dragon flies right-to-left when the
+  prompt says left-to-right (both seeds), the forward dolly and the rightward
+  orbit never happen, and B1/B2 travel in opposite directions. Judged adequate
+  for the demo on that basis, with one constraint: **demo prompts must not
+  depend on a direction or a camera move.** No numeric score was taken, so the
+  honest status is demo-adequate, quality unverified.
 
 For the first end-to-end demo, text-to-video is the shortest valid path. Do not
 spend the delivery window adding a second video model unless the worker path is
@@ -182,6 +187,10 @@ Not run or not accepted in this audit:
       Observed on the Pixel_10_Pro emulator, 2026-09-01 11:36: the clip plays at
       0:01 of 0:04 and its content matches the prompt.
       `_test/screenshots/s14-playback.png`.
-- [ ] Blind quality scorecard has both reviewers' entries and a recorded decision.
+- [x] Output quality has a **recorded decision**. The two-reviewer blind
+      protocol was deliberately descoped on 2026-09-02 — the brief sets no
+      quality threshold — and replaced by a single-reviewer non-blind review
+      in `experiments/EXP-005/QUALITY_SCORECARD.md`. Outcome:
+      **demo-adequate, quality unverified.**
 - [ ] Current screenshots, demo video, report, sample accounts and submission
       package are complete and secret-free.

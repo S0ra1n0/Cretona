@@ -171,4 +171,6 @@ Two rules shape all of it:
   one still and render camera motion with ffmpeg. The external Wan2.1 Kaggle
   worker, least-privilege migration and local contract/parity tests are complete
   in source. Live Supabase application, a live worker-to-Android result and the
-  blind quality decision remain unproven.
+  quality decision was taken by abbreviated review on 2026-09-02
+  (`experiments/EXP-005/QUALITY_SCORECARD.md`): demo-adequate, quality
+  unverified. Direction and camera-motion prompts are not honoured.

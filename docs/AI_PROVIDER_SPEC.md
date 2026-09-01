@@ -197,5 +197,6 @@ Filled in as each is integrated. Capability values must be verified against live
 The old paid launch assumption in ADR-004 and the unselected-video state in
 ADR-009 are superseded by [ADR-011](adr/ADR-011-kaggle-wan-worker.md). Qwen is
 the proven prompt LLM; Wan2.1 is the selected zero-additional-spend external
-text-to-video path. Its live app journey and blind quality decision still have
+text-to-video path. Its live app journey is accepted; the blind quality
+decision was descoped for an abbreviated review, and still has
 to pass before the team calls the product accepted or the output good.
