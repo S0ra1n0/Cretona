@@ -132,8 +132,26 @@ function Find-UiNode {
     return $null
 }
 
+function Wait-UiLabel {
+    # Poll for a label instead of sleeping a guessed number of seconds. The
+    # admin console loads its stats over the network and has taken anywhere
+    # from three to twelve seconds to appear on this emulator, so any fixed
+    # wait is either flaky or wasteful.
+    param([string]$Label, [int]$TimeoutSeconds = 25)
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    do {
+        if (Find-UiNode -Label $Label) { return $true }
+        Start-Sleep -Seconds 1
+    } while ((Get-Date) -lt $deadline)
+    return $false
+}
+
 function Tap-UiLabel {
-    param([string]$Label)
+    # SettleSeconds because two seconds is enough for a tab swap but not for a
+    # screen that loads over the network. The admin console fetches stats after
+    # navigating, so the shorter wait captured the *previous* screen.
+    param([string]$Label, [int]$SettleSeconds = 2)
 
     $node = Find-UiNode -Label $Label
     if (-not $node) { throw "UI element '$Label' was not found." }
@@ -144,7 +162,7 @@ function Tap-UiLabel {
     $x = [int](([int]$Matches[1] + [int]$Matches[3]) / 2)
     $y = [int](([int]$Matches[2] + [int]$Matches[4]) / 2)
     Invoke-Adb -Arguments @("-s", $serial, "shell", "input", "tap", "$x", "$y") | Out-Null
-    Start-Sleep -Seconds 2
+    Start-Sleep -Seconds $SettleSeconds
 }
 
 function Save-Screenshot {
@@ -173,6 +191,9 @@ Save-Screenshot -Name "live_screen_04_profile"
 
 if ($IncludeAdmin) {
     Tap-UiLabel -Label "Admin"
+    if (-not (Wait-UiLabel -Label "Overview")) {
+        throw "The admin console did not open within the timeout; the captured screen would have been the previous one."
+    }
     Save-Screenshot -Name "live_screen_05_admin"
     Invoke-Adb -Arguments @("-s", $serial, "shell", "input", "keyevent", "4") | Out-Null
     Start-Sleep -Seconds 2
