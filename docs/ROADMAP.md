@@ -62,7 +62,7 @@ The AI responsibilities are deliberately separate:
 | B-11 admin credits/transactions | Source complete |
 | B-12 admin events/packages/settings | Source complete |
 | B-13 dashboard credit/revenue/event tiles | Source complete |
-| B-14 screenshot pass | Script fixed and **run**: it died on PowerShell 5.1 because `2>&1` turns adb's stderr progress into a fatal ErrorRecord even at exit 0. Four user screens captured; admin screen still needs an admin sign-in |
+| B-14 screenshot pass | Two real defects fixed: `2>&1` made adb's stderr fatal on PowerShell 5.1 even at exit 0, and a fixed 2 s wait captured the previous screen. Both user and admin sets now capture. **Open:** the `-IncludeAdmin` step still fails its own guard — the node it finds has the same bounds a manual tap succeeds at, so the cause is inside the script's navigation, not the coordinates. The admin console shot is captured by hand until that is found |
 | B-16 integration defects | Source audit complete; fixed per-attempt refunds, Kaggle read/state ownership, provider duration limits and retry validation. Device/live defects remain evidence-driven |
 | B-17 demo video | Unblocked — the S-14 clip exists. Record after B-14 reshoots the app in its completed state |
 | B-18 report/screenshots | Pending B-14/B-17 |
@@ -184,9 +184,12 @@ Not run or not accepted in this audit:
       Credits, Profile) were captured live on the `Pixel_10_Pro` emulator
       against the Supabase profile on 2026-09-02 —
       `_test/screenshots/journeys/`. Credits shows real ledger data
-      (`Welcome bonus +5`, `Video generated -1`). **The admin journey is not
-      covered**: it needs a sign-in as an admin account, which the capture run
-      did not have.
+      (`Welcome bonus +5`, `Video generated -1`). The admin set is in
+      `_test/screenshots/journeys-admin/`, captured as `admin@cretona.test`
+      and including the console (`Overview`: 6 users, 10 projects, 30% failure
+      rate, providers FAKE 3 / CLOUD 6 / KAGGLE 1).
+      **`live_screen_05_admin.png` was captured by hand**, not by the script —
+      see the B-14 row.
 - [x] A Wan2.1 Kaggle job submitted through FastAPI completes and its real video
       reaches Storage (`4ad038f6…`, 2026-09-01, verified by container parse).
 - [x] That completed project is opened in Android and the signed MP4 plays.
