@@ -107,27 +107,29 @@ for name in (
 The repository is private. Do not add a GitHub token to Kaggle. From a reviewed
 local revision, create a secret-free ZIP containing exactly
 `backend/kaggle_worker.py` and `backend/requirements-kaggle.txt`; record its
-revision and SHA-256, then upload it as a private notebook input. Verify before
-extracting it:
+revision, bundle SHA-256 and both file SHA-256 values, then upload it as a
+private notebook input. Kaggle currently exposes the automatically extracted
+files under a nested `/kaggle/input/...` directory. Resolve and verify the two
+files instead of assuming a dataset mount path:
 
 ```python
-from pathlib import Path
 import hashlib
-import zipfile
+import shutil
+from pathlib import Path
 
-expected_sha256 = "<bundle-sha256-recorded-before-upload>"
-bundles = list(Path("/kaggle/input").rglob("cretona-kaggle-worker-*.zip"))
-bundles += list(Path("/kaggle/working").glob("cretona-kaggle-worker-*.zip"))
-assert len(bundles) == 1, bundles
-bundle = bundles[0]
-assert hashlib.sha256(bundle.read_bytes()).hexdigest() == expected_sha256
-
-with zipfile.ZipFile(bundle) as archive:
-    assert sorted(archive.namelist()) == [
-        "backend/kaggle_worker.py",
-        "backend/requirements-kaggle.txt",
-    ]
-    archive.extractall("/kaggle/working/Cretona")
+expected = {
+    "backend/kaggle_worker.py": "<worker-sha256>",
+    "backend/requirements-kaggle.txt": "<requirements-sha256>",
+}
+root = Path("/kaggle/working/Cretona")
+for relative, expected_sha256 in expected.items():
+    matches = list(Path("/kaggle/input").rglob(relative))
+    assert len(matches) == 1, matches
+    source = matches[0]
+    assert hashlib.sha256(source.read_bytes()).hexdigest() == expected_sha256
+    destination = root / relative
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
 ```
 
 Run the cheap no-job connection smoke before installing the model stack:
