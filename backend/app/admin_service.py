@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import logging
+import tempfile
 import uuid
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from app.errors import AppError
@@ -183,31 +185,49 @@ class AdminService:
             if not video_path:
                 continue
             source = storage.local_video_path(video_path)
+            downloaded: Path | None = None
             if source is None or not source.exists():
-                continue
-            target_path = storage.store_thumbnail_path(owner_id, row["id"])
-            if getattr(storage, "name", "") == "supabase":
-                temp_target = source.parent / f"thumb_bf_{row['id']}.jpg"
-                try:
-                    if not thumbnails.extract(source, temp_target):
-                        continue
-                    store_fn = getattr(storage, "store_thumbnail", None)
-                    if store_fn is not None:
-                        res = store_fn(owner_id, row["id"], temp_target.read_bytes())
-                        if res:
-                            self.database.update_project(
-                                row["id"], owner_id, {"thumbnail_path": res}
-                            )
-                            backfilled += 1
-                finally:
-                    temp_target.unlink(missing_ok=True)
-            else:
-                target = source.parent / "thumbnail.jpg"
-                if thumbnails.extract(source, target):
-                    self.database.update_project(
-                        row["id"], owner_id, {"thumbnail_path": target_path}
-                    )
-                    backfilled += 1
+                # No local copy. That is the normal case for anything the Kaggle
+                # worker produced: it uploads straight to Storage and the bytes
+                # never touch this host, so `local_video_path` returning None
+                # used to end the story and the video stayed thumbnail-less
+                # forever. Fetch it instead.
+                reader = getattr(storage, "read_video_bytes", None)
+                payload = reader(video_path) if reader is not None else None
+                if not payload:
+                    continue
+                downloaded = Path(tempfile.gettempdir()) / f"cretona_bf_{row['id']}.mp4"
+                downloaded.write_bytes(payload)
+                source = downloaded
+
+            try:
+                target_path = storage.store_thumbnail_path(owner_id, row["id"])
+                if getattr(storage, "name", "") == "supabase":
+                    temp_target = source.parent / f"thumb_bf_{row['id']}.jpg"
+                    try:
+                        if not thumbnails.extract(source, temp_target):
+                            continue
+                        store_fn = getattr(storage, "store_thumbnail", None)
+                        if store_fn is not None:
+                            res = store_fn(owner_id, row["id"], temp_target.read_bytes())
+                            if res:
+                                self.database.update_project(
+                                    row["id"], owner_id, {"thumbnail_path": res}
+                                )
+                                backfilled += 1
+                    finally:
+                        temp_target.unlink(missing_ok=True)
+                else:
+                    target = source.parent / "thumbnail.jpg"
+                    if thumbnails.extract(source, target):
+                        self.database.update_project(
+                            row["id"], owner_id, {"thumbnail_path": target_path}
+                        )
+                        backfilled += 1
+            finally:
+                # Whatever the branch did, a downloaded copy is scratch space.
+                if downloaded is not None:
+                    downloaded.unlink(missing_ok=True)
 
         if acting_admin_id:
             self._audit(

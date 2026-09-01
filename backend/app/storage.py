@@ -159,6 +159,15 @@ class StorageBackend(Protocol):
         """
         ...
 
+    def read_video_bytes(self, path: str | None) -> bytes | None:
+        """Fetch a stored video back, for a backend that has no local copy.
+
+        `local_video_path` returning None used to end the story, which meant a
+        video uploaded by the Kaggle worker could never get a thumbnail: it was
+        never on this host's disk in the first place.
+        """
+        ...
+
 
 class LocalStorage:
     """Filesystem-backed storage for the credential-free local profile.
@@ -216,6 +225,10 @@ class LocalStorage:
 
     def local_video_path(self, stored_path: str) -> Path | None:
         return self._resolve(stored_path)
+
+    def read_video_bytes(self, path: str | None) -> bytes | None:
+        resolved = self._resolve(path) if path else None
+        return resolved.read_bytes() if resolved and resolved.is_file() else None
 
     def store_thumbnail_path(self, user_id: str, project_id: str) -> str:
         return f"/media/{user_id}/{project_id}/thumbnail.jpg"
@@ -525,6 +538,26 @@ class SupabaseStorage:
         try:
             response = self._client.get(
                 f"{self.api}/object/{self.uploads_bucket}/{path}",
+                headers=self._headers,
+            )
+        except httpx.HTTPError:
+            return None
+        if response.status_code >= 400 or not response.content:
+            return None
+        return response.content
+
+    def read_video_bytes(self, path: str | None) -> bytes | None:
+        """Download a stored video from the private videos bucket, or None.
+
+        Same reasoning as `read_image_bytes`: a server-side read of an object
+        this server owns, using the service key rather than minting a signed
+        URL only to consume it immediately.
+        """
+        if not path or path.startswith(("http://", "https://")):
+            return None
+        try:
+            response = self._client.get(
+                f"{self.api}/object/{self.videos_bucket}/{path}",
                 headers=self._headers,
             )
         except httpx.HTTPError:
