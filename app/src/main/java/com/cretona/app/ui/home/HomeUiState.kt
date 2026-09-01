@@ -30,6 +30,7 @@ data class HomeUiState(
     val selectedStylePreset: String? = null,
     val selectedCameraMotion: String? = null,
     val selectedAspectRatio: String = "16:9",
+    val selectedDurationSeconds: Int = 5,
     val isOnline: Boolean = true,
     val creditActionRequired: Boolean = false,
 ) {

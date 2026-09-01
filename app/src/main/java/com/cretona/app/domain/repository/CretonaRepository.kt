@@ -50,6 +50,7 @@ interface CretonaRepository {
         imagePath: String? = null,
         idempotencyKey: String,
         provider: String = "fake",
+        durationSeconds: Int = 5,
         aspectRatio: String = "16:9",
         stylePreset: String? = null,
         cameraMotion: String? = null,

@@ -269,6 +269,7 @@ private class FakeRepository(
         imagePath: String?,
         idempotencyKey: String,
         provider: String,
+        durationSeconds: Int,
         aspectRatio: String,
         stylePreset: String?,
         cameraMotion: String?,

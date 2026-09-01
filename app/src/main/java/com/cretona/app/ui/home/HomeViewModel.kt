@@ -207,12 +207,19 @@ class HomeViewModel @Inject constructor(
         _state.update { it.copy(selectedAspectRatio = ratio, errorMessage = null) }
     }
 
+    fun onDurationSelected(seconds: Int) {
+        if (seconds !in 2..5) return
+        resetGenerationIntent()
+        _state.update { it.copy(selectedDurationSeconds = seconds, errorMessage = null) }
+    }
+
     fun remixProject(project: VideoProject) {
         resetGenerationIntent()
         _state.update {
             it.copy(
                 prompt = project.prompt ?: it.prompt,
                 selectedAspectRatio = project.aspectRatio,
+                selectedDurationSeconds = project.durationSeconds ?: it.selectedDurationSeconds,
                 selectedProvider = project.provider,
                 errorMessage = null,
                 enhancementNote = "Remixing: ${project.title}",
@@ -239,6 +246,7 @@ class HomeViewModel @Inject constructor(
         }
 
         val currentProvider = current.selectedProvider
+        val currentDurationSeconds = current.selectedDurationSeconds
         val currentAspectRatio = current.selectedAspectRatio
         val currentStylePreset = current.selectedStylePreset
         val currentCameraMotion = current.selectedCameraMotion
@@ -285,6 +293,7 @@ class HomeViewModel @Inject constructor(
                     imagePath = imagePath,
                     idempotencyKey = idempotencyKey,
                     provider = currentProvider,
+                    durationSeconds = currentDurationSeconds,
                     aspectRatio = currentAspectRatio,
                     stylePreset = currentStylePreset,
                     cameraMotion = currentCameraMotion,

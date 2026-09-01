@@ -244,6 +244,7 @@ fun HomeScreen(
         onStylePresetSelected = viewModel::onStylePresetSelected,
         onCameraMotionSelected = viewModel::onCameraMotionSelected,
         onAspectRatioSelected = viewModel::onAspectRatioSelected,
+        onDurationSelected = viewModel::onDurationSelected,
         onRemixProject = viewModel::remixProject,
         onGenerate = {
             hideKeyboard(focusManager, keyboardController)
@@ -279,6 +280,7 @@ private fun HomeContent(
     onStylePresetSelected: (String?) -> Unit,
     onCameraMotionSelected: (String?) -> Unit,
     onAspectRatioSelected: (String) -> Unit,
+    onDurationSelected: (Int) -> Unit,
     onRemixProject: (VideoProject) -> Unit,
     onGenerate: () -> Unit,
     onCancelCurrent: () -> Unit,
@@ -379,6 +381,7 @@ private fun HomeContent(
                                         ?: when (state.selectedProvider) {
                                             "cloud", "real", "wan21" -> "AI image + motion pan"
                                             "local" -> "Local placeholder"
+                                            "kaggle" -> "Wan2.1 Kaggle worker"
                                             else -> "Instant demo sample"
                                         },
                                     style = MaterialTheme.typography.labelSmall,
@@ -478,6 +481,22 @@ private fun HomeContent(
                                         selected = state.selectedAspectRatio == ratio,
                                         onClick = { onAspectRatioSelected(ratio) },
                                         label = { Text(label) },
+                                    )
+                                }
+                            }
+                        }
+
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Duration:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                (2..5).forEach { seconds ->
+                                    FilterChip(
+                                        selected = state.selectedDurationSeconds == seconds,
+                                        onClick = { onDurationSelected(seconds) },
+                                        label = { Text("${seconds}s") },
                                     )
                                 }
                             }
@@ -1145,6 +1164,7 @@ private fun HomeScreenPreview() {
             onStylePresetSelected = {},
             onCameraMotionSelected = {},
             onAspectRatioSelected = {},
+            onDurationSelected = {},
             onRemixProject = {},
             onGenerate = {},
             onCancelCurrent = {},

@@ -248,6 +248,7 @@ internal class FakeCretonaRepository : CretonaRepository {
         imagePath: String?,
         idempotencyKey: String,
         provider: String,
+        durationSeconds: Int,
         aspectRatio: String,
         stylePreset: String?,
         cameraMotion: String?,

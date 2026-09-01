@@ -103,6 +103,7 @@ class CretonaRepositoryImpl @Inject constructor(
         imagePath: String?,
         idempotencyKey: String,
         provider: String,
+        durationSeconds: Int,
         aspectRatio: String,
         stylePreset: String?,
         cameraMotion: String?,
@@ -114,6 +115,7 @@ class CretonaRepositoryImpl @Inject constructor(
                 imagePath = imagePath,
                 provider = provider,
                 options = com.cretona.app.data.remote.GenerationOptionsDto(
+                    durationSeconds = durationSeconds,
                     aspectRatio = aspectRatio,
                     stylePreset = stylePreset,
                     cameraMotion = cameraMotion,

@@ -276,6 +276,18 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun `duration selection accepts Kaggle range`() {
+        val viewModel = HomeViewModel(FakeRepository())
+        assertEquals(5, viewModel.state.value.selectedDurationSeconds)
+
+        viewModel.onDurationSelected(4)
+        assertEquals(4, viewModel.state.value.selectedDurationSeconds)
+
+        viewModel.onDurationSelected(6)
+        assertEquals(4, viewModel.state.value.selectedDurationSeconds)
+    }
+
+    @Test
     fun `remixProject pre-fills prompt, ratio and provider`() {
         val viewModel = HomeViewModel(FakeRepository())
         val completedProject = VideoProject(
@@ -300,6 +312,7 @@ class HomeViewModelTest {
         val state = viewModel.state.value
         assertEquals("A cyberpunk city in rain", state.prompt)
         assertEquals("9:16", state.selectedAspectRatio)
+        assertEquals(5, state.selectedDurationSeconds)
         assertEquals("wan21", state.selectedProvider)
         assertEquals("Remixing: A cyberpunk city", state.enhancementNote)
     }
@@ -311,6 +324,7 @@ class HomeViewModelTest {
             val viewModel = HomeViewModel(repository)
 
             viewModel.onPromptChanged("A majestic dragon")
+            viewModel.onDurationSelected(4)
             viewModel.onAspectRatioSelected("9:16")
             viewModel.onStylePresetSelected("anime")
             viewModel.onCameraMotionSelected("orbit")
@@ -319,6 +333,7 @@ class HomeViewModelTest {
             advanceUntilIdle()
 
             assertEquals(1, repository.createCalls)
+            assertEquals(4, repository.lastDurationSeconds)
             assertEquals("9:16", repository.lastAspectRatio)
             assertEquals("anime", repository.lastStylePreset)
             assertEquals("orbit", repository.lastCameraMotion)
@@ -478,6 +493,7 @@ private class FakeRepository(
     var cancelCalls = 0
     var deleteCalls = 0
     var lastCreatedImagePath: String? = null
+    var lastDurationSeconds: Int? = null
     var lastAspectRatio: String? = null
     var lastStylePreset: String? = null
     var lastCameraMotion: String? = null
@@ -534,6 +550,7 @@ private class FakeRepository(
         imagePath: String?,
         idempotencyKey: String,
         provider: String,
+        durationSeconds: Int,
         aspectRatio: String,
         stylePreset: String?,
         cameraMotion: String?,
@@ -541,6 +558,7 @@ private class FakeRepository(
         createCalls += 1
         idempotencyKeys += idempotencyKey
         lastCreatedImagePath = imagePath
+        lastDurationSeconds = durationSeconds
         lastAspectRatio = aspectRatio
         lastStylePreset = stylePreset
         lastCameraMotion = cameraMotion
