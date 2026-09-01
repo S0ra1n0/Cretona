@@ -1,10 +1,11 @@
 # Cretona — current delivery roadmap
 
-- **Last reconciled:** 2026-08-31
+- **Last reconciled:** 2026-09-01
 - **Deadline:** 2026-09-05 (2026-09-06 is buffer only)
 - **Team:** Bruce — Android/admin UI · S0ra1n0 — FastAPI/database/Kaggle worker
 - **Detailed tickets:** [TASK-SPLIT-2026-08-28.md](TASK-SPLIT-2026-08-28.md)
 - **Evidence baseline:** `ed4c1723a4335ca2c55d34aec174da39da8b26b3`
+- **S-13 worker revision:** `73666f023d2e618b02401f62c6afe4df13513595`
 - **Hosted CI:** [run 33366381890](https://github.com/S0ra1n0/Cretona/actions/runs/33366381890)
   passed Android/JVM 17, FastAPI/Python 3.12 and FastAPI/PostgreSQL 17 parity
 - **Fresh local gate:** [non-device preflight](evidence/NON_DEVICE_PREFLIGHT_2026-08-31.md)
@@ -28,8 +29,9 @@ The AI responsibilities are deliberately separate:
 - `real` and `local` are image-plus-motion placeholders, not evidence of a
   generative video model;
 - `kaggle` is an external-provider queue with a source-complete Wan2.1 worker;
-  migration 014 is live and security-verified, while worker authentication and
-  the first live Android-to-playback run remain unproven.
+  migration 014 is live and security-verified, and the private Kaggle worker
+  has passed Auth plus an empty-queue PostgreSQL claim smoke. A generated
+  Android-to-playback run remains unproven.
 
 ## 2. Audited status
 
@@ -41,7 +43,7 @@ The AI responsibilities are deliberately separate:
 | Android admin console | B-08 through B-13 source-complete against real endpoints | Included in the final compile/test/lint gate | Emulator acceptance, light/dark screenshots and live-endpoint walkthrough |
 | Prompt LLM | Qwen/Ollama adapter plus explicit fallback implemented | Historical live FastAPI evidence selected Qwen; not re-run in this audit | Re-run with `usedFallback=false` before the demo if Ollama is part of the demo |
 | Free generative video | Wan2.1 T2V 1.3B two-phase Kaggle notebook proven to generate | 4/4 distinct 832×480, 81-frame clips; mean 48.6 min/clip on 2×T4 | Blind quality scorecard is empty; no quality pass may be claimed |
-| Real video in the app | External `kaggle` provider, least-privilege worker, lease heartbeat, Storage upload and atomic completion/refund exist in source | Worker tests, disposable-Postgres parity, live migration 014, a password-set database role and exactly one marked Auth worker | Configure/validate the five Kaggle Secrets, then complete S-14 real result and Android playback |
+| Real video in the app | External `kaggle` provider, least-privilege worker, lease heartbeat, Storage upload and atomic completion/refund exist in source | Worker tests, disposable-Postgres parity, live migration 014, five enabled Kaggle Secrets, Auth 200 and live empty-queue claim smoke exit 0 | Complete S-14 with a real queued result and Android playback |
 
 ## 3. Bruce lane
 
@@ -72,8 +74,8 @@ proof so the same UI work is not reimplemented under a new ticket.
 
 The API/database work through S-16 is present. The remaining critical path is:
 
-1. **S-13:** worker source, live migration 014 and both identity records are
-   present. Configure/validate their five Kaggle Secrets, and start the worker.
+1. **S-13:** complete. Five Kaggle Secrets are enabled; the revision-bound
+   worker passed Supabase Auth and the empty PostgreSQL claim path live.
 2. **S-14:** submit one text job from Android, let the worker complete it, and
    play the returned real MP4 in Android. Capture IDs, timestamps and media
    metadata as evidence.
@@ -112,7 +114,7 @@ already proven and the scorecard shows Wan2.1 is unacceptable.
 
 ## 6. Current verification and blockers
 
-Verified through 2026-08-31:
+Verified through 2026-09-01:
 
 - backend SQLite profile: 546 passed and 55 intentionally skipped;
 - backend disposable-Postgres profile: all 601 passed; the only first-run
@@ -136,20 +138,20 @@ Verified through 2026-08-31:
   so this is recorded drift rather than a blocker;
 - the four received EXP-005 clips match the ledger digests and each parses as
   H.264 832x480, 81 frames, 5.06 seconds at 16 fps;
+- the private Kaggle notebook has exactly five enabled worker secrets; the
+  revision-bound worker obtained a Supabase Auth session, reached the live
+  PostgreSQL claim function with an empty queue and exited 0 without loading a
+  model. See `evidence/KAGGLE_WORKER_S13_2026-09-01.md`;
 - tracked secret-pattern scan found only the deliberate service-role placeholder
   in `backend/.env.example`, not a plaintext credential.
 
 Not run or not accepted in this audit:
 
-- the database role has a password and exactly one Auth user has protected
-  `cretona_worker=true` metadata, but the authenticated notebook showed **No
-  secrets added** on 2026-08-31; its five Kaggle Secrets and actual
-  authentication therefore remain open;
 - the current bootstrap plus seed was not re-executed from an empty database in
   this gate because Docker/Postgres was unavailable locally; historical
   bootstrap evidence and hosted adapter parity do not close that S-18 rerun;
-- the Kaggle worker was not run with live credentials, so no app-submitted job
-  has completed through the new worker path;
+- the connectivity-only worker run had an empty queue, so no model was loaded
+  and no app-submitted job has completed through the worker path;
 - emulator and live Supabase acceptance still require a current run.
 
 ## 7. Definition of done
@@ -163,6 +165,7 @@ Not run or not accepted in this audit:
 - [x] Final Android source/build gate is green at the evidence baseline.
 - [x] Hosted CI is green at the evidence baseline.
 - [x] Live Supabase migration 014 passes its read-only security verification.
+- [x] Five Kaggle Secrets and the live Auth/empty-queue claim smoke pass.
 - [ ] Required emulator journeys are green at the delivered revision.
 - [ ] A Wan2.1 Kaggle job submitted through FastAPI completes and its real video
       plays in Android.

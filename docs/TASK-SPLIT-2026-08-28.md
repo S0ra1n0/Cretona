@@ -17,10 +17,10 @@ Ticket ids are stable. Use them in commit messages: `feat(credits): S-03 …`.
 > no model or image-conditioning mandate; S-13/S-14 are the release-critical
 > worker and real-video path. See `ROADMAP.md` for the concise current state.
 
-> **Live update 2026-08-31.** Migration 014 is present and passed its read-only
-> security verification. The role password is set and exactly one Auth worker
-> is marked. S-13 now starts at Kaggle Secrets/authentication; it must not
-> reapply the migration or create duplicate identities.
+> **Live update 2026-09-01.** Migration 014 and both identities remain present.
+> Five Kaggle Secrets are enabled, and the revision-bound worker passed live
+> Supabase Auth plus an empty-queue PostgreSQL claim smoke. S-14 is now the
+> first unproven action; do not reapply the migration or duplicate identities.
 
 ---
 
@@ -240,10 +240,9 @@ endpoints; the fake is no longer the application binding.
   queue functions, plus a dedicated Auth user whose lease-scoped token can
   write the canonical object in `videos`; both live in Kaggle Secrets. **Never
   the `service_role` key.**
-: **Current 08-31:** source/local parity, live migration 014, a password-set
-  database role and one marked Auth worker are present. The authenticated
-  notebook currently reports **No secrets added**; the five Kaggle Secrets,
-  authentication and the first worker run remain.
+: **Completed 09-01:** five Kaggle Secrets are enabled. The revision-bound
+  worker obtained a Supabase Auth session, reached the live empty PostgreSQL
+  claim queue and exited 0. S-14 still owns generation, upload and playback.
 
 ### Day 6 · Wed 09-02
 
@@ -474,19 +473,19 @@ the report and demo video.
 
 ---
 
-## 6. Progress — reconciled 2026-08-31
+## 6. Progress — reconciled 2026-09-01
 
-**Backend API/database and Kaggle worker source are done.** Migration 014 is
-live and verified, and both identity records are present. S-12 is an optional
-image-model spike; finishing S-13 Kaggle Secrets/runtime and S-14 first
-real-video playback remain the critical path.
+**Backend API/database and S-13 worker connectivity are done.** Migration 014,
+both identities, five Kaggle Secrets, Auth and the empty-queue database claim
+are live-verified. S-12 is an optional image-model spike; S-14 first real-video
+generation and playback are the critical path.
 
 | Ticket | | Ticket | |
 |---|---|---|---|
 | S-01 migration | ✅ | S-10 `EventService` | ✅ |
 | S-02 seed | ✅ | S-11 event endpoints + discount | ✅ |
 | S-03 `ADR-010` | ✅ | S-12 image-to-video spike | stretch, timeboxed |
-| S-04 `CreditService` | ✅ | S-13 Kaggle worker | ✅ source/local parity + live migration/identities; secrets/auth/run pending |
+| S-04 `CreditService` | ✅ | S-13 Kaggle worker | ✅ live Auth + empty-queue claim smoke |
 | S-05 charge and refund | ✅ | S-14 first real clip | ⏸ needs Kaggle |
 | S-05a signup bonus | ✅ | S-15 `/admin/stats` | ✅ |
 | S-06 W1 scoped claiming | ✅ | S-16 admin endpoints | ✅ |
@@ -527,7 +526,7 @@ green run.
 |---|---|
 | **D1 — must the image drive the video?** | Resolved from lecturer scope: no specific model or image-conditioning requirement |
 | Optional image-model fallback | Only after S-13/S-14 and only if the Wan2.1 blind score is unacceptable |
-| S-13 / S-14 | Configure/validate Kaggle Secrets for the existing identities, run one Kaggle session and play its result in Android |
+| S-14 | Submit a real job, let Kaggle generate/upload it and play the result in Android |
 | Bruce's lane | B-14 screenshots, B-16 device/integration acceptance, then B-17/B-18 |
 
 ---
@@ -603,7 +602,7 @@ with a disposable Postgres it is **601 passed, 0 skipped**.
 Neither is Android work, but both affect what the demo can show, so they are
 here where they will be read:
 
-- **A Kaggle session** for S-13 and S-14. Wan2.1 generation is proven in the
-  notebook, but the worker-to-FastAPI-to-Android path is not.
+- **An S-14 Kaggle generation session.** Connectivity is proven, but the
+  worker-to-FastAPI-to-Android result and playback path are not.
 - **Blind scoring.** The four distinct Wan2.1 clips are scoreable, but the
   quality scorecard remains empty; feasibility must not be reported as quality.

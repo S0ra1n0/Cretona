@@ -9,17 +9,15 @@ The model is `Wan-AI/Wan2.1-T2V-1.3B-Diffusers` at revision
 2–5 seconds, and the measured 5-second profile takes about 49 minutes on the
 Kaggle 2×T4 host. The worker is not an always-on service.
 
-> **Live checkpoint, 2026-08-31:** migration 014 is already present on the
+> **Live checkpoint, 2026-09-01:** migration 014 is already present on the
 > Cretona Supabase project and `verify-014` passed in a read-only transaction.
 > The database role has a password and exactly one Auth user is marked as a
-> worker. Do not reapply the migration or create duplicate identities. Continue
-> at section 3 if the team still has both credential values; otherwise reset
-> only the missing password in section 2. Evidence:
-> [`LIVE_SUPABASE_MIGRATION_014_2026-08-31.md`](evidence/LIVE_SUPABASE_MIGRATION_014_2026-08-31.md).
->
-> The authenticated `bruce335/cretona-wan2-1` notebook showed **No secrets
-> added** during the 2026-08-31 non-device preflight. Start at section 3; do not
-> start a GPU session before all five names are present and enabled.
+> worker. All five Kaggle Secrets are enabled, Supabase Auth returned 200 and
+> `kaggle_worker.py --once` reached the empty PostgreSQL claim queue and exited
+> 0. Do not reapply the migration, create duplicate identities or rotate a
+> credential without cause. Continue at section 5 for S-14. Evidence:
+> [`LIVE_SUPABASE_MIGRATION_014_2026-08-31.md`](evidence/LIVE_SUPABASE_MIGRATION_014_2026-08-31.md)
+> and [`KAGGLE_WORKER_S13_2026-09-01.md`](evidence/KAGGLE_WORKER_S13_2026-09-01.md).
 
 ## 1. Verify migration 014; apply only if absent
 
@@ -106,17 +104,51 @@ for name in (
     os.environ[name] = secrets.get_secret(name)
 ```
 
+The repository is private. Do not add a GitHub token to Kaggle. From a reviewed
+local revision, create a secret-free ZIP containing exactly
+`backend/kaggle_worker.py` and `backend/requirements-kaggle.txt`; record its
+revision and SHA-256, then upload it as a private notebook input. Verify before
+extracting it:
+
+```python
+from pathlib import Path
+import hashlib
+import zipfile
+
+expected_sha256 = "<bundle-sha256-recorded-before-upload>"
+bundles = list(Path("/kaggle/input").rglob("cretona-kaggle-worker-*.zip"))
+bundles += list(Path("/kaggle/working").glob("cretona-kaggle-worker-*.zip"))
+assert len(bundles) == 1, bundles
+bundle = bundles[0]
+assert hashlib.sha256(bundle.read_bytes()).hexdigest() == expected_sha256
+
+with zipfile.ZipFile(bundle) as archive:
+    assert sorted(archive.namelist()) == [
+        "backend/kaggle_worker.py",
+        "backend/requirements-kaggle.txt",
+    ]
+    archive.extractall("/kaggle/working/Cretona")
+```
+
+Run the cheap no-job connection smoke before installing the model stack:
+
 ```bash
-!git clone https://github.com/S0ra1n0/Cretona.git
 %cd /kaggle/working/Cretona
-!git checkout a7b625147cbff81ae7789e237b7300618046f376
+!python -m pip install -q "psycopg[binary]==3.3.4"
+!python backend/kaggle_worker.py --once
+```
+
+An empty queue should exit 0 without loading a model. For S-14, install the
+complete pinned worker dependencies:
+
+```bash
 !python -m pip install -q -r backend/requirements-kaggle.txt
 ```
 
 Do not install or upgrade `torch`; the requirements file deliberately uses the
 CUDA build already supplied by Kaggle.
 
-For a one-job acceptance run:
+For a queued one-job acceptance run:
 
 ```bash
 !python backend/kaggle_worker.py --once
