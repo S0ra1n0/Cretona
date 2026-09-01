@@ -40,7 +40,20 @@ $script:AdbExecutable = Resolve-Adb
 function Invoke-Adb {
     param([string[]]$Arguments)
 
-    $output = @(& $script:AdbExecutable @Arguments 2>&1)
+    # Windows PowerShell 5.1 turns every stderr line from a native executable
+    # into an ErrorRecord, and with $ErrorActionPreference = "Stop" that is
+    # fatal even when the exe exits 0. `adb pull` writes its transfer progress
+    # to stderr, so the screenshot pass died on a successful pull. Relax the
+    # preference only around the call; the exit-code check below is what
+    # actually decides whether adb failed.
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $output = @(& $script:AdbExecutable @Arguments 2>&1)
+    } finally {
+        $ErrorActionPreference = $previousPreference
+    }
+
     if ($LASTEXITCODE -ne 0) {
         $message = ($output | ForEach-Object { $_.ToString() }) -join "`n"
         throw "adb failed ($($Arguments -join ' ')): $message"
