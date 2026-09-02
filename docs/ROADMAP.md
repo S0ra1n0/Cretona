@@ -17,6 +17,15 @@
 This is the progress source of truth. Requirements remain in `SRS.md`, wire
 formats in `API_CONTRACT.md`, and schema rules in `DATA_MODEL.md`.
 
+> **Acceptance standard.** A feature counts as delivered when the running system
+> does it live — backend up, real accounts, real Supabase, operated in front of
+> the reviewer. A green test suite and a folder of screenshots answer "it ran
+> once", not "it works if you open it now", and only the second one is the
+> deliverable. Every `[x]` below that rests on source tests or captured images
+> says so explicitly, and stays distinct from a live acceptance. Script:
+> [LIVE_DEMO_RUNBOOK.md](LIVE_DEMO_RUNBOOK.md). Sessions: **2026-09-03**
+> progress review, **2026-09-05** final.
+
 ## 1. Product and architecture
 
 Cretona is a native Kotlin/Jetpack Compose Android app backed by FastAPI.
@@ -246,6 +255,10 @@ Not run or not accepted:
       generation, frame extraction, encoding, the size guard, and the
       both-objects completion contract — is proven; these two links are not.
       Rebuild the notebook input from `cretona-kaggle-worker-a7330d06.zip` first.
+- [ ] **The system is demonstrated live at the 2026-09-03 progress review** —
+      backend running, an account created on the spot, a real job submitted to
+      the queue, and playback of a genuinely generated clip.
+- [ ] **The system is demonstrated live at the 2026-09-05 final session.**
 - [ ] Current screenshots, demo video, report, sample accounts and submission
       package are complete and secret-free.
 

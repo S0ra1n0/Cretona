@@ -6,6 +6,7 @@
 |---|---|
 | Get the project running on your machine | [SETUP.md](SETUP.md) |
 | Resume or hand off current work | [ROADMAP.md](ROADMAP.md), then [KAGGLE_WORKER_RUNBOOK.md](KAGGLE_WORKER_RUNBOOK.md) |
+- [LIVE_DEMO_RUNBOOK.md](LIVE_DEMO_RUNBOOK.md) - kich ban chay he thong live cho buoi 09-03 va 09-05.
 | Know what the system must do | [SRS.md](SRS.md) |
 | Know what to build next | [ROADMAP.md](ROADMAP.md) |
 | Call or implement an endpoint | [API_CONTRACT.md](API_CONTRACT.md) |
