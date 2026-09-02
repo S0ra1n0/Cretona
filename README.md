@@ -4,12 +4,14 @@ Cretona is a Mobile 1 project by Bruce and S0ra1n0 for creating short AI
 videos from text and, after the text path is proven, an optional reference
 image.
 
-Product implementation is verified through the `ed4c172` evidence baseline.
-GitHub Actions [run 33366381890](https://github.com/S0ra1n0/Cretona/actions/runs/33366381890)
-passed the Android/JVM 17, FastAPI/Python 3.12 and FastAPI/PostgreSQL 17 jobs;
-the same baseline also passed a fresh local non-device gate on 2026-08-31.
-Live Supabase migration 014 was separately verified read-only. None of those
-results proves Kaggle worker execution or Android device acceptance.
+The current technical baseline is `b4bf348`. GitHub Actions
+[run 33598905267](https://github.com/S0ra1n0/Cretona/actions/runs/33598905267)
+builds and tests Android, exercises FastAPI against SQLite and PostgreSQL 17,
+replays the complete Supabase bootstrap plus migrations 002–015 from empty,
+audits Python dependencies, and scans the release APK for server-only
+credential markers. Live Supabase migration 015 and the matching private
+Kaggle worker bundle have also passed their guarded verification and
+empty-queue smoke.
 
 ## Current integration status
 
@@ -26,13 +28,17 @@ falling back to a development identity.
 
 No paid provider call is enabled by the accepted zero-additional-spend path.
 Local Qwen3-4B has passed a real FastAPI call. The selected temporal-video path
-is pinned Wan2.1 T2V 1.3B on free Kaggle compute: the experiment generated four
-real clips, and the `kaggle` provider, worker and migration are complete in
-source. Migration 014 is live and passes its security gate; the database role
-has a password and exactly one Auth user is marked as the worker. Configuring
-and validating the five Kaggle Secrets, running the worker, playing its result
-in Android and scoring output quality are still acceptance steps;
-source tests are not evidence that those live steps happened.
+is pinned Wan2.1 T2V 1.3B on free Kaggle compute. Four experiment clips were
+generated and reviewed as demo-adequate, with direction and camera-motion
+limitations recorded. A real Android-submitted job completed through the live
+worker, reached private Storage, and played in Android on 2026-09-01.
+
+Migration 015 now requires every new worker completion to upload both
+`video.mp4` and `thumbnail.jpg`. Its live schema, policies, revision-bound
+bundle and empty-queue Kaggle smoke are proven; one fresh post-migration job is
+still required to observe the new thumbnail path end to end. The remaining
+human deliverables are the final demo recording (B-17) and report/submission
+package (B-18).
 
 ## Repository layout
 
@@ -50,14 +56,16 @@ Cretona/             open this folder in Android Studio
 
 - Start with [docs/README.md](docs/README.md) for the teammate implementation.
 - Use [docs/ROADMAP.md](docs/ROADMAP.md) as the current handover/status source.
-- Use [docs/KAGGLE_WORKER_RUNBOOK.md](docs/KAGGLE_WORKER_RUNBOOK.md) for the
-  first live worker-to-Android acceptance run.
+- Use [docs/KAGGLE_WORKER_RUNBOOK.md](docs/KAGGLE_WORKER_RUNBOOK.md) for a
+  post-MIG-015 worker-to-Android acceptance run.
 - See [docs/DECISIONS.md](docs/DECISIONS.md) for reconciled team decisions.
 - See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for credential boundaries.
 - See [docs/evidence/ANDROID_FASTAPI_E2E.md](docs/evidence/ANDROID_FASTAPI_E2E.md)
   for the verified emulator-to-video vertical slice and its evidence limits.
 - See [docs/evidence/NON_DEVICE_PREFLIGHT_2026-08-31.md](docs/evidence/NON_DEVICE_PREFLIGHT_2026-08-31.md)
-  for the latest backend, Android build, APK and hosted-CI evidence.
+  for the earlier non-device release gate.
+- See [docs/evidence/LIVE_SUPABASE_MIGRATION_015_2026-09-02.md](docs/evidence/LIVE_SUPABASE_MIGRATION_015_2026-09-02.md)
+  for the current live migration and worker-bundle smoke boundary.
 - See [docs/discovery/FREE-LOCAL-BEST-OUTPUT.md](docs/discovery/FREE-LOCAL-BEST-OUTPUT.md)
   for the evidence-gated local model strategy.
 
