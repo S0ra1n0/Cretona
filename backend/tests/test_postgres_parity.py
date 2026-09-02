@@ -1159,6 +1159,87 @@ def test_kaggle_worker_claim_storage_and_complete_on_postgres(
     assert completed["thumbnailUrl"] is not None
 
 
+def test_kaggle_completion_is_refused_while_the_thumbnail_is_missing_on_postgres(
+    postgres_client: TestClient,
+    postgres_url: str,
+    bearer: BearerFactory,
+) -> None:
+    """MIG-015 fails closed: the MP4 alone must not complete a project.
+
+    The happy path above proves both objects complete. This proves the other
+    branch, which is the one that changed: before MIG-015 a missing thumbnail
+    completed the project and only cost the gallery card its preview, so the
+    refusal is new behaviour and nothing else asserts it.
+    """
+    response = postgres_client.post(
+        "/api/v1/projects",
+        headers=bearer(subject=USER_A),
+        json={
+            "prompt": "a paper dragon flying over lanterns",
+            "provider": "kaggle",
+            "options": {"durationSeconds": 5, "aspectRatio": "16:9"},
+        },
+    )
+    assert response.status_code == 201, response.text
+    project_id = response.json()["id"]
+    worker_id = "30000000-0000-4000-8000-000000000003"
+    object_name = f"{USER_A}/{project_id}/video.mp4"
+    thumbnail_name = f"{USER_A}/{project_id}/thumbnail.jpg"
+
+    with psycopg.connect(postgres_url) as connection, connection.transaction():
+        connection.execute("set local role cretona_kaggle_worker")
+        claimed = connection.execute(
+            "select * from private.cretona_kaggle_claim_job(%s, 180)", (worker_id,)
+        ).fetchone()
+        assert claimed is not None
+
+        connection.execute("reset role")
+        connection.execute("set local role authenticated")
+        connection.execute("select set_config('request.jwt.claim.sub', %s, true)", (worker_id,))
+        connection.execute(
+            "select set_config('request.jwt.claims', %s, true)",
+            ('{"app_metadata":{"cretona_worker":true}}',),
+        )
+        connection.execute(
+            "insert into storage.objects (bucket_id, name) values ('videos', %s)",
+            (object_name,),
+        )
+
+        # Only the MP4 exists. Completion must refuse.
+        connection.execute("reset role")
+        connection.execute("set local role cretona_kaggle_worker")
+        assert not connection.execute(
+            "select private.cretona_kaggle_complete(%s, %s, %s)",
+            (worker_id, project_id, "a" * 64),
+        ).fetchone()[0]
+
+        # The same call succeeds once the JPEG lands, so the refusal was the
+        # missing object and not the lease or the digest.
+        connection.execute("reset role")
+        connection.execute("set local role authenticated")
+        connection.execute("select set_config('request.jwt.claim.sub', %s, true)", (worker_id,))
+        connection.execute(
+            "select set_config('request.jwt.claims', %s, true)",
+            ('{"app_metadata":{"cretona_worker":true}}',),
+        )
+        connection.execute(
+            "insert into storage.objects (bucket_id, name) values ('uploads', %s)",
+            (thumbnail_name,),
+        )
+        connection.execute("reset role")
+        connection.execute("set local role cretona_kaggle_worker")
+        assert connection.execute(
+            "select private.cretona_kaggle_complete(%s, %s, %s)",
+            (worker_id, project_id, "a" * 64),
+        ).fetchone()[0]
+
+    completed = postgres_client.get(
+        f"/api/v1/projects/{project_id}", headers=bearer(subject=USER_A)
+    ).json()
+    assert completed["status"] == "completed"
+    assert completed["thumbnailUrl"] is not None
+
+
 def test_kaggle_worker_failure_refunds_every_attempt_once_on_postgres(
     postgres_client: TestClient,
     postgres_url: str,
