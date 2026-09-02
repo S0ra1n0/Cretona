@@ -16,6 +16,7 @@
 | Inspect executed Android/FastAPI evidence | [evidence/ANDROID_FASTAPI_E2E.md](evidence/ANDROID_FASTAPI_E2E.md) |
 | Inspect the latest non-device release gate | [evidence/NON_DEVICE_PREFLIGHT_2026-08-31.md](evidence/NON_DEVICE_PREFLIGHT_2026-08-31.md) |
 | Inspect the live Kaggle worker connection | [evidence/KAGGLE_WORKER_S13_2026-09-01.md](evidence/KAGGLE_WORKER_S13_2026-09-01.md) |
+| Inspect MIG-015 deployment and matching worker smoke | [evidence/LIVE_SUPABASE_MIGRATION_015_2026-09-02.md](evidence/LIVE_SUPABASE_MIGRATION_015_2026-09-02.md) |
 | Inspect the local-model feasibility gate | [experiments/EXP-005/](experiments/EXP-005/README.md) |
 | Know why something is the way it is | [adr/](adr/README.md) |
 
