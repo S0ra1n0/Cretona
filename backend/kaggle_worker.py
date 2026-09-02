@@ -46,6 +46,15 @@ class LeaseLostError(RuntimeError):
     """Another worker owns the project; this process must stop writing."""
 
 
+class CompletionRefusedError(RuntimeError):
+    """The lease is still held, but the database refused to complete the job.
+
+    Since MIG-015 completion also refuses when a canonical object is missing
+    from Storage, which is this worker's own failure and must refund, unlike a
+    lost lease where another worker owns the outcome.
+    """
+
+
 @dataclass(frozen=True)
 class WorkerConfig:
     database_url: str
@@ -559,6 +568,19 @@ def run_once(
 
             heartbeat.assert_owned()
             if not database.complete(session.user_id, job, sha256_file(output)):
+                # A false return meant one thing before MIG-015: the lease had
+                # moved. Completion now also refuses when the MP4 or the JPEG
+                # is missing from Storage, and the two must not be treated
+                # alike — a lost lease belongs to another worker and must not
+                # refund, while a missing object is this worker's failure and
+                # must. A successful heartbeat still proves ownership here,
+                # because completion left the row in `generating`.
+                value, _ = progress.get()
+                if database.heartbeat(session.user_id, job, min(max(value, 1), 95), "Verifying"):
+                    raise CompletionRefusedError(
+                        "Completion refused while this worker still held the lease; "
+                        "the MP4 or thumbnail is missing from Storage."
+                    )
                 raise LeaseLostError("Completion refused because the lease changed.")
         logger.info("Completed project %s", job.project_id)
     except LeaseLostError:
