@@ -45,42 +45,155 @@ Backend, cloudflared và Ollama đang chạy sẵn. APK đã khớp URL hiện t
 
 Package id là `com.cretona.app.debug` — chú ý hậu tố `.debug`.
 
-### A2. Upload bundle mới lên Kaggle (5 phút)
+### A2. Đặt mật khẩu cho DB role (2 phút)
 
-1. Vào <https://www.kaggle.com/datasets> → **New Dataset**
-2. Upload `_test/cretona-kaggle-worker-STEPS25.zip` (7.222 B) → để **Private**
-3. Mở <https://www.kaggle.com/code/bruce335/cretona-wan2-1>
-4. **Add Input** → chọn dataset vừa tạo
-5. **Xoá input bundle cũ** (bản `ee339afd`)
+Worker cần **2 chìa khóa khác nhau**, thiếu một là không chạy:
 
-### A3. Sửa hash trong notebook (2 phút)
+| # | Chìa khóa | Xem ở đâu |
+|---|---|---|
+| 1 | Tài khoản Auth (email + password) | Supabase → **Authentication → Users** |
+| 2 | Role Postgres `cretona_kaggle_worker` | **Không hiện ở Authentication.** Chỉ thấy qua SQL |
 
-Tìm cell có `expected = {`, thay toàn bộ bằng:
+Chìa khóa 1 dùng để upload file lên Storage. Chìa khóa 2 dùng để lấy job từ
+hàng đợi trong database.
 
-```python
-expected = {
-    "backend/kaggle_worker.py":
-        "decc5f5ddddfc0af515ee3cce045e1ce97742af854303afa4c24bba2d97e3823",
-    "backend/requirements-kaggle.txt":
-        "46263bf0527742dde0d98a5da163afc1646a53b5f6de545ad3e94da43c99c669",
-}
+**Ở đâu:** <https://supabase.com/dashboard> → project `fisnwdzhyuiiursljblw`
+→ menu trái → **SQL Editor** → **New query**
+
+Kiểm role có tồn tại không:
+
+```sql
+select rolname, rolcanlogin from pg_roles where rolname = 'cretona_kaggle_worker';
 ```
 
-Notebook sẽ **từ chối bundle cũ** nếu quên bước này — đó là hành vi đúng.
+Đặt mật khẩu mới cho nó:
 
-### A4. Bật worker (15 phút chuẩn bị)
+```sql
+alter role cretona_kaggle_worker password 'Cretona2026Worker';
+```
 
-Trong notebook: **Settings → Accelerator → GPU T4 x2**, **Internet → On** → **Run All**
+> Chỉ dùng **chữ và số**. Ký tự đặc biệt (`@ : / # ?`) phải URL-encode khi nhét
+> vào connection string, rất dễ sai.
 
-Cell cuối phải là `!python backend/kaggle_worker.py` (không có `--once`).
+### A3. Ghép chuỗi kết nối database (3 phút)
 
-### A5. Nộp 1 job thật (20 phút chờ)
+**Ở đâu lấy:** Supabase Dashboard → nút **Connect** (thanh trên cùng) → tab
+**Session pooler** → copy chuỗi mẫu.
 
-Trên app:
+**Ở đâu sửa:** dán vào **Notepad**, sửa trong đó. Không sửa trên Supabase.
+
+Chuỗi copy về có dạng:
+
+```
+postgresql://postgres.fisnwdzhyuiiursljblw:[YOUR-PASSWORD]@aws-0-<region>.pooler.supabase.com:5432/postgres
+```
+
+Sửa đúng **3 chỗ**:
+
+| Sửa gì | Từ | Thành |
+|---|---|---|
+| Tên user | `postgres.fisnwdzhyuiiursljblw` | `cretona_kaggle_worker.fisnwdzhyuiiursljblw` |
+| Mật khẩu | `[YOUR-PASSWORD]` | `Cretona2026Worker` |
+| Cuối chuỗi | *(không có gì)* | thêm `?sslmode=require` |
+
+**Giữ nguyên phần `@aws-0-<region>.pooler.supabase.com:5432` y như dashboard đưa
+— đừng tự đoán region.**
+
+Kết quả cuối (phần `<region>` là của bạn):
+
+```
+postgresql://cretona_kaggle_worker.fisnwdzhyuiiursljblw:Cretona2026Worker@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
+```
+
+Giữ chuỗi này trong Notepad, lát nữa dán vào Kaggle.
+
+### A4. Tạo notebook trên tài khoản Kaggle của bạn (3 phút)
+
+Worker notebook cũ nằm ở tài khoản `bruce335`, private, bạn không mở được. File
+`.ipynb` dựng sẵn nằm ở:
+
+```
+C:\Users\M15R6\AndroidStudioProjects\Final_Plus\Cretona\_test\cretona-kaggle-worker.ipynb
+```
+
+**Ở đâu:** <https://www.kaggle.com/code> → nút **New Notebook** → menu
+**File → Import Notebook** → chọn file trên.
+
+### A5. Upload bundle làm dataset (4 phút)
+
+**Ở đâu:** <https://www.kaggle.com/datasets> → **New Dataset**
+
+Upload file:
+
+```
+C:\Users\M15R6\AndroidStudioProjects\Final_Plus\Cretona\_test\cretona-kaggle-worker-STEPS25.zip
+```
+
+Để **Private** → **Create**.
+
+Rồi quay lại notebook vừa import → panel phải → **Add Input** → tab **Datasets**
+→ chọn dataset vừa tạo.
+
+### A6. Nhập 5 Kaggle Secrets (5 phút)
+
+**Ở đâu:** trong notebook, thanh menu trên cùng → **Add-ons** → **Secrets** →
+**+ Add a new secret**
+
+Mỗi secret điền 2 ô **Label** và **Value**, bấm **Save**, làm 5 lần:
+
+| Label (gõ chính xác) | Value |
+|---|---|
+| `CRETONA_WORKER_DATABASE_URL` | Chuỗi đã ghép ở A3 |
+| `CRETONA_SUPABASE_URL` | `https://fisnwdzhyuiiursljblw.supabase.co` |
+| `CRETONA_SUPABASE_PUBLISHABLE_KEY` | Supabase → **Settings → API** → key `anon` / `public` |
+| `CRETONA_WORKER_EMAIL` | Email tài khoản worker ở **Authentication → Users** |
+| `CRETONA_WORKER_PASSWORD` | Mật khẩu tài khoản đó |
+
+**Sau khi tạo đủ 5, bật nút gạt `Attached` cho từng cái.** Không bật thì cell 1
+báo `Missing Kaggle Secrets`.
+
+Label sai một ký tự (kể cả hoa/thường) là fail.
+
+### A7. Bật GPU và Internet (1 phút)
+
+**Ở đâu:** notebook → panel phải → **Settings**
+
+- **Accelerator** → `GPU T4 x2`
+- **Internet** → `On`
+
+Thiếu Internet thì worker không gọi được Supabase.
+
+### A8. Chạy từng cell, ĐỪNG Run All (5 phút + 20 phút)
+
+Bấm nút **▶** bên trái từng cell, theo thứ tự:
+
+| Cell | Nội dung | Làm gì |
+|---|---|---|
+| 1 | Nạp 5 secret | Chạy. In ra `da nap 5 secret` là được |
+| 2 | Verify hash + copy source | Chạy. In `OK backend/kaggle_worker.py` |
+| 3 | `pip install psycopg` + smoke test | Chạy **rồi DỪNG LẠI** |
+| 4 | `pip install` đầy đủ | Chỉ chạy khi cell 3 xanh |
+| 5 | Chạy worker | Chỉ chạy khi cell 4 xong |
+
+**Cell 3 là cửa ải rẻ tiền** — chỉ tốn ~1 phút, không nạp model, không tốn GPU:
+
+| Kết quả cell 3 | Nghĩa là |
+|---|---|
+| `exit code 0`, báo không có job | ✅ Cả 2 chìa khóa đúng, chạy tiếp cell 4 |
+| Lỗi Supabase Auth | ❌ Sai `CRETONA_WORKER_EMAIL` hoặc `PASSWORD` |
+| Lỗi kết nối database | ❌ Sai chuỗi ở A3 — kiểm lại tên user, mật khẩu, region |
+| `Missing Kaggle Secrets` | ❌ Chưa bật `Attached` ở A6 |
+
+**Đừng bấm Run All ở lần đầu** — nó chạy thẳng xuống cell 5 và tốn GPU ngay cả
+khi cấu hình sai.
+
+### A9. Nộp 1 job thật (20 phút chờ)
+
+**Ở đâu:** trên app điện thoại/emulator, không phải terminal.
 
 1. Đăng nhập
-2. Bấm **Enhance** — nếu ra một đoạn dài, mô tả điện ảnh thì Qwen đang chạy thật.
-   Nếu ra câu ngắn cụt thì đang là fallback, xem mục D.
+2. Bấm **Enhance** — ra đoạn dài mô tả điện ảnh là Qwen chạy thật. Ra câu ngắn
+   cụt là fallback, xem mục D
 3. Provider **Kaggle · Wan2.1** → **4 giây** → chỉ nhập text, không đính ảnh
 4. **Generate**
 
@@ -92,8 +205,9 @@ Trên app:
 | Chất lượng ở 25 steps | Xem clip, chấp nhận được không |
 | Đường thumbnail MIG-015 | Thẻ trong History có ảnh preview |
 
-> **Nếu chất lượng tệ:** sửa `STEPS = 25` về `50` ở `backend/kaggle_worker.py`
-> dòng 36, dựng lại bundle, upload lại Kaggle. Clip 4s khi đó mất ~39 phút.
+> **Nếu chất lượng tệ:** sửa `STEPS = 25` về `50` ở dòng 36 file
+> `C:\Users\M15R6\AndroidStudioProjects\Final_Plus\Cretona\backend\kaggle_worker.py`,
+> dựng lại bundle, upload lại Kaggle. Clip 4s khi đó mất ~39 phút.
 > **Phải quyết tối nay** — sáng thứ Bảy mới phát hiện là hết đường lùi.
 
 ---
@@ -167,8 +281,17 @@ Rồi, vẫn **[GỐC]**:
 
 ### B6. Bật worker Kaggle (10–18 phút — LÂU NHẤT)
 
-Mở <https://www.kaggle.com/code/bruce335/cretona-wan2-1> → **Run All**.
-Để tab mở suốt buổi.
+**Ở đâu:** <https://www.kaggle.com/code> → tab **Your Work** → mở notebook
+worker của bạn (đã tạo ở A4).
+
+Kiểm 2 thứ trước khi chạy, ở panel phải → **Settings**:
+
+- **Accelerator** = `GPU T4 x2`
+- **Internet** = `On`
+
+Rồi **Run All**. Để tab mở suốt buổi.
+
+> Lần này Run All được, vì cấu hình đã kiểm chứng ở A8 tối qua.
 
 ### B7. Hâm nóng model LLM (25 giây)
 
