@@ -67,7 +67,7 @@ Third-party AI/media providers are isolated behind the server-side provider boun
 ### 2.3 Media & Project Operations
 - **FR-MEDIA-001 (1-Tap Save to Gallery)**: The user shall be able to download the generated MP4 video directly into the device's public `Movies/Cretona` gallery via `MediaStore.Video.Media`.
 - **FR-MEDIA-002 (1-Tap Social Share)**: The user shall be able to share the video file to external apps (WhatsApp, Telegram, YouTube, etc.) via Android `FileProvider` and system Share Sheet.
-- **FR-MEDIA-003 (1-Tap Remix)**: The implemented remix action repopulates the prompt and aspect ratio. Persisting and restoring style preset and camera-motion metadata remains open because project responses do not currently return those creation options.
+- **FR-MEDIA-003 (1-Tap Remix)**: The remix action shall repopulate the stored prompt, aspect ratio, duration and provider in the creation form. Style preset and camera motion are intentionally outside the remix contract: they are folded into the stored prompt at creation time and are not persisted as independent project metadata.
 - **FR-MEDIA-004 (In-App Playback)**: The user shall be able to play generated videos seamlessly within the app using AndroidX Media3 (ExoPlayer).
 
 ### 2.4 Quota & Spend Controls

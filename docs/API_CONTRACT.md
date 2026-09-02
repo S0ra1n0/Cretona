@@ -190,7 +190,9 @@ actually populates it — not against the request-time `options` shape, which is
 
 `stylePreset` and `cameraMotion` are accepted at creation (§2.4) but not echoed back on the
 Project Object — they are folded into the stored `prompt` and otherwise not persisted as their
-own columns. There is no `errorCode`; `errorMessage` is the only failure signal the API exposes,
+own columns. The Android Remix action therefore restores only `prompt`, `aspectRatio`,
+`durationSeconds` and `provider`; it does not promise to reconstruct the original style or camera
+selectors. There is no `errorCode`; `errorMessage` is the only failure signal the API exposes,
 and it is the same string regardless of cause (see `FAILURE_MESSAGES` in `project_service.py`) —
 a client cannot currently distinguish *why* a project failed from the API response alone.
 

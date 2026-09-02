@@ -36,7 +36,6 @@ erDiagram
         project_status status
         smallint progress_percent
         text step_message
-        jsonb options
         text provider
         text provider_job_id
         text error_message
@@ -98,7 +97,6 @@ Central record for all text-to-video and image-to-video generation tasks.
 | `status` | `project_status` | NOT NULL DEFAULT `'pending'` | Enum: `pending`, `generating`, `completed`, `failed`, `cancelled` |
 | `progress_percent` | `smallint` | NOT NULL DEFAULT 0 | Real-time progress percentage (0–100) |
 | `step_message` | `text` | NULL allowed | Current pipeline stage description |
-| `options` | `jsonb` | NULL allowed | Style preset, camera motion, aspect ratio |
 | `provider` | `text` | NOT NULL | Canonical provider key: `fake`, `real`, `local`, `kaggle` |
 | `provider_job_id` | `text` | NULL allowed | External provider job reference |
 | `error_message` | `text` | NULL allowed | User-facing failure description |
@@ -112,6 +110,10 @@ Central record for all text-to-video and image-to-video generation tasks.
 | `updated_at` | `timestamptz` | NOT NULL DEFAULT `now()` | Modification timestamp |
 | `completed_at` | `timestamptz` | NULL allowed | Finalization timestamp |
 | `deleted_at` | `timestamptz` | NULL allowed | Soft-deletion timestamp |
+
+Creation-time `stylePreset` and `cameraMotion` are folded into `prompt`; there
+is no `options` column. Remix restores the persisted prompt, aspect ratio,
+duration and provider only.
 
 ### 2.4 `generation_logs`
 Append-only audit trail of provider interactions with automated 180-day retention pruning.
