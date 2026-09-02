@@ -230,6 +230,34 @@ Nhìn tab Kaggle — cell cuối phải đang chạy (có vòng xoay), không ph
 đời tạo video trong 1 phút, thứ mà đường Kaggle không kịp trong buổi họp. Đây là
 provider thật trong hệ thống, không phải mock ghép vào để diễn.
 
+### Demo image-to-video (I2V)
+
+**Kaggle · Wan2.1 KHÔNG nhận ảnh.** Wan2.1 T2V 1.3B là text-only. Đính ảnh rồi
+chọn Kaggle sẽ bị backend từ chối với `PROVIDER_ERROR` — đó là hành vi **đúng**
+theo `SRS.md` FR-GEN-006, không phải lỗi.
+
+Provider nào nhận ảnh:
+
+| Engine Tier | Nhận ảnh | Ghi chú |
+|---|---|---|
+| 🎭 Demo Sample (`fake`) | ❌ | Clip test dựng sẵn |
+| 🖼️ AI image + motion (`cloud`) | ✅ | Gọi `text.pollinations.ai`, miễn phí, **cần mạng** |
+| 💻 Local (`local`) | ✅ | ffmpeg trên máy, **không cần mạng, không cần key** |
+| 🎬 Kaggle · Wan2.1 | ❌ | Text-only |
+
+**Demo I2V nên dùng `Local`** — không phụ thuộc dịch vụ ngoài, dùng thẳng ảnh
+bạn upload làm khung nền, chạy trong vài giây.
+
+**Nói thật khi trình bày:** `cloud` và `local` lấy **một ảnh tĩnh rồi áp chuyển
+động camera bằng ffmpeg**. Đó không phải mô hình sinh video theo thời gian như
+Wan2.1. Trình bày chúng như "AI video generation" cùng hạng với Wan2.1 là chỗ
+giám khảo bắt lỗi được. Cách nói đúng: *ba tier khác nhau, chỉ Kaggle chạy mô
+hình temporal thật.*
+
+Nếu thầy hỏi "sao ảnh không ra video AI thật": vì mô hình temporal miễn phí duy
+nhất chạy được trên Kaggle là Wan2.1 T2V, và nó text-only. Đây là quyết định có
+ghi trong `DECISIONS.md`, không phải thiếu sót.
+
 ### Sự kiện dùng buổi nào
 
 | Sự kiện | 03/09 | 05/09 (thứ Bảy) |
