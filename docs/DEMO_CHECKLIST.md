@@ -145,7 +145,7 @@ Mỗi secret điền 2 ô **Label** và **Value**, bấm **Save**, làm 5 lần:
 |---|---|
 | `CRETONA_WORKER_DATABASE_URL` | Chuỗi đã ghép ở A3 |
 | `CRETONA_SUPABASE_URL` | `https://fisnwdzhyuiiursljblw.supabase.co` |
-| `CRETONA_SUPABASE_PUBLISHABLE_KEY` | Supabase → **Settings → API** → key `anon` / `public` |
+| `CRETONA_SUPABASE_PUBLISHABLE_KEY` | Supabase → **Settings → API Keys** → **Publishable key**, dạng `sb_publishable_...` (đúng key app đang dùng trong `local.properties`). Legacy anon `eyJ...` cũng chạy nhưng đang bị Supabase khai tử |
 | `CRETONA_WORKER_EMAIL` | Email tài khoản worker ở **Authentication → Users** |
 | `CRETONA_WORKER_PASSWORD` | Mật khẩu tài khoản đó |
 
