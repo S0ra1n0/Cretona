@@ -260,9 +260,9 @@ least-privilege execution boundary around existing `video_projects`,
 | `cretona_kaggle_worker` | Login role with no table grants, no role/database creation, no superuser and no RLS bypass |
 | `private.cretona_kaggle_claim_job` | Atomically claims one text-only `provider='kaggle'` row with `SKIP LOCKED` and a bounded lease |
 | `private.cretona_kaggle_heartbeat` | Renews only the caller-owned lease and persists bounded progress |
-| `private.cretona_kaggle_complete` | Completes only the leased row with canonical `{user_id}/{project_id}/video.mp4` and logs its SHA-256 |
+| `private.cretona_kaggle_complete` | After migration 015, completes only the leased row when canonical `{user_id}/{project_id}/video.mp4` and `thumbnail.jpg` both exist, persists both paths and logs the video SHA-256 |
 | `private.cretona_kaggle_fail` | Fails only the leased row and atomically refunds the newest unrefunded generation charge |
-| Storage policies | Permit the dedicated Auth worker to insert/select/update only the canonical object of its active lease |
+| Storage policies | Permit the dedicated Auth worker to insert/select/update only the canonical video and thumbnail objects of its active lease |
 
 The database login and Auth user are deliberately separate. The worker never
 receives `service_role`. Storage authorization reads only

@@ -1114,6 +1114,7 @@ def test_kaggle_worker_claim_storage_and_complete_on_postgres(
     project_id = response.json()["id"]
     worker_id = "30000000-0000-4000-8000-000000000003"
     object_name = f"{USER_A}/{project_id}/video.mp4"
+    thumbnail_name = f"{USER_A}/{project_id}/thumbnail.jpg"
 
     with psycopg.connect(postgres_url) as connection, connection.transaction():
         connection.execute("set local role cretona_kaggle_worker")
@@ -1138,6 +1139,10 @@ def test_kaggle_worker_claim_storage_and_complete_on_postgres(
             "insert into storage.objects (bucket_id, name) values ('videos', %s)",
             (object_name,),
         )
+        connection.execute(
+            "insert into storage.objects (bucket_id, name) values ('uploads', %s)",
+            (thumbnail_name,),
+        )
 
         connection.execute("reset role")
         connection.execute("set local role cretona_kaggle_worker")
@@ -1151,6 +1156,7 @@ def test_kaggle_worker_claim_storage_and_complete_on_postgres(
     ).json()
     assert completed["status"] == "completed"
     assert completed["videoUrl"] is not None
+    assert completed["thumbnailUrl"] is not None
 
 
 def test_kaggle_worker_failure_refunds_every_attempt_once_on_postgres(

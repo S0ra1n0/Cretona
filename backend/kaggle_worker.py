@@ -146,9 +146,16 @@ class SupabaseWorkerClient:
         )
         return self._session
 
-    def upload_video(self, session: AuthSession, path: str, source: Path) -> None:
+    def _upload(
+        self,
+        session: AuthSession,
+        bucket: str,
+        path: str,
+        source: Path,
+        content_type: str,
+    ) -> None:
         encoded_path = "/".join(urllib.parse.quote(part, safe="") for part in path.split("/"))
-        url = f"{self.config.supabase_url.rstrip('/')}/storage/v1/object/videos/{encoded_path}"
+        url = f"{self.config.supabase_url.rstrip('/')}/storage/v1/object/{bucket}/{encoded_path}"
         request = urllib.request.Request(
             url,
             data=source.read_bytes(),
@@ -156,7 +163,7 @@ class SupabaseWorkerClient:
             headers={
                 "apikey": self.config.publishable_key,
                 "Authorization": f"Bearer {session.access_token}",
-                "Content-Type": "video/mp4",
+                "Content-Type": content_type,
                 "x-upsert": "true",
             },
         )
@@ -168,6 +175,12 @@ class SupabaseWorkerClient:
             raise RuntimeError(f"Storage upload returned HTTP {exc.code}.") from exc
         except urllib.error.URLError as exc:
             raise RuntimeError("Storage upload could not reach Supabase.") from exc
+
+    def upload_video(self, session: AuthSession, path: str, source: Path) -> None:
+        self._upload(session, "videos", path, source, "video/mp4")
+
+    def upload_thumbnail(self, session: AuthSession, path: str, source: Path) -> None:
+        self._upload(session, "uploads", path, source, "image/jpeg")
 
     @staticmethod
     def _json_request(url: str, payload: dict[str, Any], headers: dict[str, str]) -> dict[str, Any]:
@@ -318,6 +331,10 @@ def dimensions(aspect_ratio: str) -> tuple[int, int]:
 
 def storage_path(job: Job) -> str:
     return f"{job.user_id}/{job.project_id}/video.mp4"
+
+
+def thumbnail_path(job: Job) -> str:
+    return f"{job.user_id}/{job.project_id}/thumbnail.jpg"
 
 
 def _free_accelerator() -> None:
@@ -482,11 +499,25 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def create_thumbnail(video: Path, thumbnail: Path) -> None:
+    import imageio.v2 as imageio
+
+    reader = imageio.get_reader(video)
+    try:
+        frame = reader.get_data(0)
+    finally:
+        reader.close()
+    imageio.imwrite(thumbnail, frame, format="jpg", quality=85)
+    if not thumbnail.is_file() or thumbnail.stat().st_size <= 512:
+        raise RuntimeError("Wan2.1 produced no usable thumbnail.")
+
+
 def run_once(
     config: WorkerConfig,
     database: WorkerDatabase,
     supabase: SupabaseWorkerClient,
     generator: Callable[[Job, Path, Progress, Callable[[], None]], None] = generate_video,
+    thumbnailer: Callable[[Path, Path], None] = create_thumbnail,
 ) -> bool:
     session = supabase.session()
     job = database.claim(session.user_id)
@@ -495,12 +526,15 @@ def run_once(
 
     logger.info("Claimed project %s", job.project_id)
     output = config.output_dir / f"{job.project_id}.mp4"
+    thumbnail = config.output_dir / f"{job.project_id}.jpg"
     progress = Progress()
     try:
         with LeaseHeartbeat(database, session.user_id, job, progress) as heartbeat:
             generator(job, output, progress, heartbeat.assert_owned)
             heartbeat.assert_owned()
-            progress.set(94, "Uploading MP4 to Supabase Storage")
+            progress.set(93, "Creating video thumbnail")
+            thumbnailer(output, thumbnail)
+            progress.set(94, "Uploading video and thumbnail to Supabase Storage")
 
             last_error: Exception | None = None
             for delay in (0, 2, 5):
@@ -511,6 +545,11 @@ def run_once(
                     if fresh_session.user_id != session.user_id:
                         raise RuntimeError("Worker Auth identity changed during the job.")
                     supabase.upload_video(fresh_session, storage_path(job), output)
+                    supabase.upload_thumbnail(
+                        fresh_session,
+                        thumbnail_path(job),
+                        thumbnail,
+                    )
                     last_error = None
                     break
                 except Exception as exc:
@@ -541,6 +580,7 @@ def run_once(
             logger.exception("Could not persist failure for project %s", job.project_id)
     finally:
         output.unlink(missing_ok=True)
+        thumbnail.unlink(missing_ok=True)
     return True
 
 

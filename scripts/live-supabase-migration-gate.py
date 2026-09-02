@@ -1,4 +1,4 @@
-"""Guarded preflight, apply, and verification for Cretona migrations 006-014.
+"""Guarded preflight, apply, and verification for Cretona migrations 006-015.
 
 Run this script only with the repository's pinned FastAPI virtual environment.
 It reads the ignored root ``env`` file, validates that SUPABASE_URL and
@@ -53,6 +53,10 @@ MIGRATIONS = {
     "014": (
         ROOT / "supabase" / "014_add_kaggle_worker.sql",
         "047e9d4c43d081c4b29b2a0d7c3b7c57bceda7b493e2dbaea5db2a4789e006e7",
+    ),
+    "015": (
+        ROOT / "supabase" / "015_add_kaggle_thumbnails.sql",
+        "a37ef7256e4fd4fec031851b90f404ca8fd0b6a9e9ec039f09500103eb74f7a0",
     ),
 }
 DATA_API_ROLES = ("anon", "authenticated", "service_role")
@@ -258,7 +262,7 @@ def collect_state(cursor: psycopg.Cursor[Any]) -> dict[str, Any]:
     )
     worker_functions = cursor.execute(
         """
-        select p.proname, p.prosecdef,
+        select p.proname, p.prosecdef, pg_get_functiondef(p.oid) as definition,
                coalesce(has_function_privilege(worker.oid, p.oid, 'EXECUTE'), false)
                  as worker_execute,
                coalesce(has_function_privilege(anon_role.oid, p.oid, 'EXECUTE'), false)
@@ -274,7 +278,7 @@ def collect_state(cursor: psycopg.Cursor[Any]) -> dict[str, Any]:
           and p.proname in (
             'cretona_kaggle_claim_job', 'cretona_kaggle_heartbeat',
             'cretona_kaggle_complete', 'cretona_kaggle_fail',
-            'cretona_kaggle_can_write_object'
+            'cretona_kaggle_can_write_object', 'cretona_kaggle_can_write_thumbnail'
           )
         order by p.proname
         """
@@ -286,7 +290,9 @@ def collect_state(cursor: psycopg.Cursor[Any]) -> dict[str, Any]:
         where schemaname = 'storage' and tablename = 'objects'
           and policyname in (
             'videos_worker_insert_leased', 'videos_worker_select_leased',
-            'videos_worker_update_leased'
+            'videos_worker_update_leased',
+            'uploads_worker_insert_leased', 'uploads_worker_select_leased',
+            'uploads_worker_update_leased'
           )
         order by policyname
         """
@@ -657,6 +663,78 @@ def assert_014(state: dict[str, Any], *, present: bool) -> None:
         raise GateError("MIG-014 is already present or partially applied; refusing re-apply.")
 
 
+THUMBNAIL_POLICIES = {
+    "uploads_worker_insert_leased": "INSERT",
+    "uploads_worker_select_leased": "SELECT",
+    "uploads_worker_update_leased": "UPDATE",
+}
+
+
+def state_015(state: dict[str, Any]) -> dict[str, Any]:
+    def leased_thumbnail_scope(expression: Any) -> bool:
+        text = str(expression or "")
+        return (
+            "bucket_id" in text
+            and "'uploads'" in text
+            and "cretona_kaggle_can_write_thumbnail" in text
+        )
+
+    functions = {row["proname"]: row for row in state["worker_functions"]}
+    policies = {row["policyname"]: row for row in state["worker_policies"]}
+    helper = functions.get("cretona_kaggle_can_write_thumbnail")
+    helper_secure = bool(
+        helper
+        and helper["prosecdef"]
+        and not helper["anon_execute"]
+        and helper["authenticated_execute"]
+        and "/thumbnail.jpg" in str(helper["definition"])
+    )
+    complete = functions.get("cretona_kaggle_complete")
+    completion_requires_thumbnail = bool(
+        complete
+        and "thumbnail_path" in str(complete["definition"])
+        and "'uploads'" in str(complete["definition"])
+        and "/thumbnail.jpg" in str(complete["definition"])
+    )
+    policies_secure = all(
+        name in policies
+        and policies[name]["cmd"] == command
+        and set(policies[name]["roles"]) == {"authenticated"}
+        and (
+            (command == "INSERT" and leased_thumbnail_scope(policies[name]["with_check"]))
+            or (command == "SELECT" and leased_thumbnail_scope(policies[name]["qual"]))
+            or (
+                command == "UPDATE"
+                and leased_thumbnail_scope(policies[name]["qual"])
+                and leased_thumbnail_scope(policies[name]["with_check"])
+            )
+        )
+        for name, command in THUMBNAIL_POLICIES.items()
+    )
+    return {
+        "storage_helper_secure": helper_secure,
+        "storage_policies_secure": policies_secure,
+        "completion_requires_thumbnail": completion_requires_thumbnail,
+    }
+
+
+def assert_015(state: dict[str, Any], *, present: bool) -> None:
+    facts = state_015(state)
+    fully_applied = all(facts.values())
+    any_present = bool(
+        any(
+            row["proname"] == "cretona_kaggle_can_write_thumbnail"
+            for row in state["worker_functions"]
+        )
+        or any(row["policyname"] in THUMBNAIL_POLICIES for row in state["worker_policies"])
+        or facts["completion_requires_thumbnail"]
+    )
+    if present and not fully_applied:
+        raise GateError("MIG-015 is incomplete or its thumbnail privileges are unsafe.")
+    if not present and any_present:
+        raise GateError("MIG-015 is already present or partially applied; refusing re-apply.")
+
+
 def collect_007_verification(cursor: psycopg.Cursor[Any]) -> dict[str, Any]:
     state = collect_state(cursor)
     columns = [row for row in state["columns"] if row["table_name"] == "rate_limit_hits"]
@@ -816,6 +894,7 @@ def run_status(connection: psycopg.Connection[Any]) -> dict[str, Any]:
     facts = state_009(state)
     profile_facts = state_012(state)
     worker_facts = state_014(state)
+    thumbnail_facts = state_015(state)
     return {
         "transaction_read_only": state["transaction_read_only"],
         "server_version": state["server"]["version"],
@@ -838,10 +917,12 @@ def run_status(connection: psycopg.Connection[Any]) -> dict[str, Any]:
             ),
             "013": bool(state["credit_transactions_table"]),
             "014": all(worker_facts.values()),
+            "015": all(thumbnail_facts.values()),
         },
         "migration_009": facts,
         "migration_012": profile_facts,
         "migration_014": worker_facts,
+        "migration_015": thumbnail_facts,
         "invalid_indexes": state["invalid_indexes"],
     }
 
@@ -886,7 +967,7 @@ def run_apply(connection: psycopg.Connection[Any], number: str) -> dict[str, Any
         assert_010(state, present=True)
         assert_011(state, present=True)
         assert_012(state, present=False)
-    else:
+    elif number == "014":
         assert_006(state, present=True)
         assert_008(state, present=True)
         assert_009(state, present=True)
@@ -896,6 +977,9 @@ def run_apply(connection: psycopg.Connection[Any], number: str) -> dict[str, Any
         if not state["credit_transactions_table"]:
             raise GateError("public.credit_transactions is absent; apply 013 before 014.")
         assert_014(state, present=False)
+    else:
+        assert_014(state, present=True)
+        assert_015(state, present=False)
     if state["invalid_indexes"]:
         raise GateError("The public schema contains an invalid, unready, or non-live index.")
 
@@ -997,6 +1081,16 @@ def run_verify(connection: psycopg.Connection[Any], number: str) -> dict[str, An
                     "The public schema contains an invalid, unready, or non-live index."
                 )
             result = {"state": state, "migration_014": state_014(state)}
+        elif number == "015":
+            state = collect_state(cursor)
+            assert_004_005(state)
+            assert_014(state, present=True)
+            assert_015(state, present=True)
+            if state["invalid_indexes"]:
+                raise GateError(
+                    "The public schema contains an invalid, unready, or non-live index."
+                )
+            result = {"state": state, "migration_015": state_015(state)}
         else:
             result = collect_007_verification(cursor)
             assert_004_005(result["state"])
@@ -1040,6 +1134,8 @@ def main() -> int:
             "verify-012",
             "apply-014",
             "verify-014",
+            "apply-015",
+            "verify-015",
         ),
     )
     parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE)

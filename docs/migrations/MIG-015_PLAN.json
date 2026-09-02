@@ -1,0 +1,145 @@
+{
+  "schema_version": "1.0",
+  "migration": {
+    "id": "MIG-015",
+    "status": "complete",
+    "objective": "Require each Kaggle completion to publish and persist a lease-scoped gallery thumbnail.",
+    "project_id": "CRETONA",
+    "requirement_ids": ["FR-MEDIA-004"],
+    "decision_ids": ["ADR-008"],
+    "target_environment": "Cretona live Supabase PostgreSQL",
+    "planned_at": "2026-09-02"
+  },
+  "routing": {
+    "orchestrator": "Codex build-software-project",
+    "handoff_target": "Cretona repository and live Supabase operator",
+    "specialist_self_activation": false,
+    "reroute_recommendations": []
+  },
+  "authority": {
+    "data_authority": "Cretona team",
+    "destructive_change_approved_by": "",
+    "production_execution_authority": "Bruce Nguyen",
+    "execution_authorized_by_specialist": false,
+    "point_of_no_return_approver": "not applicable; migration is additive and forward-fixable"
+  },
+  "scope": {
+    "include": [
+      "Replace private.cretona_kaggle_complete without changing its signature.",
+      "Add a worker-only thumbnail authorization helper and INSERT/SELECT/UPDATE policies for uploads.",
+      "Require canonical video.mp4 and thumbnail.jpg objects before completion."
+    ],
+    "exclude": ["Business-table shape changes", "Historical thumbnail backfill", "Credential rotation"],
+    "non_goals": ["Always-on Kaggle execution", "Changing the selected video model"],
+    "maintenance_or_downtime_constraints": ["The Kaggle notebook must be stopped while MIG-015 is applied."]
+  },
+  "states": {
+    "source": {
+      "schema_revision": "MIG-014 live and verified",
+      "application_revisions": ["2f710ac41cfa3a058332f910881634eb723e6a51"],
+      "database_engine_and_version": "Supabase PostgreSQL 17.6",
+      "data_profile_evidence": ["Seven existing completed projects already have backfilled thumbnails."]
+    },
+    "target": {
+      "schema_revision": "MIG-015",
+      "application_revisions": ["worker thumbnail task commit"],
+      "approved_contract_ids": ["MIG-015", "FR-MEDIA-004"],
+      "invariants": [
+        "Only the dedicated Auth worker may upload the canonical thumbnail for its active lease.",
+        "A Kaggle project cannot become completed until both canonical Storage objects exist.",
+        "The database worker role retains no direct table grants or RLS bypass."
+      ]
+    }
+  },
+  "ownership": {
+    "plan_owner": "Cretona backend owner",
+    "data_owner": "Cretona team",
+    "application_owners": ["FastAPI backend owner", "Kaggle worker owner"],
+    "operations_owner": "Bruce Nguyen",
+    "reviewer": "Cretona teammate",
+    "integrator": "Codex"
+  },
+  "impact": {
+    "change_classes": ["compatible function replacement", "additive RLS policies"],
+    "readers": ["FastAPI ProjectService", "Android project history"],
+    "writers": ["Kaggle worker Auth client", "private.cretona_kaggle_complete"],
+    "jobs_and_integrations": ["Private Kaggle Wan2.1 notebook", "Supabase Storage"],
+    "reports_and_analytics": ["generation_logs download event"],
+    "caches_events_and_replicas": [],
+    "mixed_version_compatibility": ["Stop the on-demand worker; deploy MIG-015 and the matching worker bundle before claiming another job."],
+    "privacy_retention_security": ["No new personal data; thumbnail ownership remains the project user's UUID path."]
+  },
+  "operations": [
+    {
+      "id": "MIG-015-PREFLIGHT",
+      "phase": "preflight",
+      "name": "Verify MIG-014 and an idle worker",
+      "status": "planned",
+      "owner": "operations owner",
+      "action_or_pseudocode": "Run status and verify-014; confirm no Kaggle notebook cell is processing a claimed job.",
+      "preconditions": ["Pinned migration hash", "Live project identity match"],
+      "compatibility": ["No application behavior changes in preflight"],
+      "transaction_and_locking": ["Read-only transactions with bounded timeouts"],
+      "idempotency_and_restart": ["Safe to repeat"],
+      "verification": ["MIG-014 all facts true", "MIG-015 absent"],
+      "monitoring": ["Gate exit status and secret-free JSON"],
+      "pause_or_abort": ["Abort on partial MIG-015 state, active worker, or project-ref mismatch"],
+      "rollback_or_forward_recovery": ["No mutation occurs"],
+      "destructive": false
+    },
+    {
+      "id": "MIG-015-EXPAND",
+      "phase": "expand",
+      "name": "Apply thumbnail completion contract",
+      "status": "planned",
+      "owner": "operations owner",
+      "action_or_pseudocode": "Apply the reviewed MIG-015 transaction through the guarded migration gate.",
+      "preconditions": ["Preflight passed", "Exact project ref confirmed"],
+      "compatibility": ["RPC signature is unchanged", "Android and FastAPI contracts are unchanged"],
+      "transaction_and_locking": ["Single transaction", "5 second lock timeout", "120 second statement timeout"],
+      "idempotency_and_restart": ["Gate refuses a full or partial re-apply"],
+      "verification": ["Transaction commits", "No invalid indexes"],
+      "monitoring": ["Migration command result"],
+      "pause_or_abort": ["Abort on timeout, privilege mismatch, or partial state"],
+      "rollback_or_forward_recovery": ["Forward-fix by restoring the MIG-014 function body and dropping the three new policies before new jobs complete"],
+      "destructive": false
+    },
+    {
+      "id": "MIG-015-VERIFY",
+      "phase": "verify",
+      "name": "Verify lease-scoped thumbnail completion",
+      "status": "planned",
+      "owner": "integrator",
+      "action_or_pseudocode": "Run verify-015 and the PostgreSQL parity suite, then process one bounded worker smoke when GPU time is available.",
+      "preconditions": ["MIG-015 applied", "Matching worker bundle uploaded"],
+      "compatibility": ["Existing completed rows remain readable"],
+      "transaction_and_locking": ["Read-only verification plus one normal worker transaction"],
+      "idempotency_and_restart": ["Verification is repeatable; Storage uploads use canonical upsert paths"],
+      "verification": ["Three uploads policies secure", "Completion requires both objects", "Project response has thumbnailUrl"],
+      "monitoring": ["Worker project ID only", "Signed thumbnail response"],
+      "pause_or_abort": ["Stop if upload policy rejects the canonical path or completion loses its lease"],
+      "rollback_or_forward_recovery": ["Leave the job failed/refunded and forward-fix before retry"],
+      "destructive": false
+    }
+  ],
+  "safety": {
+    "estimates_and_measurements": ["No row backfill; catalog-only transaction expected under five seconds."],
+    "rehearsal": ["Disposable PostgreSQL parity test applies MIG-014 then MIG-015."],
+    "correctness_and_reconciliation": ["Completion stores canonical video_path and thumbnail_path only after both Storage rows exist."],
+    "backup": ["No destructive or bulk data operation; retain Supabase managed recovery as the environment baseline."],
+    "restore_or_forward_recovery": ["Use a forward-fix migration; existing completed rows and objects are not deleted."],
+    "monitoring_and_alerts": ["Guarded status/verify output and bounded worker logs."],
+    "pause_abort_thresholds": ["Any lock timeout, project mismatch, partial migration, or active worker claim."],
+    "hold_points": ["Before live apply", "Before restarting the Kaggle worker"],
+    "observation_window": "Through the first post-MIG-015 Kaggle completion and Android thumbnail load."
+  },
+  "handoff": {
+    "decisions_needed": [],
+    "blockers": [],
+    "assumptions": ["The worker is on-demand and can be stopped during migration."],
+    "unknowns": ["Exact duration of the next free Kaggle GPU run."],
+    "limitations": ["The migration plan does not itself authorize or prove execution."],
+    "residual_risks": ["An outdated notebook bundle will fail safely after MIG-015 because it does not upload a thumbnail."],
+    "evidence_ledger_targets": ["verify-015 output", "PostgreSQL parity test", "first post-MIG-015 project ID"]
+  }
+}

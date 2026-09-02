@@ -19,7 +19,7 @@ Kaggle 2×T4 host. The worker is not an always-on service.
 > [`LIVE_SUPABASE_MIGRATION_014_2026-08-31.md`](evidence/LIVE_SUPABASE_MIGRATION_014_2026-08-31.md)
 > and [`KAGGLE_WORKER_S13_2026-09-01.md`](evidence/KAGGLE_WORKER_S13_2026-09-01.md).
 
-## 1. Verify migration 014; apply only if absent
+## 1. Verify migrations 014–015; apply only an absent migration
 
 Do this only from the repository root and only after reviewing the selected
 Supabase project. The gate reads the ignored local env file and never prints
@@ -31,11 +31,18 @@ credential values:
 .\backend\.venv\Scripts\python.exe .\scripts\live-supabase-migration-gate.py apply-014 `
   --confirm-project-ref <exact-project-ref>
 .\backend\.venv\Scripts\python.exe .\scripts\live-supabase-migration-gate.py verify-014
+# Stop the Kaggle worker before applying 015. Run only when status reports 015 false.
+.\backend\.venv\Scripts\python.exe .\scripts\live-supabase-migration-gate.py apply-015 `
+  --confirm-project-ref <exact-project-ref>
+.\backend\.venv\Scripts\python.exe .\scripts\live-supabase-migration-gate.py verify-015
 ```
 
 Migration 014 creates a login role with no table grants, four private queue
 functions, and three lease-scoped Storage policies. It does **not** set a
-password and does not create an Auth account.
+password and does not create an Auth account. Migration 015 keeps the existing
+RPC signature, adds three lease-scoped thumbnail policies and refuses completion
+until both the MP4 and JPEG exist. Its reviewed rollout contract is
+[`MIG-015_PLAN.json`](migrations/MIG-015_PLAN.json).
 
 ## 2. Create the two worker identities
 
@@ -173,7 +180,8 @@ completed:
    (49 frames); do not change model constants during acceptance.
 3. Confirm the project moves `pending → generating`, progress changes while the
    notebook runs, and the worker reports only project IDs—not prompts/secrets.
-4. Wait for `completed`; open the project and play the signed MP4 in Android.
+4. Wait for `completed`; confirm the card has a thumbnail, then open the project
+   and play the signed MP4 in Android.
 5. Record the project ID, start/completion timestamps, object metadata, clip
    dimensions/frame count/duration, and a screenshot/video of playback.
 6. Run the same test once with the worker stopped: the job must remain queued,
@@ -181,14 +189,15 @@ completed:
 7. For a controlled failure, confirm the project becomes `failed` and the
    credit ledger receives exactly one refund for that generation charge.
 
-Expected Storage object name inside the private `videos` bucket:
+Expected Storage object names:
 
 ```text
-<project-owner-uuid>/<project-uuid>/video.mp4
+videos/<project-owner-uuid>/<project-uuid>/video.mp4
+uploads/<project-owner-uuid>/<project-uuid>/thumbnail.jpg
 ```
 
-Storage upsert requires `INSERT`, `SELECT`, and `UPDATE`; migration 014 grants
-all three only for the canonical object of a currently leased job, matching the
+Storage upsert requires `INSERT`, `SELECT`, and `UPDATE`; migrations 014–015 grant
+all three only for the canonical objects of a currently leased job, matching the
 official [Storage access-control contract](https://supabase.com/docs/guides/storage/security/access-control).
 
 ## Evidence boundary

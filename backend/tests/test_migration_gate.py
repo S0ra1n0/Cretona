@@ -67,13 +67,14 @@ def migration_state() -> dict[str, object]:
     }
 
 
-def test_gate_pins_and_accepts_migrations_011_012_and_014() -> None:
+def test_gate_pins_and_accepts_migrations_011_012_014_and_015() -> None:
     gate = load_gate()
     state = migration_state()
 
     assert gate.migration_sql("011")
     assert gate.migration_sql("012")
     assert gate.migration_sql("014")
+    assert gate.migration_sql("015")
     gate.assert_011(state, present=True)
     gate.assert_012(state, present=True)
 
@@ -114,6 +115,7 @@ def test_latest_gate_contract_matches_disposable_postgres(postgres_url: str) -> 
     with psycopg.connect(postgres_url, autocommit=True) as connection:
         connection.execute(schema_sql)
         connection.execute(gate.migration_sql("014"))
+        connection.execute(gate.migration_sql("015"))
 
     with (
         psycopg.connect(postgres_url, row_factory=dict_row) as connection,
@@ -132,6 +134,7 @@ def test_latest_gate_contract_matches_disposable_postgres(postgres_url: str) -> 
     gate.assert_011(state, present=True)
     gate.assert_012(state, present=True)
     gate.assert_014(state, present=True)
+    gate.assert_015(state, present=True)
 
     worker_insert = next(
         policy

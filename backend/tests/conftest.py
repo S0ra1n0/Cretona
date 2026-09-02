@@ -140,6 +140,11 @@ def postgres_client(tmp_path: Path, postgres_url: str) -> Iterator[TestClient]:
                 encoding="utf-8"
             )
         )
+        connection.execute(
+            (Path(__file__).parents[2] / "supabase" / "015_add_kaggle_thumbnails.sql").read_text(
+                encoding="utf-8"
+            )
+        )
         for user_id, email in ((USER_A, "a@example.com"), (USER_B, "b@example.com")):
             connection.execute(
                 "INSERT INTO public.users (id, email) VALUES (%s, %s)",

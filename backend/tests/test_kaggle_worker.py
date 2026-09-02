@@ -16,6 +16,7 @@ from kaggle_worker import (
     frame_count,
     run_once,
     storage_path,
+    thumbnail_path,
 )
 
 WORKER = UUID("30000000-0000-4000-8000-000000000003")
@@ -46,6 +47,7 @@ def test_wan_profile_matches_the_proven_contract() -> None:
     assert dimensions("16:9") == (832, 480)
     assert dimensions("9:16") == (480, 832)
     assert storage_path(job) == f"{USER}/{PROJECT}/video.mp4"
+    assert thumbnail_path(job) == f"{USER}/{PROJECT}/thumbnail.jpg"
 
 
 def test_one_job_uploads_before_it_is_completed(tmp_path: Path) -> None:
@@ -77,12 +79,21 @@ def test_one_job_uploads_before_it_is_completed(tmp_path: Path) -> None:
             assert session.user_id == WORKER
             assert path == f"{USER}/{PROJECT}/video.mp4"
             assert source.stat().st_size > 1024
-            events.append("upload")
+            events.append("upload-video")
+
+        def upload_thumbnail(self, session: AuthSession, path: str, source: Path):
+            assert session.user_id == WORKER
+            assert path == f"{USER}/{PROJECT}/thumbnail.jpg"
+            assert source.stat().st_size > 512
+            events.append("upload-thumbnail")
 
     def generate(_job: Job, output: Path, _progress, assert_owned):
         assert_owned()
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_bytes(b"video" * 300)
+
+    def thumbnail(_video: Path, output: Path):
+        output.write_bytes(b"jpeg" * 200)
 
     config = WorkerConfig(
         database_url="postgresql://worker:secret@localhost/cretona",
@@ -93,8 +104,8 @@ def test_one_job_uploads_before_it_is_completed(tmp_path: Path) -> None:
         output_dir=tmp_path,
     )
 
-    assert run_once(config, Database(), Supabase(), generate) is True
-    assert events == ["upload", "complete"]
+    assert run_once(config, Database(), Supabase(), generate, thumbnail) is True
+    assert events == ["upload-video", "upload-thumbnail", "complete"]
 
 
 def test_a_malformed_claim_is_failed_instead_of_crashing_the_worker() -> None:

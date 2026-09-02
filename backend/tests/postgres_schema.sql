@@ -7,7 +7,7 @@
 -- # local host, so never point CRETONA_TEST_DATABASE_URL at Supabase.        #
 -- ############################################################################
 --
--- Mirrors the parts of supabase/bootstrap.sql + migrations 002 through 014
+-- Mirrors the parts of supabase/bootstrap.sql + migrations 002 through 015
 -- that app/postgres.py actually reads and writes.
 
 drop schema if exists private cascade;
