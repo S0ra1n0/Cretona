@@ -114,6 +114,14 @@ fun MainScreen(
         if (state.currentProject != null) creditsViewModel.refreshBalance()
     }
 
+    // Opening the tab is the request to see current numbers. Waiting for a
+    // Refresh tap showed a balance and a ledger that could be several
+    // generations out of date, which is the one thing this screen exists to
+    // report accurately.
+    LaunchedEffect(selectedTab) {
+        if (selectedTab == MainTab.CREDITS) creditsViewModel.refreshAll()
+    }
+
     val headerGradient = remember {
         Brush.horizontalGradient(colors = listOf(GalaxyIndigo, GalaxyViolet))
     }
@@ -203,7 +211,6 @@ fun MainScreen(
                 isCreditLoading = creditsState.isLoading,
                 creditError = creditsState.errorMessage,
                 onRefreshCredits = creditsViewModel::refreshAll,
-                onOpenCredits = { selectedTab = MainTab.CREDITS },
             )
 
             MainTab.HISTORY -> HistoryScreen(

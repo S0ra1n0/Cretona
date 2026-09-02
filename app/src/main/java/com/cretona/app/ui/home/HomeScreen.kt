@@ -120,7 +120,6 @@ fun HomeScreen(
     isCreditLoading: Boolean = false,
     creditError: String? = null,
     onRefreshCredits: () -> Unit = {},
-    onOpenCredits: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val focusManager = LocalFocusManager.current
@@ -260,7 +259,6 @@ fun HomeScreen(
         isCreditLoading = isCreditLoading,
         creditError = creditError,
         onRefreshCredits = onRefreshCredits,
-        onOpenCredits = onOpenCredits,
         contentPadding = contentPadding,
         modifier = modifier,
     )
@@ -294,7 +292,6 @@ private fun HomeContent(
     isCreditLoading: Boolean,
     creditError: String?,
     onRefreshCredits: () -> Unit,
-    onOpenCredits: () -> Unit,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(0.dp),
 ) {
@@ -346,7 +343,6 @@ private fun HomeContent(
                     isLoading = isCreditLoading,
                     errorMessage = creditError,
                     onRetry = onRefreshCredits,
-                    onOpenCredits = onOpenCredits,
                 )
             }
 
@@ -705,7 +701,6 @@ private fun CreditsCard(
     isLoading: Boolean,
     errorMessage: String?,
     onRetry: () -> Unit,
-    onOpenCredits: () -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -795,7 +790,9 @@ private fun CreditsCard(
                             style = MaterialTheme.typography.labelSmall,
                         )
                     }
-                    OutlinedButton(onClick = onOpenCredits) { Text("Manage credits") }
+                    // No "Manage credits" button here: the bottom navigation bar
+                    // already reaches the same screen, and two entry points to one
+                    // destination is a second thing to keep in sync for no reach.
                 }
             }
         }
@@ -1223,7 +1220,6 @@ private fun HomeScreenPreview() {
             isCreditLoading = false,
             creditError = null,
             onRefreshCredits = {},
-            onOpenCredits = {},
         )
     }
 }

@@ -581,6 +581,57 @@ class ProjectService:
         stored_path: str | None,
     ) -> str | None:
         """Best effort. A missing thumbnail must not fail a finished video."""
+        extracted = self._thumbnail_from_video(row, owner_id, stored_path)
+        if extracted:
+            return extracted
+        # An image-to-video project shipped a picture of its own subject. Using
+        # it beats a card that reads "Preview unavailable" while the reference
+        # image sits in Storage unused.
+        return self._thumbnail_from_reference(row, owner_id)
+
+    def _thumbnail_from_reference(self, row: dict[str, Any], owner_id: str) -> str | None:
+        """Fall back to the uploaded reference image, or None when there is none.
+
+        The bytes are stored unchanged rather than re-encoded: the server has no
+        image library, and every client that renders the video thumbnail sniffs
+        content rather than trusting the .jpg suffix.
+        """
+        image_path = row.get("image_path")
+        if not image_path:
+            return None
+
+        try:
+            data = self.storage.read_image_bytes(image_path)
+        # A preview must never fail a finished video.
+        except Exception:
+            return None
+        if not data:
+            return None
+
+        target_path = self.storage.store_thumbnail_path(owner_id, row["id"])
+        store_fn = getattr(self.storage, "store_thumbnail", None)
+        if store_fn is not None:
+            try:
+                return store_fn(owner_id, row["id"], data) or None
+            except Exception:
+                return None
+
+        target = self.storage.local_video_path(target_path)
+        if target is None:
+            return None
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+        except OSError:
+            return None
+        return target_path
+
+    def _thumbnail_from_video(
+        self,
+        row: dict[str, Any],
+        owner_id: str,
+        stored_path: str | None,
+    ) -> str | None:
         if not stored_path:
             return None
 
