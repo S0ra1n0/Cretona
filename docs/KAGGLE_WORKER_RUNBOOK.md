@@ -6,8 +6,10 @@ FastAPI signed URL → Android Media3 playback.
 
 The model is `Wan-AI/Wan2.1-T2V-1.3B-Diffusers` at revision
 `0fad780a534b6463e45facd96134c9f345acfa5b`. It is text-to-video only, accepts
-2–5 seconds, and the measured 5-second profile takes about 49 minutes on the
-Kaggle 2×T4 host. The worker is not an always-on service.
+2–5 seconds. The worker now runs **25 denoising steps** (was 50), which puts a
+4-second clip at roughly 20 minutes on the Kaggle 2×T4 host — extrapolated from
+the measured 48.6-minute, 81-frame, 50-step EXP-005 run, not yet measured
+directly. The worker is not an always-on service.
 
 > **Live checkpoint, 2026-09-01:** migration 014 is already present on the
 > Cretona Supabase project and `verify-014` passed in a read-only transaction.
@@ -125,8 +127,12 @@ import shutil
 from pathlib import Path
 
 expected = {
-    "backend/kaggle_worker.py": "<worker-sha256>",
-    "backend/requirements-kaggle.txt": "<requirements-sha256>",
+    # Revision voi STEPS = 25. Hash tinh tren dang LF (blob git), khong phai
+    # file CRLF trong working tree tren Windows.
+    "backend/kaggle_worker.py":
+        "decc5f5ddddfc0af515ee3cce045e1ce97742af854303afa4c24bba2d97e3823",
+    "backend/requirements-kaggle.txt":
+        "46263bf0527742dde0d98a5da163afc1646a53b5f6de545ad3e94da43c99c669",
 }
 root = Path("/kaggle/working/Cretona")
 for relative, expected_sha256 in expected.items():
@@ -175,7 +181,7 @@ completed:
 1. Start FastAPI in its Supabase/Postgres/Storage profile.
 2. Sign in to Android, choose **Kaggle · Wan2.1**, keep the request text-only,
    choose **4 seconds**, and press Generate. The pinned worker uses 16 fps and
-   50 denoising steps, so this first acceptance clip is 65 frames. If that
+   25 denoising steps, so this first acceptance clip is 65 frames. If that
    measured run exceeds the available session window, retry once at 3 seconds
    (49 frames); do not change model constants during acceptance.
 3. Confirm the project moves `pending → generating`, progress changes while the
