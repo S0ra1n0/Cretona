@@ -33,12 +33,12 @@ generated and reviewed as demo-adequate, with direction and camera-motion
 limitations recorded. A real Android-submitted job completed through the live
 worker, reached private Storage, and played in Android on 2026-09-01.
 
-Migration 015 now requires every new worker completion to upload both
-`video.mp4` and `thumbnail.jpg`. Its live schema, policies, revision-bound
-bundle and empty-queue Kaggle smoke are proven; one fresh post-migration job is
-still required to observe the new thumbnail path end to end. The remaining
-human deliverables are the final demo recording (B-17) and report/submission
-package (B-18).
+Migration 015 requires every worker completion to upload both `video.mp4` and
+`thumbnail.jpg`. A post-migration job completed on 2026-09-02 with both
+objects in private Storage, so the thumbnail path is proven end to end. Every
+engineering item is closed; what remains is the live demonstrations and the
+human deliverables — the demo recording (B-17) and report/submission package
+(B-18).
 
 ## Repository layout
 
@@ -64,6 +64,10 @@ Cretona/             open this folder in Android Studio
   for the verified emulator-to-video vertical slice and its evidence limits.
 - See [docs/evidence/NON_DEVICE_PREFLIGHT_2026-08-31.md](docs/evidence/NON_DEVICE_PREFLIGHT_2026-08-31.md)
   for the earlier non-device release gate.
+- See [docs/evidence/MIG015_FIRST_THUMBNAIL_JOB_2026-09-02.md](docs/evidence/MIG015_FIRST_THUMBNAIL_JOB_2026-09-02.md)
+  for the accepted post-MIG-015 job, thumbnail included.
+- See [docs/DEMO_CHECKLIST.md](docs/DEMO_CHECKLIST.md) for the live-run
+  checklist used at the 09-03 and 09-05 sessions.
 - See [docs/evidence/LIVE_SUPABASE_MIGRATION_015_2026-09-02.md](docs/evidence/LIVE_SUPABASE_MIGRATION_015_2026-09-02.md)
   for the current live migration and worker-bundle smoke boundary.
 - See [docs/discovery/FREE-LOCAL-BEST-OUTPUT.md](docs/discovery/FREE-LOCAL-BEST-OUTPUT.md)

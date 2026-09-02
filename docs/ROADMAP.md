@@ -5,10 +5,10 @@
 - **Team:** Bruce — Android/admin UI · S0ra1n0 — FastAPI/database/Kaggle worker
 - **Detailed tickets:** [TASK-SPLIT-2026-08-28.md](TASK-SPLIT-2026-08-28.md)
 - **Hosted-CI baseline:** `b4bf3483d99ad97961d852dc07b02b5ecfbf53ce`
-- **Local gate revision:** `a7330d06c5b7885cffdfa760a36c11bb79af9ad0` — two commits
-  ahead of `origin/main` and **not yet through hosted CI**. Both are backend-only.
-- **Kaggle worker bundle:** `cretona-kaggle-worker-a7330d06.zip`, built from the
-  committed LF blobs; hashes in section 7
+- **Local gate revision:** `8c77b6f` — pushed; hosted CI has not been checked
+  for the commits after `b4bf348`.
+- **Kaggle worker bundle:** `STEPS = 25` build, worker SHA-256 `decc5f5d…`;
+  hashes in section 7. Notebook source is `_test/cretona-kaggle-worker.ipynb`
 - **Hosted CI:** [run 33598905267](https://github.com/S0ra1n0/Cretona/actions/runs/33598905267)
   passed Android/JVM 17, FastAPI/Python 3.12 and FastAPI/PostgreSQL 17 parity at
   the hosted-CI baseline
@@ -45,21 +45,21 @@ The AI responsibilities are deliberately separate:
   Migrations 014 and 015 are both live and security-verified. An
   Android-submitted job has generated a real clip that played in the app
   (S-14, 2026-09-01). Migration 015 then made completion fail closed on a
-  missing thumbnail, so the **post-015 thumbnail path has not yet run a real
-  job** — see section 6.
+  missing thumbnail, and a **post-015 job completed with both objects on
+  2026-09-02** — see the gallery-thumbnail row in section 2.
 
 ## 2. Audited status
 
 | Area | Implemented | Observed evidence | Remaining boundary |
 |---|---|---|---|
-| FastAPI API, auth, ownership, quotas, admin | Complete in source | Local gate 2026-09-02 at `a7330d06`: **611 passed / 0 skipped** on disposable PostgreSQL 17.6, and 611 passed / 56 Postgres-only skipped on SQLite. Ruff check/format, `pip check` and `pip_audit` clean | Live deployment and real-client acceptance remain separate |
+| FastAPI API, auth, ownership, quotas, admin | Complete in source | Local gate 2026-09-02: **611 passed / 0 skipped** on disposable PostgreSQL 17.6, and 611 passed / 56 Postgres-only skipped on SQLite. Ruff check/format, `pip check` and `pip_audit` clean | Live deployment and real-client acceptance remain separate |
 | Credits, payments, events and refund ledger | Complete in SQLite/Postgres adapters; migration `013` and seed exist | The 611-test PostgreSQL run covers charge, per-attempt refund and worker failure parity; migration 013 has historical live probes | Live state is not re-verified by the disposable database |
-| Android user journeys | B-01 through B-07 source-complete; real repositories are bound | Gate rerun 2026-09-02 at `f4968cd`: **126 unit tests**, 0 failures, lint, debug/release APK and instrumentation-test compile passed. The two later commits are backend-only, so no Android artifact changed | Emulator journeys captured; see the definition of done |
+| Android user journeys | B-01 through B-07 source-complete; real repositories are bound | Gate rerun 2026-09-03 at `8c77b6f`: **129 unit tests**, 0 failures; debug APK built and installed on the `Pixel_10_Pro` emulator against the live backend | Emulator journeys captured; see the definition of done |
 | Android admin console | B-08 through B-13 source-complete against real endpoints | Included in the final compile/test/lint gate | Emulator acceptance, light/dark screenshots and live-endpoint walkthrough |
 | Prompt LLM | Qwen/Ollama adapter plus explicit fallback implemented | Historical live FastAPI evidence selected Qwen; not re-run in this audit | Re-run with `usedFallback=false` before the demo if Ollama is part of the demo |
 | Free generative video | Wan2.1 T2V 1.3B two-phase Kaggle notebook proven to generate | 4/4 distinct 832×480, 81-frame clips; mean 48.6 min/clip on 2×T4 | Reviewed 2026-09-02: **demo-adequate, quality unverified**. The two-reviewer blind protocol was descoped and no numeric score is claimed. Direction and camera motion are ignored in all four clips, so demo prompts must not depend on either (section 5) |
 | Real video in the app | External `kaggle` provider, least-privilege worker, lease heartbeat, Storage upload and atomic completion/refund exist in source | **S-14 accepted 2026-09-01:** an Android-submitted job completed through the worker; the MP4 is in Storage and parses as avc1 832x480, 65 frames, 4.06 s, and it played in the app. See [S14_FIRST_LIVE_CLIP_2026-09-01.md](evidence/S14_FIRST_LIVE_CLIP_2026-09-01.md) | S-14 ran on the **pre-015** completion path. Migration 015 has since changed it; see the gallery-thumbnail row |
-| Gallery thumbnails (MIG-015) | Worker extracts and uploads a JPEG; completion refuses without both objects; three lease-scoped `uploads` policies | Migration live and verified read-only 2026-09-02 ([record](evidence/LIVE_SUPABASE_MIGRATION_015_2026-09-02.md)). `create_thumbnail` proven on all four real Wan2.1 clips (40–56 KB valid JPEGs). The refusal branch is covered against PostgreSQL 17.6 in both directions | **Unproven live:** `upload_thumbnail` against the lease-scoped policies, and Android rendering the JPEG. The Kaggle smoke ran on an empty queue and loaded no model |
+| Gallery thumbnails (MIG-015) | Worker extracts and uploads a JPEG; completion refuses without both objects; three lease-scoped `uploads` policies | Migration live and verified read-only 2026-09-02 ([record](evidence/LIVE_SUPABASE_MIGRATION_015_2026-09-02.md)). `create_thumbnail` proven on all four real Wan2.1 clips (40–56 KB valid JPEGs). The refusal branch is covered against PostgreSQL 17.6 in both directions | **Accepted 2026-09-02.** Project `46b6d55d…` completed with `video.mp4` (405,459 B) in `videos` and `thumbnail.jpg` (40,696 B) in `uploads`; `thumbnail_path` is populated and the ledger holds exactly one −1 charge with no refund. See [MIG015_FIRST_THUMBNAIL_JOB_2026-09-02.md](evidence/MIG015_FIRST_THUMBNAIL_JOB_2026-09-02.md) |
 
 ## 3. Bruce lane
 
@@ -97,11 +97,10 @@ The API/database work through S-16 is present. The remaining critical path is:
    Storage, and it played in the app — see
    [S14_FIRST_LIVE_CLIP_2026-09-01.md](evidence/S14_FIRST_LIVE_CLIP_2026-09-01.md)
    and `_test/screenshots/s14-playback.png`. This ran on the pre-015 path.
-3. **S-15 (MIG-015):** live and verified. Completion now fails closed unless
-   both `video.mp4` and `thumbnail.jpg` exist. One post-015 app-submitted job is
-   still required to observe the thumbnail reach Storage and render in Android.
-   Rebuild the notebook input from `cretona-kaggle-worker-a7330d06.zip` first —
-   the older bundle no longer matches the worker.
+3. **S-15 (MIG-015): complete.** Migration live and verified, and project
+   `46b6d55d…` completed on 2026-09-02 with both canonical objects present.
+   The worker now runs from a notebook on the S0ra1n0 Kaggle account, rebuilt
+   from `_test/cretona-kaggle-worker.ipynb`.
 4. **S-17:** the non-device evidence and canonical docs are reconciled through
    2026-09-02. Append the post-015 live worker result when that run exists.
 5. **S-18:** the bootstrap-from-empty half is **closed** — `test_fresh_bootstrap.py`
@@ -145,7 +144,7 @@ already proven and the scorecard shows Wan2.1 is unacceptable.
 
 ## 6. Current verification and blockers
 
-Verified 2026-09-02 on this machine at `a7330d06`, unless noted:
+Verified 2026-09-02/03 on this machine at `8c77b6f`, unless noted:
 
 - backend disposable-Postgres profile: **611 passed, 0 skipped** against a
   `postgres:17.6-alpine` container, the same image hosted CI uses;
@@ -153,7 +152,7 @@ Verified 2026-09-02 on this machine at `a7330d06`, unless noted:
   local `pytest` still exits 0 while skipping every Postgres-only test,
   including the fresh-bootstrap replay — a green SQLite run is not a green run**;
 - backend Ruff check/format, `pip check` and `pip_audit --local` are clean;
-- Android gate rerun at `f4968cd`: **126 tests**, 0 failures/errors/skips; lint,
+- Android gate rerun at `8c77b6f`: **129 tests**, 0 failures/errors/skips; lint,
   debug/release assembly and debug-android-test compilation passed. The Gradle
   wrapper JAR matched its pinned checksum. Run on JDK 21 (Android Studio JBR)
   rather than CI's 17; the project targets 17 with no strict toolchain, so
@@ -186,15 +185,21 @@ Verified 2026-09-02 on this machine at `a7330d06`, unless noted:
   unavoidable off-platform; the project's SQL is genuinely replayed;
 - `create_thumbnail` was run against all four real Wan2.1 clips and produced
   valid 832×480 JPEGs of 40–56 KB, roughly 80× clear of the worker's 512-byte
-  guard.
+  guard. The live run then produced a 40,696-byte JPEG, inside that range;
+- **the first post-MIG-015 job completed on 2026-09-02**: 28.5 minutes cold
+  (including a ~22.7 GB model download), both objects in Storage, exactly one
+  −1 ledger row and no refund. `STEPS` was 25, halved from 50 to bring a
+  4-second clip inside a demo-viable window.
 
 Not run or not accepted:
 
-- **no post-MIG-015 job has run.** `upload_thumbnail` against the live
-  lease-scoped `uploads` policies, and Android rendering that JPEG, are both
-  unobserved. The 2026-09-02 Kaggle smoke ran on an empty queue and loaded no
-  model;
-- the two commits after `b4bf348` have **not been through hosted CI**;
+- **a warm-cache generation time has not been measured.** The single observed
+  run was cold at 28.5 minutes; the ~20-minute warm figure is extrapolation;
+- **quality at 25 steps has not been scored against 50.** The clip was judged
+  usable by eye. Raising `STEPS` to 30 is deferred until after the 09-03
+  progress review;
+- Android rendering *this* job's thumbnail was not separately captured;
+- the commits after `b4bf348` have **not been confirmed green in hosted CI**;
 - NFR-REL-003 (60fps during polling, download and playback) has never been
   measured either way;
 - the 2026-09-01 connectivity smoke had an empty queue and loaded no model, but
@@ -213,9 +218,9 @@ Not run or not accepted:
 - [x] User credits, events, purchase, charge and refund paths are implemented.
 - [x] Admin user, project, credits, events, packages, settings and dashboard
       paths are implemented.
-- [x] Final backend SQLite gate is green (611 passed at `a7330d06`).
+- [x] Final backend SQLite gate is green (611 passed).
 - [x] Final Postgres gate is green (611 passed, 0 skipped, PostgreSQL 17.6).
-- [x] Final Android source/build gate is green (126 tests at `f4968cd`).
+- [x] Final Android source/build gate is green (129 tests at `8c77b6f`).
 - [x] Hosted CI is green at the hosted-CI baseline `b4bf348`.
 - [x] Live Supabase migrations 014 **and 015** pass read-only security
       verification.
@@ -240,6 +245,13 @@ Not run or not accepted:
       Observed on the Pixel_10_Pro emulator, 2026-09-01 11:36: the clip plays at
       0:01 of 0:04 and its content matches the prompt.
       `_test/screenshots/s14-playback.png`.
+- [x] The in-app progress card follows a job to the end. Polling covered only
+      10 minutes against a 28.5-minute job, so the card froze mid-run; the
+      budget now spans 40 minutes and the card carries a manual refresh that
+      resumes polling.
+- [x] An admin cannot demote or disable their own account. Both are blocked in
+      the view model and hidden in the UI, because neither is recoverable from
+      inside a console gated on the role being given up.
 - [x] A refused completion is diagnosed correctly. Since MIG-015 the database
       also refuses completion when a canonical object is missing, which is not
       a lost lease; the worker now distinguishes the two and refunds the case
@@ -249,12 +261,11 @@ Not run or not accepted:
       quality threshold — and replaced by a single-reviewer non-blind review
       in `experiments/EXP-005/QUALITY_SCORECARD.md`. Outcome:
       **demo-adequate, quality unverified.**
-- [ ] **One post-MIG-015 job completes with a thumbnail.** The JPEG must reach
-      `uploads/<user>/<project>/thumbnail.jpg` through the lease-scoped
-      policies and render on the gallery card in Android. Everything upstream —
-      generation, frame extraction, encoding, the size guard, and the
-      both-objects completion contract — is proven; these two links are not.
-      Rebuild the notebook input from `cretona-kaggle-worker-a7330d06.zip` first.
+- [x] **One post-MIG-015 job completes with a thumbnail.** Project
+      `46b6d55d…` completed 2026-09-02: a 40,696-byte JPEG reached
+      `uploads/<owner>/<project>/thumbnail.jpg` through the lease-scoped
+      policies, `thumbnail_path` is populated, and the ledger holds one −1
+      charge with no refund.
 - [ ] **The system is demonstrated live at the 2026-09-03 progress review** —
       backend running, an account created on the spot, a real job submitted to
       the queue, and playback of a genuinely generated clip.
@@ -262,25 +273,27 @@ Not run or not accepted:
 - [ ] Current screenshots, demo video, report, sample accounts and submission
       package are complete and secret-free.
 
-**Score: 15 complete, 1 partial, 2 outstanding.** The list grew from 14 items
-because MIG-015, the fresh-bootstrap replay, the APK boundary gate and the
-refused-completion diagnosis are now tracked separately; the denominator moved,
-not the standard. Outstanding are the post-MIG-015 thumbnail run and the two
-human deliverables (B-17 demo, B-18 report/submission). The partial is the
-emulator journey set, complete but with one screen captured by hand. The
-pass/fail item — a real Wan2.1 clip generated on free Kaggle and played in
-Android — is **done and evidenced**.
+**Score: 18 complete, 1 partial, 3 outstanding.** Every engineering item is
+closed. What remains is the two live demonstrations (2026-09-03 progress
+review, 2026-09-05 final) and the B-17 demo recording plus B-18
+report/submission package. The partial is the emulator journey set, complete
+but with one screen captured by hand. The pass/fail item — a real Wan2.1 clip
+generated on free Kaggle and played in Android — is **done and evidenced**.
 
-### Worker bundle hashes, revision `a7330d06`
+### Worker bundle hashes, `STEPS = 25` build
 
-Verify these in the notebook before copying either file:
+Verify these in the notebook before copying either file. The live 2026-09-02
+job ran on exactly this bundle:
 
 ```text
-bundle        cretona-kaggle-worker-a7330d06.zip
-bundle        267b9c20d73097855ad6f69b854a940498b3d0a2a81e962dfe7e00658de28462
-worker        caf2b48b5f682ed172d85909f0ef98464b3bcbf4a007ef1f87e51436b3ff8896
+bundle        cretona-kaggle-worker-STEPS25.zip
+worker        decc5f5ddddfc0af515ee3cce045e1ce97742af854303afa4c24bba2d97e3823
 requirements  46263bf0527742dde0d98a5da163afc1646a53b5f6de545ad3e94da43c99c669
 ```
+
+Notebook source: `_test/cretona-kaggle-worker.ipynb`. Raising `STEPS` means
+rebuilding the bundle, re-uploading the dataset and re-editing the hash cell,
+which forces a session restart and a fresh ~22.7 GB model download.
 
 Hashes are taken over the committed **LF** blobs, not the Windows working-tree
 files; a CRLF copy hashes differently and the notebook will reject it.

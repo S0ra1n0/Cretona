@@ -31,184 +31,56 @@ ls
 
 ---
 
-## PHẦN A — TỐI NAY (2026-09-02)
+## PHẦN A — ĐÃ XONG (2026-09-02)
 
-Backend, cloudflared và Ollama đang chạy sẵn. APK đã khớp URL hiện tại.
+Toàn bộ phần A đã hoàn thành đêm 02/09. **Sáng 03/09 không cần làm lại gì ở
+đây**, đi thẳng xuống PHẦN B.
 
-### A1. Cài app (1 phút)
-
-**[GỐC]**
-
-```powershell
-& "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" install -r .\app\build\outputs\apk\debug\app-debug.apk
-```
-
-Package id là `com.cretona.app.debug` — chú ý hậu tố `.debug`.
-
-### A2. Đặt mật khẩu cho DB role (2 phút)
-
-Worker cần **2 chìa khóa khác nhau**, thiếu một là không chạy:
-
-| # | Chìa khóa | Xem ở đâu |
-|---|---|---|
-| 1 | Tài khoản Auth (email + password) | Supabase → **Authentication → Users** |
-| 2 | Role Postgres `cretona_kaggle_worker` | **Không hiện ở Authentication.** Chỉ thấy qua SQL |
-
-Chìa khóa 1 dùng để upload file lên Storage. Chìa khóa 2 dùng để lấy job từ
-hàng đợi trong database.
-
-**Ở đâu:** <https://supabase.com/dashboard> → project `fisnwdzhyuiiursljblw`
-→ menu trái → **SQL Editor** → **New query**
-
-Kiểm role có tồn tại không:
-
-```sql
-select rolname, rolcanlogin from pg_roles where rolname = 'cretona_kaggle_worker';
-```
-
-Đặt mật khẩu mới cho nó:
-
-```sql
-alter role cretona_kaggle_worker password 'Cretona2026Worker';
-```
-
-> Chỉ dùng **chữ và số**. Ký tự đặc biệt (`@ : / # ?`) phải URL-encode khi nhét
-> vào connection string, rất dễ sai.
-
-### A3. Ghép chuỗi kết nối database (3 phút)
-
-**Ở đâu lấy:** Supabase Dashboard → nút **Connect** (thanh trên cùng) → tab
-**Session pooler** → copy chuỗi mẫu.
-
-**Ở đâu sửa:** dán vào **Notepad**, sửa trong đó. Không sửa trên Supabase.
-
-Chuỗi copy về có dạng:
-
-```
-postgresql://postgres.fisnwdzhyuiiursljblw:[YOUR-PASSWORD]@aws-0-<region>.pooler.supabase.com:5432/postgres
-```
-
-Sửa đúng **3 chỗ**:
-
-| Sửa gì | Từ | Thành |
-|---|---|---|
-| Tên user | `postgres.fisnwdzhyuiiursljblw` | `cretona_kaggle_worker.fisnwdzhyuiiursljblw` |
-| Mật khẩu | `[YOUR-PASSWORD]` | `Cretona2026Worker` |
-| Cuối chuỗi | *(không có gì)* | thêm `?sslmode=require` |
-
-**Giữ nguyên phần `@aws-0-<region>.pooler.supabase.com:5432` y như dashboard đưa
-— đừng tự đoán region.**
-
-Kết quả cuối (phần `<region>` là của bạn):
-
-```
-postgresql://cretona_kaggle_worker.fisnwdzhyuiiursljblw:Cretona2026Worker@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
-```
-
-Giữ chuỗi này trong Notepad, lát nữa dán vào Kaggle.
-
-### A4. Tạo notebook trên tài khoản Kaggle của bạn (3 phút)
-
-Worker notebook cũ nằm ở tài khoản `bruce335`, private, bạn không mở được. File
-`.ipynb` dựng sẵn nằm ở:
-
-```
-C:\Users\M15R6\AndroidStudioProjects\Final_Plus\Cretona\_test\cretona-kaggle-worker.ipynb
-```
-
-**Ở đâu:** <https://www.kaggle.com/code> → nút **New Notebook** → menu
-**File → Import Notebook** → chọn file trên.
-
-### A5. Upload bundle làm dataset (4 phút)
-
-**Ở đâu:** <https://www.kaggle.com/datasets> → **New Dataset**
-
-Upload file:
-
-```
-C:\Users\M15R6\AndroidStudioProjects\Final_Plus\Cretona\_test\cretona-kaggle-worker-STEPS25.zip
-```
-
-Để **Private** → **Create**.
-
-Rồi quay lại notebook vừa import → panel phải → **Add Input** → tab **Datasets**
-→ chọn dataset vừa tạo.
-
-### A6. Nhập 5 Kaggle Secrets (5 phút)
-
-**Ở đâu:** trong notebook, thanh menu trên cùng → **Add-ons** → **Secrets** →
-**+ Add a new secret**
-
-Mỗi secret điền 2 ô **Label** và **Value**, bấm **Save**, làm 5 lần:
-
-| Label (gõ chính xác) | Value |
+| Việc | Kết quả |
 |---|---|
-| `CRETONA_WORKER_DATABASE_URL` | Chuỗi đã ghép ở A3 |
-| `CRETONA_SUPABASE_URL` | `https://fisnwdzhyuiiursljblw.supabase.co` |
-| `CRETONA_SUPABASE_PUBLISHABLE_KEY` | Supabase → **Settings → API Keys** → **Publishable key**, dạng `sb_publishable_...` (đúng key app đang dùng trong `local.properties`). Legacy anon `eyJ...` cũng chạy nhưng đang bị Supabase khai tử |
-| `CRETONA_WORKER_EMAIL` | Email tài khoản worker ở **Authentication → Users** |
-| `CRETONA_WORKER_PASSWORD` | Mật khẩu tài khoản đó |
+| Cài app lên emulator | ✅ `com.cretona.app.debug` |
+| Đặt mật khẩu DB role `cretona_kaggle_worker` | ✅ `ALTER ROLE` thành công |
+| Ghép chuỗi kết nối session pooler | ✅ Kết nối được từ máy local |
+| Tạo notebook trên tài khoản Kaggle của bạn | ✅ Không còn phụ thuộc `bruce335` |
+| Upload bundle `STEPS=25` + sửa hash | ✅ `decc5f5d…` |
+| Nhập 5 Kaggle Secrets | ✅ Cả 5 `Attached` |
+| **Chạy 1 job thật** | ✅ **28,5 phút, hoàn tất** |
+| **Thumbnail MIG-015** | ✅ **JPEG 40.696 B vào bucket `uploads`** |
+| Prompt enhancement dùng Qwen thật | ✅ 20–30 giây |
+| Video phát được trong app | ✅ |
 
-**Sau khi tạo đủ 5, bật nút gạt `Attached` cho từng cái.** Không bật thì cell 1
-báo `Missing Kaggle Secrets`.
+### Số liệu job thật (project `46b6d55d…`)
 
-Label sai một ký tự (kể cả hoa/thường) là fail.
+```
+provider   : kaggle, 4 giây, 16:9
+status     : completed, 100%
+video.mp4  : 405.459 B  (bucket videos)
+thumbnail  :  40.696 B  (bucket uploads)
+ledger     : đúng 1 dòng −1 credit, không hoàn tiền
+tổng       : 1711 giây = 28,5 phút (lần đầu, có tải 22,7 GB model)
+```
 
-### A7. Bật GPU và Internet (1 phút)
+Chi tiết: [MIG015_FIRST_THUMBNAIL_JOB_2026-09-02.md](evidence/MIG015_FIRST_THUMBNAIL_JOB_2026-09-02.md)
 
-**Ở đâu:** notebook → panel phải → **Settings**
+### Hai lỗi đã sửa sau job đó
 
-- **Accelerator** → `GPU T4 x2`
-- **Internet** → `On`
+**Thẻ tiến trình đứng giữa chừng.** Polling chỉ phủ 10 phút trong khi job mất
+28,5 phút, nên thẻ đóng băng ở 21% rồi hiện *"Generation is still running"*.
+Ngân sách polling nâng lên 40 phút, và thẻ có thêm nút **🔄 Refresh** kéo trạng
+thái về đồng thời nối lại polling.
 
-Thiếu Internet thì worker không gọi được Supabase.
+**Admin tự hạ quyền / tự khoá được chính mình.** Cả hai giờ bị chặn ở view model
+và ẩn nút trên UI — không thể tự khôi phục vì màn admin console gán đúng quyền
+vừa mất.
 
-### A8. Chạy từng cell, ĐỪNG Run All (5 phút + 20 phút)
+Android: **129 test, 0 fail** (trước là 126).
 
-Bấm nút **▶** bên trái từng cell, theo thứ tự:
+### Còn nợ, để sau buổi 03/09
 
-| Cell | Nội dung | Làm gì |
-|---|---|---|
-| 1 | Nạp 5 secret | Chạy. In ra `da nap 5 secret` là được |
-| 2 | Verify hash + copy source | Chạy. In `OK backend/kaggle_worker.py` |
-| 3 | `pip install psycopg` + smoke test | Chạy **rồi DỪNG LẠI** |
-| 4 | `pip install` đầy đủ | Chỉ chạy khi cell 3 xanh |
-| 5 | Chạy worker | Chỉ chạy khi cell 4 xong |
-
-**Cell 3 là cửa ải rẻ tiền** — chỉ tốn ~1 phút, không nạp model, không tốn GPU:
-
-| Kết quả cell 3 | Nghĩa là |
-|---|---|
-| `exit code 0`, báo không có job | ✅ Cả 2 chìa khóa đúng, chạy tiếp cell 4 |
-| Lỗi Supabase Auth | ❌ Sai `CRETONA_WORKER_EMAIL` hoặc `PASSWORD` |
-| Lỗi kết nối database | ❌ Sai chuỗi ở A3 — kiểm lại tên user, mật khẩu, region |
-| `Missing Kaggle Secrets` | ❌ Chưa bật `Attached` ở A6 |
-
-**Đừng bấm Run All ở lần đầu** — nó chạy thẳng xuống cell 5 và tốn GPU ngay cả
-khi cấu hình sai.
-
-### A9. Nộp 1 job thật (20 phút chờ)
-
-**Ở đâu:** trên app điện thoại/emulator, không phải terminal.
-
-1. Đăng nhập
-2. Bấm **Enhance** — ra đoạn dài mô tả điện ảnh là Qwen chạy thật. Ra câu ngắn
-   cụt là fallback, xem mục D
-3. Provider **Kaggle · Wan2.1** → **4 giây** → chỉ nhập text, không đính ảnh
-4. **Generate**
-
-**Bước này kiểm 3 thứ chưa ai biết:**
-
-| Kiểm cái gì | Đạt là thế nào |
-|---|---|
-| Tốc độ thật ở 25 steps | Xong trong ~20 phút |
-| Chất lượng ở 25 steps | Xem clip, chấp nhận được không |
-| Đường thumbnail MIG-015 | Thẻ trong History có ảnh preview |
-
-> **Nếu chất lượng tệ:** sửa `STEPS = 25` về `50` ở dòng 36 file
-> `C:\Users\M15R6\AndroidStudioProjects\Final_Plus\Cretona\backend\kaggle_worker.py`,
-> dựng lại bundle, upload lại Kaggle. Clip 4s khi đó mất ~39 phút.
-> **Phải quyết tối nay** — sáng thứ Bảy mới phát hiện là hết đường lùi.
+- **Nâng `STEPS` 25 → 30.** Bạn đã quyết làm sau buổi đánh giá quá trình. Tốn
+  ~35–40 phút vì phải dựng lại bundle, đổi hash, restart session và tải lại
+  22,7 GB model. Mỗi job sau đó đắt thêm ~20% (~24 phút thay vì ~20).
+- **Chất lượng 25 steps chưa đối chiếu với 50 steps.** Mới chỉ đánh giá bằng mắt.
 
 ---
 
