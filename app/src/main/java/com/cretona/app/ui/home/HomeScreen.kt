@@ -109,7 +109,7 @@ import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.time.format.FormatStyle
+import java.util.Locale
 
 @Composable
 fun HomeScreen(
@@ -781,8 +781,12 @@ private fun CreditsCard(
                         style = MaterialTheme.typography.bodySmall,
                     )
                     account?.quota?.let {
+                        val resetTime = it.resetsAt
+                            ?.takeIf(String::isNotBlank)
+                            ?.let(::formatQuotaResetTime)
                         Text(
-                            "Rolling safety limit: ${it.remaining}/${it.limit} remaining",
+                            "Rolling safety limit: ${it.remaining}/${it.limit} remaining" +
+                                resetTime?.let { time -> " · Resets $time" }.orEmpty(),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.labelSmall,
                         )
@@ -1129,6 +1133,13 @@ private fun VideoPlayer(videoUrl: String) {
         }
     }
 }
+
+private val quotaResetFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm", Locale.ENGLISH)
+
+internal fun formatQuotaResetTime(value: String, zoneId: ZoneId = ZoneId.systemDefault()): String =
+    runCatching { Instant.parse(value).atZone(zoneId).format(quotaResetFormatter) }
+        .getOrDefault(value.take(16).replace("T", " "))
 
 @Preview(showBackground = true)
 @Composable
