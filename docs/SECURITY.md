@@ -1,6 +1,6 @@
 # Security Notes — Cretona
 
-**Version:** 0.1 · **Status:** Draft
+**Version:** 0.2 · **Status:** Implemented controls with open release checks
 
 Implements the NFR-2.x requirements in [SRS.md](SRS.md). This is a working document for the team, not a compliance artifact.
 
@@ -75,7 +75,9 @@ Hiding a button is not authorization. Admin endpoints are verified server-side (
 | Pagination `limit` | integer 1–50 — an unbounded limit is a denial-of-service vector |
 | Provider name | must exist in the registry; never used to build a URL or path |
 
-All database access goes through Prisma's parameterized queries. Raw SQL, where unavoidable, uses bound parameters — never string concatenation.
+Application database access uses SQLite or psycopg with bound parameters. The
+few dynamic SQL fragments are assembled only from server-owned allow-lists;
+untrusted values are never concatenated into SQL.
 
 ---
 
@@ -128,13 +130,20 @@ actions are pinned to commit SHAs, the Gradle wrapper JAR is verified against
 Gradle's published checksum, and the wrapper distribution ZIP has its own
 `distributionSha256Sum`. Dependency updates arrive as reviewable grouped PRs.
 
-- [ ] RLS enabled and policies verified on `users`, `video_projects`, `generation_logs`
-- [ ] Cross-user access attempted with a real second account and blocked at the API, not just the UI
-- [ ] `/admin/*` rejected for a non-admin token
-- [ ] APK unzipped and searched — no `service_role`, no provider keys
-- [ ] Disabled account refused on its next request
-- [ ] Quota exhaustion returns `429` and blocks the provider call
-- [ ] Logs inspected for tokens, keys, and signed URLs
+- [ ] RLS enabled and policies verified live on `users`, `video_projects`, and
+      `generation_logs`; migrations and disposable-Postgres tests are green,
+      but this exact live probe is still separate.
+- [ ] Cross-user access attempted with a real second account and blocked at the
+      API, not just the UI; SQLite and PostgreSQL tests already cover the rule.
+- [x] `/admin/*` rejected for a non-admin token by automated tests.
+- [x] Release APK is decompressed and scanned in CI for server-only credential
+      markers; the build fails on a match.
+- [x] Disabled account is refused on its next request by SQLite and PostgreSQL
+      tests.
+- [x] Quota exhaustion returns `429` and blocks the provider call in automated
+      tests.
+- [ ] Live logs inspected for tokens, keys, and signed URLs; redaction behavior
+      is covered by automated tests.
 - [ ] Email confirmation re-enabled in Supabase Auth
 - [ ] Release build signed with a keystore that is not in the repo
 - [ ] Privacy policy published and linked from the store listing

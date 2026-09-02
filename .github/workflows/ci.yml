@@ -132,3 +132,13 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease :app:compileDebugAndroidTestKotlin --no-daemon
+
+      - name: Verify APK server-secret boundary
+        shell: bash
+        run: |
+          apk=app/build/outputs/apk/release/app-release-unsigned.apk
+          forbidden='service_role|supabase_service_role|supabase_jwt_secret|kaggle_worker_password|postgres(ql)?://|openai_api_key|gemini_api_key|runway_api_key'
+          if unzip -p "$apk" | grep -aEiq "$forbidden"; then
+            echo '::error::Release APK contains a server-only credential marker.'
+            exit 1
+          fi
