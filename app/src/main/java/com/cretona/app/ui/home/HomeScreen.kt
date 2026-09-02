@@ -251,6 +251,7 @@ fun HomeScreen(
             viewModel.generateVideo()
         },
         onCancelCurrent = viewModel::cancelCurrentProject,
+        onRefreshCurrent = viewModel::refreshCurrentProject,
         onDeleteProject = viewModel::deleteProject,
         onRefreshAccount = viewModel::refreshAccount,
         onRefresh = viewModel::refreshHistory,
@@ -284,6 +285,7 @@ private fun HomeContent(
     onRemixProject: (VideoProject) -> Unit,
     onGenerate: () -> Unit,
     onCancelCurrent: () -> Unit,
+    onRefreshCurrent: () -> Unit,
     onDeleteProject: (String) -> Unit,
     onRefreshAccount: () -> Unit,
     onRefresh: () -> Unit,
@@ -684,6 +686,8 @@ private fun HomeContent(
                     CurrentProjectCard(
                         project = project,
                         onCancel = onCancelCurrent,
+                        onRefresh = onRefreshCurrent,
+                        isRefreshing = state.isRefreshingCurrentProject,
                     )
                 }
             }
@@ -810,6 +814,8 @@ private fun hideKeyboard(
 private fun CurrentProjectCard(
     project: VideoProject,
     onCancel: () -> Unit,
+    onRefresh: () -> Unit,
+    isRefreshing: Boolean,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -843,20 +849,42 @@ private fun CurrentProjectCard(
                     progress = { progressFraction },
                     modifier = Modifier.fillMaxWidth(),
                 )
-                OutlinedButton(
-                    onClick = onCancel,
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error,
-                    ),
+                Row(
                     modifier = Modifier.align(Alignment.End),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Cancel",
-                        modifier = Modifier.size(16.dp),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text("Cancel Generation")
+                    // A Kaggle clip can outlast the poll budget, so the card
+                    // needs a way to pull the current state back by hand.
+                    OutlinedButton(
+                        onClick = onRefresh,
+                        enabled = !isRefreshing,
+                    ) {
+                        if (isRefreshing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Text("🔄")
+                        }
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (isRefreshing) "Refreshing" else "Refresh")
+                    }
+                    OutlinedButton(
+                        onClick = onCancel,
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error,
+                        ),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Cancel",
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text("Cancel")
+                    }
                 }
             }
 
@@ -1179,6 +1207,7 @@ private fun HomeScreenPreview() {
             onRemixProject = {},
             onGenerate = {},
             onCancelCurrent = {},
+            onRefreshCurrent = {},
             onDeleteProject = {},
             onRefreshAccount = {},
             onRefresh = {},

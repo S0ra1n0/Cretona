@@ -10,6 +10,7 @@ import com.cretona.app.domain.model.AdminUser
 import com.cretona.app.domain.model.BackfillResult
 import com.cretona.app.domain.model.CursorPage
 import com.cretona.app.domain.model.EnhancedPrompt
+import com.cretona.app.domain.model.GenerationQuota
 import com.cretona.app.domain.model.UserProfile
 import com.cretona.app.domain.model.VideoProject
 import com.cretona.app.domain.repository.CretonaRepository
@@ -89,6 +90,60 @@ class AdminViewModelTest {
 
         val updatedUser = viewModel.state.value.users.first { it.id == normalUser.id }
         assertTrue(updatedUser.isDisabled)
+    }
+
+    @Test
+    fun `an admin cannot change their own role`() = runTest(mainDispatcherRule.dispatcher) {
+        // The signed-in admin is the "admin-1" fixture row here, so the guard
+        // is the only thing standing between the console and a locked-out user.
+        val repository = FakeAdminRepository(currentUserId = "admin-1")
+        val viewModel = AdminViewModel(repository)
+        viewModel.selectTab(AdminTab.USERS)
+        advanceUntilIdle()
+
+        val self = viewModel.state.value.users.first { it.id == "admin-1" }
+        assertEquals("admin", self.role)
+
+        viewModel.toggleUserRole(self)
+        advanceUntilIdle()
+
+        assertEquals("admin", viewModel.state.value.users.first { it.id == "admin-1" }.role)
+        assertEquals(
+            "You cannot change your own role.",
+            viewModel.state.value.userActionMessage,
+        )
+    }
+
+    @Test
+    fun `an admin cannot disable their own account`() = runTest(mainDispatcherRule.dispatcher) {
+        val repository = FakeAdminRepository(currentUserId = "admin-1")
+        val viewModel = AdminViewModel(repository)
+        viewModel.selectTab(AdminTab.USERS)
+        advanceUntilIdle()
+
+        val self = viewModel.state.value.users.first { it.id == "admin-1" }
+        viewModel.toggleUserDisabled(self)
+        advanceUntilIdle()
+
+        assertFalse(viewModel.state.value.users.first { it.id == "admin-1" }.isDisabled)
+        assertEquals(
+            "You cannot disable your own account.",
+            viewModel.state.value.userActionMessage,
+        )
+    }
+
+    @Test
+    fun `another admin can still be demoted`() = runTest(mainDispatcherRule.dispatcher) {
+        // The guard must be scoped to self, not to admins in general.
+        val repository = FakeAdminRepository(currentUserId = "someone-else")
+        val viewModel = AdminViewModel(repository)
+        viewModel.selectTab(AdminTab.USERS)
+        advanceUntilIdle()
+
+        viewModel.toggleUserRole(viewModel.state.value.users.first { it.id == "admin-1" })
+        advanceUntilIdle()
+
+        assertEquals("user", viewModel.state.value.users.first { it.id == "admin-1" }.role)
     }
 
     @Test
@@ -192,6 +247,7 @@ class AdminViewModelTest {
 
 private class FakeAdminRepository(
     private val paginatedCollections: Boolean = false,
+    private val currentUserId: String = "signed-in-admin",
 ) : CretonaRepository {
     private var users = mutableListOf(
         AdminUser(
@@ -223,7 +279,19 @@ private class FakeAdminRepository(
         birthday: String,
     ): AppResult<UserProfile> = AppResult.Failure(AppError.Unknown("not used in this test"))
 
-    override suspend fun getCurrentUser(): AppResult<UserProfile> = throw NotImplementedError()
+    /** The signed-in admin. Defaults to an id no fixture user shares, so the
+     *  self-targeting guard stays out of the way unless a test opts into it. */
+    override suspend fun getCurrentUser(): AppResult<UserProfile> = AppResult.Success(
+        UserProfile(
+            id = currentUserId,
+            email = "signed-in@example.com",
+            username = "signedin",
+            role = "admin",
+            isDisabled = false,
+            createdAt = "2026-01-01T00:00:00Z",
+            quota = GenerationQuota(limit = 10, used = 0, remaining = 10, resetsAt = null),
+        ),
+    )
     override suspend fun enhancePrompt(prompt: String): AppResult<EnhancedPrompt> = throw NotImplementedError()
     override suspend fun uploadImage(bytes: ByteArray, mimeType: String, fileName: String): AppResult<String> = throw NotImplementedError()
     override suspend fun createProject(

@@ -496,6 +496,49 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    /** Re-read the running project now, and resume polling if it is still going.
+     *
+     * The poll budget is finite, so a job that outlasts it leaves a stale card.
+     * This lets the user pull the current state back without resubmitting.
+     */
+    fun refreshCurrentProject() {
+        val current = state.value.currentProject ?: return
+        if (current.isTerminal) return
+        if (state.value.isRefreshingCurrentProject) return
+
+        _state.update { it.copy(isRefreshingCurrentProject = true) }
+        viewModelScope.launch {
+            when (val result = repository.getProject(current.id)) {
+                is AppResult.Success -> {
+                    val project = result.data
+                    _state.update {
+                        it.copy(
+                            currentProject = project,
+                            isRefreshingCurrentProject = false,
+                            errorMessage = null,
+                        )
+                    }
+                    if (project.isTerminal) {
+                        refreshHistoryInternal()
+                        refreshAccountInternal()
+                    } else {
+                        // Restart from the top of the budget rather than leaving
+                        // the card static until the user taps again.
+                        pollingJob?.cancel()
+                        poll(project)
+                    }
+                }
+
+                is AppResult.Failure -> _state.update {
+                    it.copy(
+                        isRefreshingCurrentProject = false,
+                        errorMessage = result.error.message,
+                    )
+                }
+            }
+        }
+    }
+
     fun cancelCurrentProject() {
         val current = state.value.currentProject ?: return
         if (current.isTerminal) return
@@ -542,6 +585,12 @@ class HomeViewModel @Inject constructor(
         const val FAST_POLL_INTERVAL_MS = 5_000L
         const val SLOW_POLL_INTERVAL_MS = 15_000L
         const val FAST_POLL_COUNT = 12
-        const val MAX_POLLS = 48
+
+        // 12 x 5s + 156 x 15s = 40 minutes. The old budget of 48 polls gave up
+        // after 10, which is shorter than a real Kaggle job: a measured 4-second
+        // Wan2.1 clip took 28.5 minutes end to end, so the card froze at
+        // whatever percentage it had reached at minute ten and told the user to
+        // refresh a history screen that had nothing newer in it.
+        const val MAX_POLLS = 168
     }
 }

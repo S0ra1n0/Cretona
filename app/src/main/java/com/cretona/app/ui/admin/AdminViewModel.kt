@@ -31,6 +31,19 @@ class AdminViewModel @Inject constructor(
 
     init {
         loadStats()
+        loadCurrentUser()
+    }
+
+    /** Needed before the user list renders so self-targeting controls start disabled. */
+    private fun loadCurrentUser() {
+        viewModelScope.launch {
+            when (val result = repository.getCurrentUser()) {
+                is AppResult.Success -> _state.update { it.copy(currentUserId = result.data.id) }
+                // A failure here only costs the client-side guard; the backend
+                // still rejects the request, so it is not worth an error banner.
+                is AppResult.Failure -> Unit
+            }
+        }
     }
 
     fun selectTab(tab: AdminTab) {
@@ -180,6 +193,12 @@ class AdminViewModel @Inject constructor(
     }
 
     fun toggleUserRole(user: AdminUser) {
+        if (isSelf(user)) {
+            _state.update {
+                it.copy(userActionMessage = "You cannot change your own role.")
+            }
+            return
+        }
         val newRole = if (user.role == "admin") "user" else "admin"
         viewModelScope.launch {
             _state.update { it.copy(updatingUserId = user.id, userActionMessage = null) }
@@ -207,6 +226,12 @@ class AdminViewModel @Inject constructor(
     }
 
     fun toggleUserDisabled(user: AdminUser) {
+        if (isSelf(user)) {
+            _state.update {
+                it.copy(userActionMessage = "You cannot disable your own account.")
+            }
+            return
+        }
         val newDisabled = !user.isDisabled
         viewModelScope.launch {
             _state.update { it.copy(updatingUserId = user.id, userActionMessage = null) }
@@ -231,6 +256,16 @@ class AdminViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    /** True when the row targets the signed-in admin.
+     *
+     * Locking yourself out is unrecoverable from inside the app: a demoted or
+     * disabled admin can no longer reach the console to undo it.
+     */
+    private fun isSelf(user: AdminUser): Boolean {
+        val me = _state.value.currentUserId ?: return false
+        return me == user.id
     }
 
     fun loadAuditLogs(action: String? = _state.value.logActionFilter) {

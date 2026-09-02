@@ -36,6 +36,8 @@ data class AdminUiState(
     val isLoadingStats: Boolean = false,
     val statsError: String? = null,
     // Users Tab
+    /** The signed-in admin, so the UI can refuse self-demotion and self-ban. */
+    val currentUserId: String? = null,
     val users: List<AdminUser> = emptyList(),
     val isLoadingUsers: Boolean = false,
     val isLoadingMoreUsers: Boolean = false,

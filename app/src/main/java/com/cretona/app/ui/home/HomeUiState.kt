@@ -16,6 +16,7 @@ data class HomeUiState(
     val projectsNextCursor: String? = null,
     val hasMoreProjects: Boolean = false,
     val isRefreshingProjects: Boolean = false,
+    val isRefreshingCurrentProject: Boolean = false,
     val isLoadingMoreProjects: Boolean = false,
     val selectedProvider: String = "mock",
     val enhancementNote: String? = null,

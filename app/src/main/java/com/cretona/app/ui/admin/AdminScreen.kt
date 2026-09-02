@@ -624,6 +624,7 @@ private fun UsersTabContent(
                 UserCard(
                     user = user,
                     isUpdating = state.updatingUserId == user.id,
+                    isSelf = state.currentUserId != null && state.currentUserId == user.id,
                     onToggleRole = { confirmAction = AdminConfirmAction.ToggleRole(user) },
                     onToggleDisabled = { confirmAction = AdminConfirmAction.ToggleDisabled(user) },
                 )
@@ -655,6 +656,7 @@ private fun UsersTabContent(
 private fun UserCard(
     user: AdminUser,
     isUpdating: Boolean,
+    isSelf: Boolean,
     onToggleRole: () -> Unit,
     onToggleDisabled: () -> Unit,
 ) {
@@ -708,6 +710,14 @@ private fun UserCard(
 
             if (isUpdating) {
                 CircularProgressIndicator(modifier = Modifier.size(24.dp))
+            } else if (isSelf) {
+                // Demoting or disabling yourself cannot be undone from inside
+                // the app: the console is gated on the role you just gave up.
+                Text(
+                    text = "This is your own account. Role and access changes are disabled.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             } else {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
