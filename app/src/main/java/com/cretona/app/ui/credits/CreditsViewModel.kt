@@ -92,11 +92,16 @@ class CreditsViewModel @Inject constructor(
             when (val result = repository.purchase(packageItem.id, key)) {
                 is AppResult.Success -> {
                     purchaseKey = null
+                    val receipt = result.data
                     _state.update {
                         it.copy(
                             selectedPackage = null,
                             isPurchasing = false,
-                            message = "Added ${result.data.creditsGranted} credits.",
+                            message = "Added ${receipt.creditsGranted} credits.",
+                            // Same reason as claimEvent: show the balance the
+                            // server just returned rather than the pre-purchase
+                            // one until the refetch lands.
+                            balance = it.balance?.copy(balance = receipt.balance),
                         )
                     }
                     reloadCreditData()
@@ -135,12 +140,35 @@ class CreditsViewModel @Inject constructor(
             when (val result = repository.claimEvent(eventId, key)) {
                 is AppResult.Success -> {
                     claimKeys.remove(eventId)
-                    _state.update {
-                        it.copy(
+                    val claim = result.data
+                    // Apply what the server just confirmed before re-fetching, so
+                    // the card flips to "Claimed" and the wallet moves on the same
+                    // frame as the message. This is not the client re-deriving
+                    // `claimable`: the grant already happened, and the edit only
+                    // ever disables the button, so a disagreement with the next
+                    // fetch cannot hand out a second claim.
+                    _state.update { current ->
+                        current.copy(
                             claimingEventId = null,
-                            message = "Claimed ${result.data.creditsGranted} credits.",
+                            message = "Claimed ${claim.creditsGranted} credits.",
+                            balance = current.balance?.copy(balance = claim.balance),
+                            events = current.events.map { event ->
+                                if (event.id != eventId) {
+                                    event
+                                } else {
+                                    event.copy(
+                                        claimable = false,
+                                        claimedThisPeriod = true,
+                                        remainingSlots = event.remainingSlots
+                                            ?.minus(1)
+                                            ?.coerceAtLeast(0),
+                                    )
+                                }
+                            },
                         )
                     }
+                    // Then reconcile: the server owns the next period, the ledger
+                    // row and any cap shared with other users.
                     reloadCreditData()
                     loadEvents()
                 }
