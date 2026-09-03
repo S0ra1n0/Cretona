@@ -28,6 +28,8 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
@@ -122,11 +124,23 @@ fun MainScreen(
         if (selectedTab == MainTab.CREDITS) creditsViewModel.refreshAll()
     }
 
+    // Delete removes the row it happened on, so the card cannot report
+    // its own result. The snackbar outlives the row and reaches both the
+    // Home and History tabs from one place.
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(state.statusMessage) {
+        state.statusMessage?.let { message ->
+            snackbarHostState.showSnackbar(message)
+            viewModel.consumeStatusMessage()
+        }
+    }
+
     val headerGradient = remember {
         Brush.horizontalGradient(colors = listOf(GalaxyIndigo, GalaxyViolet))
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         modifier = modifier.fillMaxSize(),
         topBar = {
             Column(modifier = Modifier.fillMaxWidth()) {
@@ -221,6 +235,7 @@ fun MainScreen(
                     selectedTab = MainTab.HOME
                 },
                 onDeleteProject = viewModel::deleteProject,
+                deletingProjectId = state.deletingProjectId,
                 onRefresh = viewModel::refreshHistory,
                 hasMoreProjects = state.hasMoreProjects,
                 isLoadingMoreProjects = state.isLoadingMoreProjects,

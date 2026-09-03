@@ -22,6 +22,10 @@ data class HomeUiState(
     val enhancementNote: String? = null,
     val errorMessage: String? = null,
     val historyErrorMessage: String? = null,
+    /** The project a delete is in flight for, so its card can say so. */
+    val deletingProjectId: String? = null,
+    /** Transient confirmation of something that finished, shown once. */
+    val statusMessage: String? = null,
     val selectedImageUri: Uri? = null,
     val selectedImageBytes: ByteArray? = null,
     val selectedImageMimeType: String? = null,

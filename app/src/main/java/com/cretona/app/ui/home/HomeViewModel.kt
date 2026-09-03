@@ -562,19 +562,49 @@ class HomeViewModel @Inject constructor(
     }
 
     fun deleteProject(projectId: String) {
+        if (state.value.deletingProjectId != null) return
+
+        // Captured before the row leaves the list, so the confirmation can name
+        // what went rather than saying something happened.
+        val title = (
+            state.value.projects.firstOrNull { it.id == projectId }
+                ?: state.value.currentProject?.takeIf { it.id == projectId }
+            )?.title
+
+        _state.update { it.copy(deletingProjectId = projectId, errorMessage = null) }
         viewModelScope.launch {
             when (val res = repository.deleteProject(projectId)) {
                 is AppResult.Success -> {
                     if (state.value.currentProject?.id == projectId) {
                         _state.update { it.copy(currentProject = null) }
                     }
+                    _state.update {
+                        it.copy(
+                            deletingProjectId = null,
+                            statusMessage = if (title.isNullOrBlank()) {
+                                "Project deleted."
+                            } else {
+                                "Deleted \"$title\"."
+                            },
+                        )
+                    }
                     refreshHistoryInternal()
                 }
                 is AppResult.Failure -> {
-                    _state.update { it.copy(errorMessage = "Could not delete: ${res.error.message}") }
+                    _state.update {
+                        it.copy(
+                            deletingProjectId = null,
+                            errorMessage = "Could not delete: ${res.error.message}",
+                        )
+                    }
                 }
             }
         }
+    }
+
+    /** Clear a status message once it has been shown. */
+    fun consumeStatusMessage() {
+        _state.update { it.copy(statusMessage = null) }
     }
 
     override fun onCleared() {

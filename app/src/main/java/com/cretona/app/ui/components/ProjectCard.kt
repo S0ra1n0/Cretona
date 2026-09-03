@@ -11,7 +11,9 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
@@ -62,6 +64,7 @@ fun ProjectHistoryCard(
     onRemix: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
+    isDeleting: Boolean = false,
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -296,6 +299,23 @@ fun ProjectHistoryCard(
                     horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    if (isDeleting) {
+                        // Replaces the actions rather than sitting beside them:
+                        // the row is on its way out, and leaving Remix tappable
+                        // invites a second request against a deleted project.
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Deleting…",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        return@Row
+                    }
+
                     OutlinedButton(onClick = onRemix) {
                         Text("✨ Remix", style = MaterialTheme.typography.labelSmall)
                     }

@@ -66,6 +66,7 @@ fun HistoryScreen(
     projects: List<VideoProject>,
     onRemixProject: (VideoProject) -> Unit,
     onDeleteProject: (String) -> Unit,
+    deletingProjectId: String? = null,
     onRefresh: () -> Unit,
     hasMoreProjects: Boolean,
     isLoadingMoreProjects: Boolean,
@@ -283,6 +284,7 @@ fun HistoryScreen(
                             project = project,
                             onRemix = { onRemixProject(project) },
                             onDelete = { onDeleteProject(project.id) },
+                        isDeleting = deletingProjectId == project.id,
                         )
                     }
                 }

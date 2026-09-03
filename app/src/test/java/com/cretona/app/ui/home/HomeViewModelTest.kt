@@ -422,6 +422,62 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun `a finished delete names what it removed`() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val repository = FakeRepository(paginatedHistory = true)
+            val viewModel = HomeViewModel(repository)
+            advanceUntilIdle()
+
+            val target = viewModel.state.value.projects.first()
+            viewModel.deleteProject(target.id)
+            advanceUntilIdle()
+
+            assertEquals("Deleted \"${target.title}\".", viewModel.state.value.statusMessage)
+            assertNull(viewModel.state.value.deletingProjectId)
+
+            // Shown once: a message that survives its snackbar would fire again
+            // on the next recomposition.
+            viewModel.consumeStatusMessage()
+            assertNull(viewModel.state.value.statusMessage)
+        }
+
+    @Test
+    fun `a failed delete reports the error and confirms nothing`() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val repository = FakeRepository(paginatedHistory = true)
+            repository.deleteFailure = true
+            val viewModel = HomeViewModel(repository)
+            advanceUntilIdle()
+
+            viewModel.deleteProject(viewModel.state.value.projects.first().id)
+            advanceUntilIdle()
+
+            assertNull(viewModel.state.value.statusMessage)
+            assertNull(viewModel.state.value.deletingProjectId)
+            assertEquals(
+                "Could not delete: Connection lost",
+                viewModel.state.value.errorMessage,
+            )
+        }
+
+    @Test
+    fun `a second delete is refused while the first is still running`() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val repository = FakeRepository(paginatedHistory = true)
+            val viewModel = HomeViewModel(repository)
+            advanceUntilIdle()
+
+            val id = viewModel.state.value.projects.first().id
+            // Both taps land before the dispatcher runs either coroutine, which
+            // is exactly the double-tap the guard exists for.
+            viewModel.deleteProject(id)
+            viewModel.deleteProject(id)
+            advanceUntilIdle()
+
+            assertEquals(1, repository.deleteCalls)
+        }
+
+    @Test
     fun `successful history retry clears only the history error`() =
         runTest(mainDispatcherRule.dispatcher) {
             val repository = FakeRepository(historyFailure = true)
@@ -582,9 +638,15 @@ private class FakeRepository(
         return AppResult.Success(Unit)
     }
 
+    var deleteFailure = false
+
     override suspend fun deleteProject(id: String): AppResult<Unit> {
         deleteCalls += 1
-        return AppResult.Success(Unit)
+        return if (deleteFailure) {
+            AppResult.Failure(AppError.Network("Connection lost"))
+        } else {
+            AppResult.Success(Unit)
+        }
     }
 
     override suspend fun listProjects(limit: Int, cursor: String?): AppResult<CursorPage<VideoProject>> {
