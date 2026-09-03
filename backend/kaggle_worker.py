@@ -40,6 +40,18 @@ STEPS = 25
 # PROJECT-PROPOSAL.md still calls the scope.
 AUDIO_ENV_VAR = "CRETONA_WORKER_AUDIO"
 AUDIO_TIMEOUT_SECONDS = 600
+# MMAudio's own defaults are 25 steps at cfg 4.5 with an empty negative prompt.
+# The negative prompt is the one worth setting: on quiet ambient clips the model
+# tends to invent a music bed or a voice, and either is instantly recognisable
+# as wrong for a four-second scene with nobody speaking in it.
+AUDIO_NEGATIVE_PROMPT = "music, soundtrack, speech, voice, narration, singing, static, hum"
+# Tuned on a T4 against EXP-006, 2026-09-03. MMAudio defaults to 25 steps at
+# cfg 4.5; both were raised because a 4-second clip finished in 91 s against a
+# 300 s budget, so the quality was there to buy. 50 steps costs about 180 s and
+# still clears the budget. Both moved in one run, so which one carries the
+# improvement is untested -- revisit only if the time ever needs winning back.
+AUDIO_STEPS = 50
+AUDIO_CFG_STRENGTH = 6.0
 GUIDANCE_SCALE = 5.0
 LEASE_SECONDS = 180
 HEARTBEAT_SECONDS = 45
@@ -514,6 +526,55 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+#: Visual-only clauses `compose_enhanced_prompt` appends for Wan2.1. They steer
+#: a picture, not a soundtrack, and "Studio Ghibli style lighting" pushes an
+#: audio model toward the music bed the negative prompt is trying to suppress.
+_VISUAL_ONLY_MARKERS = (
+    "camera ",
+    "in vibrant anime",
+    "in cyberpunk",
+    "in 3d animation",
+    "in vintage 35mm",
+    "in 8k hyperrealistic",
+    "cinematic 16:9",
+    "octane render",
+    "depth of field",
+    "lens blur",
+    "color grading",
+    "lighting",
+    "aesthetic",
+    "hand-drawn",
+    "detailed textures",
+    "imax",
+    "grain",
+    "subsurface scattering",
+    "character rendering",
+    "hyperrealistic",
+)
+#: Setting words are kept on purpose even when they arrive inside a style
+#: directive: "futuristic cityscape" tells a soundtrack more than it costs.
+
+
+def audio_prompt(video_prompt: str) -> str:
+    """Reduce a Wan2.1 prompt to the part a soundtrack can act on.
+
+    The prompt the job carries was written for a video model and had style and
+    camera directives appended to it. Handing that to MMAudio asks it to
+    sonify instructions about framing and grain. Dropping those clauses leaves
+    the subject and setting, which is what a listener would expect to hear.
+
+    Falls back to the original when filtering would leave nothing: a
+    scene-shaped prompt beats an empty one.
+    """
+    clauses = [clause.strip() for clause in video_prompt.split(",")]
+    kept = [
+        clause
+        for clause in clauses
+        if clause and not any(marker in clause.lower() for marker in _VISUAL_ONLY_MARKERS)
+    ]
+    return ", ".join(kept) if kept else video_prompt.strip()
+
+
 def audio_enabled() -> bool:
     return os.environ.get(AUDIO_ENV_VAR, "").strip().lower() in {"1", "true", "yes"}
 
@@ -552,7 +613,10 @@ def add_audio(video: Path, prompt: str, duration_seconds: int) -> bool:
                 str(demo),
                 f"--duration={duration_seconds}",
                 f"--video={video}",
-                f"--prompt={prompt}",
+                f"--prompt={audio_prompt(prompt)}",
+                f"--negative_prompt={AUDIO_NEGATIVE_PROMPT}",
+                f"--num_steps={AUDIO_STEPS}",
+                f"--cfg_strength={AUDIO_CFG_STRENGTH}",
             ],
             cwd=str(repo),
             capture_output=True,

@@ -1,7 +1,10 @@
 # Cretona — task split to 2026-09-05
 
 - **Document ID:** `CRETONA-TASKS-005`
-- **Written:** 2026-08-28 · **Submit:** 2026-09-05 (8 working days)
+- **Written:** 2026-08-28 · **Final demo session:** 2026-09-05 (8 working
+  days) · **Submission deadline (corrected 2026-09-03): 2026-09-09** —
+  source code, report and demo video, compiled after the 09-05 session
+  rather than due on it
 - **Contract:** `API_CONTRACT.md` Part II — **agreed, do not renegotiate
   informally.** A change gets told to the other person the same day.
 - **Decisions:** `PLAN-TO-2026-09-05.md` §2 (D1–D4, all resolved)
@@ -424,7 +427,7 @@ B-13 wires to the real endpoint directly.
 
 > **Feature freeze 18:00.**
 
-### Days 8–9 · Fri 09-04, Sat 09-05
+### Days 8–9 · Fri 09-04, Sat 09-05, then submission by 09-09
 
 **B-17 · Demo video** — the full flow in one take: register → signup bonus →
 claim a weekend gift → buy a package → generate a real text-to-video clip with
@@ -432,6 +435,10 @@ Kaggle Wan2.1 → watch the
 charge in the ledger → play, download, share → admin locks a user, adjusts
 credits, creates an event, reads the dashboard.
 **B-18 · Report and screenshots.**
+
+Both are due 2026-09-09, not on 09-05. The 09-05 session is a live demo
+checkpoint, same shape as 09-03; recording, the report and the submission
+package are assembled afterward.
 
 ---
 

@@ -17,9 +17,9 @@ disabled and the proposal's non-scope line stands.
 
 | # | Who | What | Time | Blocks on |
 |---|---|---|---|---|
-| 1 | You | EXP-006 cell 1: torch ≥ 2.5.1 | 5 min | — |
-| 2 | You | EXP-006 cells 2–5 on an existing clip | 25 min | 1 passes |
-| 3 | Claude | Worker integration, flag off by default | done | — |
+| 1 | You | EXP-006 cell 1: torch ≥ 2.5.1 | 5 min | ✅ **2.10.0+cu128** |
+| 2 | You | EXP-006 cells 2–5 on an existing clip | 25 min | ✅ **passed, 3 runs** |
+| 3 | Claude | Worker integration, flag off by default | done | ✅ **tuned to 50/6.0** |
 | 4 | You | New bundle, hashes, upload, restart | 20 min | 2 passes |
 | 5 | You | One real job with audio end to end | 35 min | 4 |
 | 6 | Claude | Amend proposal scope, SRS, roadmap | 20 min | 5 passes |
@@ -63,7 +63,11 @@ outcome available here.
 
 Measured today: a 4-second clip is 28.5 minutes cold, ~20 warm.
 
-Estimated with audio: **+3–5 minutes per clip**, plus a one-off 6.0 GB download
-per Kaggle session. The audio inference estimate comes from a third-party
-report of 2–3 minutes for 5 seconds on an RTX 4050; a T4 is slower, so treat
-4 minutes as the working figure until phase 2 measures it.
+Measured in phase 2 at the accepted settings: **~180 seconds per clip**, plus a
+one-off 6.0 GB download per Kaggle session. A warm job therefore goes from about
+20 minutes to about 23.
+
+The pre-measurement estimate of 3–5 minutes came from a third-party RTX 4050
+report and happened to land close. The number that did not survive contact was
+**file size**: the composited clip is several times larger than the silent one,
+which is now the largest open cost of shipping audio.

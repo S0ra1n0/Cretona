@@ -129,6 +129,43 @@ def test_a_raising_soundtrack_is_not_allowed_to_lose_the_video(tmp_path: Path, m
     assert _drive(tmp_path, audio) == ["upload-video", "upload-thumbnail", "complete"]
 
 
+def test_the_audio_prompt_drops_instructions_about_pictures() -> None:
+    """Style and camera clauses steer a picture; a soundtrack cannot act on them."""
+    composed = (
+        "A red paper boat on a calm lake at sunrise, in 8k hyperrealistic "
+        "cinematic look, ultra detailed textures, IMAX camera quality, "
+        "natural depth of field"
+    )
+
+    assert kaggle_worker.audio_prompt(composed) == "A red paper boat on a calm lake at sunrise"
+
+
+def test_the_audio_prompt_keeps_setting_words_from_a_style_directive() -> None:
+    """A cyberpunk street still sounds like rain and a city; that is worth keeping."""
+    composed = (
+        "a street at night, in cyberpunk 2077 aesthetic, glowing neon lights, "
+        "futuristic cityscape, rainy volumetric reflections, dark atmosphere"
+    )
+
+    result = kaggle_worker.audio_prompt(composed)
+
+    assert "a street at night" in result
+    assert "futuristic cityscape" in result
+    assert "rainy volumetric reflections" in result
+    assert "aesthetic" not in result
+
+
+def test_a_prompt_made_only_of_camera_moves_survives_intact() -> None:
+    """Filtering to nothing would hand MMAudio an empty string.
+
+    A prompt aimed entirely at the camera is a poor audio prompt, but it still
+    beats no prompt at all, so the filter yields rather than empties.
+    """
+    composed = "camera smoothly orbiting around the subject 360 degrees"
+
+    assert kaggle_worker.audio_prompt(composed) == composed
+
+
 def test_audio_enabled_reads_the_flag(monkeypatch) -> None:
     for value, expected in (
         ("1", True),

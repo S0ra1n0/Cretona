@@ -3,7 +3,10 @@
 Đọc file này là đủ, không cần mở gì khác.
 
 - Buổi đánh giá quá trình: **2026-09-03**
-- Buổi cuối kì: **2026-09-05** (thứ Bảy)
+- Buổi demo cuối kì: **2026-09-05** (thứ Bảy) — vẫn là một buổi demo live,
+  **không phải hạn nộp**.
+- **Hạn nộp: 2026-09-09.** Sau buổi 09-05 mới soạn source code, báo cáo,
+  video demo rồi nộp — không nộp ngay trong ngày 09-05.
 - URL tunnel: **đổi mỗi lần khởi động lại `cloudflared`.** Đừng tin con số ghi
   ở đây — lấy URL thật từ cửa sổ cloudflared đang chạy (B3), rồi dùng nó cho
   B4 và cho lệnh kiểm ở PHẦN C.

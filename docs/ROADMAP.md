@@ -1,7 +1,11 @@
 # Cretona — current delivery roadmap
 
 - **Last reconciled:** 2026-09-02
-- **Deadline:** 2026-09-05 (2026-09-06 is buffer only)
+- **Final demo session:** 2026-09-05 (Saturday) — live, in front of the
+  reviewer, same as 2026-09-03.
+- **Submission deadline:** 2026-09-09 — source code, report and demo video
+  packaged and submitted. This is separate from the 09-05 session: the demo
+  is a live checkpoint, not the moment the deliverables are due.
 - **Team:** Bruce — Android/admin UI · S0ra1n0 — FastAPI/database/Kaggle worker
 - **Detailed tickets:** [TASK-SPLIT-2026-08-28.md](TASK-SPLIT-2026-08-28.md)
 - **Hosted-CI baseline:** `b4bf3483d99ad97961d852dc07b02b5ecfbf53ce`
@@ -24,7 +28,9 @@ formats in `API_CONTRACT.md`, and schema rules in `DATA_MODEL.md`.
 > deliverable. Every `[x]` below that rests on source tests or captured images
 > says so explicitly, and stays distinct from a live acceptance. Script:
 > [LIVE_DEMO_RUNBOOK.md](LIVE_DEMO_RUNBOOK.md). Sessions: **2026-09-03**
-> progress review, **2026-09-05** final.
+> progress review, **2026-09-05** final demo. Source code, report and demo
+> video are due **2026-09-09**, compiled after the 09-05 session rather than
+> on the day of it.
 
 ## 1. Product and architecture
 
@@ -80,8 +86,8 @@ The AI responsibilities are deliberately separate:
 | B-13 dashboard credit/revenue/event tiles | Source complete |
 | B-14 screenshot pass | Two real defects fixed: `2>&1` made adb's stderr fatal on PowerShell 5.1 even at exit 0, and a fixed 2 s wait captured the previous screen. Both user and admin sets now capture. **Open:** the `-IncludeAdmin` step still fails its own guard — the node it finds has the same bounds a manual tap succeeds at, so the cause is inside the script's navigation, not the coordinates. The admin console shot is captured by hand until that is found |
 | B-16 integration defects | Source audit complete; fixed per-attempt refunds, Kaggle read/state ownership, provider duration limits and retry validation. Device/live defects remain evidence-driven |
-| B-17 demo video | **Outstanding.** Unblocked — the S-14 clip exists. Record after B-14 reshoots the app in its completed state. Note the `NATIONAL_DAY` event ends 2026-09-04 00:00+07, so record the Events segment before then or extend `ends_at` |
-| B-18 report/screenshots | **Outstanding.** Pending B-14/B-17 |
+| B-17 demo video | **Outstanding, due 2026-09-09.** Unblocked — the S-14 clip exists. Record after B-14 reshoots the app in its completed state. Note the `NATIONAL_DAY` event ends 2026-09-04 00:00+07, so record the Events segment before then or extend `ends_at`; `WEEKEND_GIFT` covers 09-05 and stays valid through 09-09 |
+| B-18 report/screenshots | **Outstanding, due 2026-09-09.** Pending B-14/B-17; assembled after the 09-05 demo, not on the same day |
 
 “Source complete” does not mean device-accepted. B-14 and B-16 own that last
 proof so the same UI work is not reimplemented under a new ticket.
@@ -108,7 +114,7 @@ The API/database work through S-16 is present. The remaining critical path is:
    `seed_credits_and_events.sql` against an empty PostgreSQL 17.6 and asserts the
    signup trigger, seed contents, private buckets and all six lease-scoped worker
    Storage policies. **Outstanding:** the secret-free report and submission
-   package, after B-14/B-17.
+   package by 2026-09-09, after B-14/B-17 and after the 09-05 demo session.
 
 S-12 image-conditioned model research is now **stretch scope**, not a release
 gate. The lecturer gave no model or image-conditioning mandate. The app/API may
@@ -271,13 +277,14 @@ Not run or not accepted:
       the queue, and playback of a genuinely generated clip.
 - [ ] **The system is demonstrated live at the 2026-09-05 final session.**
 - [ ] Current screenshots, demo video, report, sample accounts and submission
-      package are complete and secret-free.
+      package are complete, secret-free, and submitted by **2026-09-09**.
 
 **Score: 18 complete, 1 partial, 3 outstanding.** Every engineering item is
 closed. What remains is the two live demonstrations (2026-09-03 progress
 review, 2026-09-05 final) and the B-17 demo recording plus B-18
-report/submission package. The partial is the emulator journey set, complete
-but with one screen captured by hand. The pass/fail item — a real Wan2.1 clip
+report/submission package, due 2026-09-09 rather than on the day of either
+demo. The partial is the emulator journey set, complete but with one screen
+captured by hand. The pass/fail item — a real Wan2.1 clip
 generated on free Kaggle and played in Android — is **done and evidenced**.
 
 ### Worker bundle hashes, `STEPS = 25` build
