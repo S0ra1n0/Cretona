@@ -37,8 +37,7 @@ Migration 015 requires every worker completion to upload both `video.mp4` and
 `thumbnail.jpg`. A post-migration job completed on 2026-09-02 with both
 objects in private Storage, so the thumbnail path is proven end to end. Every
 engineering item is closed; what remains is the live demonstrations and the
-human deliverables — the demo recording (B-17) and report/submission package
-(B-18).
+human deliverables: the demo recording and the report and submission package.
 
 ## Repository layout
 

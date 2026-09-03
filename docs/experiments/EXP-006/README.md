@@ -11,10 +11,6 @@ audio therefore needs a deliberate scope change, not a quiet feature. Until this
 experiment passes, the honest description of Cretona's output stays
 **"silent video"**.
 
-Deadline note: this must not compete with B-17 (demo recording) or B-18 (report
-and submission package), which are required and unfinished. Run this only after
-those are done, or on GPU time that would otherwise sit idle.
-
 ## Hypothesis
 
 MMAudio can add contextual audio to an existing Wan2.1 clip on a free Kaggle

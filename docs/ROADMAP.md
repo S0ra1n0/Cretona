@@ -86,8 +86,6 @@ The AI responsibilities are deliberately separate:
 | B-13 dashboard credit/revenue/event tiles | Source complete |
 | B-14 screenshot pass | Two real defects fixed: `2>&1` made adb's stderr fatal on PowerShell 5.1 even at exit 0, and a fixed 2 s wait captured the previous screen. Both user and admin sets now capture. **Open:** the `-IncludeAdmin` step still fails its own guard — the node it finds has the same bounds a manual tap succeeds at, so the cause is inside the script's navigation, not the coordinates. The admin console shot is captured by hand until that is found |
 | B-16 integration defects | Source audit complete; fixed per-attempt refunds, Kaggle read/state ownership, provider duration limits and retry validation. Device/live defects remain evidence-driven |
-| B-17 demo video | **Outstanding, due 2026-09-09.** Unblocked — the S-14 clip exists. Record after B-14 reshoots the app in its completed state. Note the `NATIONAL_DAY` event ends 2026-09-04 00:00+07, so record the Events segment before then or extend `ends_at`; `WEEKEND_GIFT` covers 09-05 and stays valid through 09-09 |
-| B-18 report/screenshots | **Outstanding, due 2026-09-09.** Pending B-14/B-17; assembled after the 09-05 demo, not on the same day |
 
 “Source complete” does not mean device-accepted. B-14 and B-16 own that last
 proof so the same UI work is not reimplemented under a new ticket.
@@ -114,7 +112,7 @@ The API/database work through S-16 is present. The remaining critical path is:
    `seed_credits_and_events.sql` against an empty PostgreSQL 17.6 and asserts the
    signup trigger, seed contents, private buckets and all six lease-scoped worker
    Storage policies. **Outstanding:** the secret-free report and submission
-   package by 2026-09-09, after B-14/B-17 and after the 09-05 demo session.
+   package by 2026-09-09.
 
 S-12 image-conditioned model research is now **stretch scope**, not a release
 gate. The lecturer gave no model or image-conditioning mandate. The app/API may
@@ -272,18 +270,19 @@ Not run or not accepted:
       `uploads/<owner>/<project>/thumbnail.jpg` through the lease-scoped
       policies, `thumbnail_path` is populated, and the ledger holds one −1
       charge with no refund.
-- [ ] **The system is demonstrated live at the 2026-09-03 progress review** —
-      backend running, an account created on the spot, a real job submitted to
-      the queue, and playback of a genuinely generated clip.
+- [x] **The system was demonstrated live at the 2026-09-03 progress review.**
+      Backend running against live Supabase through a public tunnel, a real
+      Kaggle job submitted from the app, and playback of a genuinely generated
+      clip. Five jobs ran that day across the `kaggle`, `cloud` and `local`
+      tiers; the 13:45 Kaggle job took 25.9 minutes end to end.
 - [ ] **The system is demonstrated live at the 2026-09-05 final session.**
 - [ ] Current screenshots, demo video, report, sample accounts and submission
       package are complete, secret-free, and submitted by **2026-09-09**.
 
-**Score: 18 complete, 1 partial, 3 outstanding.** Every engineering item is
-closed. What remains is the two live demonstrations (2026-09-03 progress
-review, 2026-09-05 final) and the B-17 demo recording plus B-18
-report/submission package, due 2026-09-09 rather than on the day of either
-demo. The partial is the emulator journey set, complete but with one screen
+**Score: 19 complete, 1 partial, 2 outstanding.** Every engineering item is
+closed and the 09-03 progress review is done. What remains is the 2026-09-05
+final demonstration and the report/submission
+package, due 2026-09-09 rather than on the day of the demo. The partial is the emulator journey set, complete but with one screen
 captured by hand. The pass/fail item — a real Wan2.1 clip
 generated on free Kaggle and played in Android — is **done and evidenced**.
 
