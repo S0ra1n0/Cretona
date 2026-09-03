@@ -9,6 +9,9 @@ import com.cretona.app.domain.repository.CreditsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.UUID
 import javax.inject.Inject
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -36,10 +39,18 @@ class CreditsViewModel @Inject constructor(
     fun refreshAll() {
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, errorMessage = null) }
-            loadBalance()
-            loadTransactions()
-            loadPackages()
-            loadEvents()
+            // Four independent reads. Run sequentially they cost the sum of four
+            // round trips to Supabase in ap-south-1 -- roughly 250ms each before
+            // the tunnel adds its own -- so the screen waited seconds for data
+            // that has no ordering between its parts. In parallel it waits for
+            // the slowest one. `MutableStateFlow.update` is a compare-and-set
+            // loop, so the concurrent writes are safe.
+            listOf(
+                async { loadBalance() },
+                async { loadTransactions() },
+                async { loadPackages() },
+                async { loadEvents() },
+            ).awaitAll()
             _state.update { it.copy(isLoading = false) }
         }
     }
@@ -197,9 +208,11 @@ class CreditsViewModel @Inject constructor(
         _state.update { it.copy(message = null, errorMessage = null) }
     }
 
-    private suspend fun reloadCreditData() {
-        loadBalance()
-        loadTransactions()
+    private suspend fun reloadCreditData() = coroutineScope {
+        // Same reason as refreshAll: the balance and the ledger do not depend on
+        // each other, so paying for both round trips end to end is waste the
+        // user sees after every claim and purchase.
+        listOf(async { loadBalance() }, async { loadTransactions() }).awaitAll()
     }
 
     private suspend fun loadBalance() {
