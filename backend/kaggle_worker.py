@@ -12,6 +12,7 @@ import hashlib
 import json
 import logging
 import os
+import sys
 import threading
 import time
 import urllib.error
@@ -34,6 +35,11 @@ NEGATIVE_PROMPT = (
 )
 FPS = 16
 STEPS = 25
+# Audio is opt-in. An older bundle, or a notebook that never sets the flag,
+# behaves exactly as it does today: silent video, which is what
+# PROJECT-PROPOSAL.md still calls the scope.
+AUDIO_ENV_VAR = "CRETONA_WORKER_AUDIO"
+AUDIO_TIMEOUT_SECONDS = 600
 GUIDANCE_SCALE = 5.0
 LEASE_SECONDS = 180
 HEARTBEAT_SECONDS = 45
@@ -508,6 +514,88 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def audio_enabled() -> bool:
+    return os.environ.get(AUDIO_ENV_VAR, "").strip().lower() in {"1", "true", "yes"}
+
+
+def add_audio(video: Path, prompt: str, duration_seconds: int) -> bool:
+    """Generate a soundtrack for `video` and replace it in place. Best effort.
+
+    Returns whether the video now has audio. **Never raises**: audio is an
+    enhancement on top of the one thing this project is graded on, so a model
+    that will not load must leave a silent, complete, uploadable clip behind.
+    That is the opposite of the thumbnail rule in migration 015, and
+    deliberately so — a missing preview is a defect, a missing soundtrack is
+    the documented non-scope behaviour.
+
+    MMAudio checkpoints are CC-BY-NC 4.0: coursework yes, commercial use no.
+    """
+    import shutil
+    import subprocess
+
+    repo = Path(os.environ.get("CRETONA_MMAUDIO_DIR", "/kaggle/working/MMAudio"))
+    demo = repo / "demo.py"
+    if not demo.is_file():
+        logger.warning("Audio skipped: MMAudio is not installed at %s", repo)
+        return False
+
+    # Wan2.1 peaks near 12.5 GiB and MMAudio wants about 6; they do not fit on
+    # one T4 together, so the transformer has to be gone before this runs.
+    _free_accelerator()
+
+    output_dir = repo / "output"
+    before = {p for p in output_dir.rglob("*.mp4")} if output_dir.is_dir() else set()
+    try:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(demo),
+                f"--duration={duration_seconds}",
+                f"--video={video}",
+                f"--prompt={prompt}",
+            ],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            timeout=AUDIO_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        logger.warning("Audio skipped: MMAudio exceeded %ss", AUDIO_TIMEOUT_SECONDS)
+        return False
+    except Exception as exc:
+        logger.warning("Audio skipped: %s", type(exc).__name__)
+        return False
+    finally:
+        _free_accelerator()
+
+    if completed.returncode != 0:
+        # stderr can carry file paths but not secrets; the tail is enough to
+        # tell a missing weight from an out-of-memory kill.
+        logger.warning(
+            "Audio skipped: MMAudio exited %s: %s",
+            completed.returncode,
+            (completed.stderr or "").strip()[-300:],
+        )
+        return False
+
+    produced = [p for p in output_dir.rglob("*.mp4") if p not in before]
+    if not produced:
+        logger.warning("Audio skipped: MMAudio wrote no video")
+        return False
+
+    newest = max(produced, key=lambda p: p.stat().st_mtime)
+    if newest.stat().st_size <= 1024:
+        logger.warning("Audio skipped: MMAudio output was empty")
+        return False
+
+    # Replace only once the replacement is known good, so a truncated write
+    # cannot cost the clip that already generated successfully.
+    shutil.copyfile(newest, video)
+    newest.unlink(missing_ok=True)
+    logger.info("Audio added to project video")
+    return True
+
+
 def create_thumbnail(video: Path, thumbnail: Path) -> None:
     import imageio.v2 as imageio
 
@@ -527,6 +615,7 @@ def run_once(
     supabase: SupabaseWorkerClient,
     generator: Callable[[Job, Path, Progress, Callable[[], None]], None] = generate_video,
     thumbnailer: Callable[[Path, Path], None] = create_thumbnail,
+    audio_generator: Callable[[Path, str, int], bool] = add_audio,
 ) -> bool:
     session = supabase.session()
     job = database.claim(session.user_id)
@@ -541,6 +630,25 @@ def run_once(
         with LeaseHeartbeat(database, session.user_id, job, progress) as heartbeat:
             generator(job, output, progress, heartbeat.assert_owned)
             heartbeat.assert_owned()
+
+            # Between generation and the thumbnail: the clip already exists, so
+            # a failure here costs nothing, and the thumbnail is taken from
+            # whichever version of the file survives.
+            if audio_enabled():
+                progress.set(92, "Adding audio")
+                # `add_audio` already swallows its own failures, so this guard
+                # is for the case it does not: by now the job is worth twenty
+                # minutes of GPU time, and letting anything from the soundtrack
+                # escape would fail a video that generated correctly and refund
+                # a user who is about to receive it.
+                try:
+                    audio_generator(output, job.prompt, job.duration_seconds)
+                except LeaseLostError:
+                    raise
+                except Exception:
+                    logger.exception("Audio step failed; continuing with a silent video")
+                heartbeat.assert_owned()
+
             progress.set(93, "Creating video thumbnail")
             thumbnailer(output, thumbnail)
             progress.set(94, "Uploading video and thumbnail to Supabase Storage")
