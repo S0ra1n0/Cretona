@@ -170,8 +170,16 @@ Rồi **Run All**. Để tab mở suốt buổi.
 **[BẤT KỲ]**
 
 ```powershell
-curl.exe -s http://127.0.0.1:11434/api/generate -d "{\"model\":\"qwen3.5:2b\",\"prompt\":\"warm\",\"stream\":false,\"options\":{\"num_predict\":8},\"keep_alive\":\"4h\"}"
+Invoke-RestMethod -Uri http://127.0.0.1:11434/api/generate -Method Post -ContentType 'application/json' -Body (@{ model='qwen3.5:2b'; prompt='warm'; stream=$false; keep_alive='4h'; options=@{ num_predict=8 } } | ConvertTo-Json) -TimeoutSec 180 | Out-Null; (Invoke-RestMethod http://127.0.0.1:11434/api/ps).models.name
 ```
+
+In ra `qwen3.5:2b` là xong — lệnh này vừa hâm nóng vừa xác nhận luôn.
+
+> **Đừng dùng `curl.exe` cho lệnh này.** Windows PowerShell 5.1 không gửi được
+> JSON qua `curl.exe`: viết `\"` thì nó gửi luôn cả dấu `\`, viết nháy đơn thì
+> nó nuốt mất nháy kép bên trong. Cả hai cách đều bị Ollama trả
+> `invalid character ... looking for beginning of object key string`.
+> `Invoke-RestMethod` truyền chuỗi thẳng vào .NET nên không dính.
 
 Bỏ bước này thì lần **Enhance** đầu tiên mất hơn 100 giây rồi rơi về fallback.
 
@@ -201,7 +209,7 @@ Phải ra `200`. Ra `000` hoặc `502` → cloudflared chết → quay lại B3.
 **[BẤT KỲ]**
 
 ```powershell
-curl.exe -s http://127.0.0.1:11434/api/ps
+(Invoke-RestMethod http://127.0.0.1:11434/api/ps).models.name
 ```
 
 Phải thấy `qwen3.5:2b`. Trống → chạy lại B7.
