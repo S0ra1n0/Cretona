@@ -110,9 +110,10 @@ transformer's denoising loop and the transformer is not resident during decode.
 
 ## Kill criteria — stop and record a negative result if any holds
 
-1. **Cell 1 fails.** Installed diffusers has no `WanImageToVideoPipeline`, or
-   its `__init__` has no `expand_timesteps`, or there is under 40 GB free where
-   Hugging Face caches. All three are checked before a single weight downloads.
+1. **Any of cells 1-3 fails.** Under 40 GB free where Hugging Face caches
+   (cell 1), pip moves torch (cell 2), or the installed diffusers has no
+   `WanImageToVideoPipeline` / no `expand_timesteps` in its `__init__`
+   (cell 3). All of it is checked before a single weight downloads.
 2. **Peak VRAM exceeds ~14 GB** at 832x480 on a 15.36 GB T4, after the retry
    ladder in cell 6 has been walked down.
 3. **One 4-second clip takes more than 25 minutes** of GPU time at 25 steps.
@@ -141,8 +142,9 @@ Run `EXP-007_wan22_i2v.ipynb` on Kaggle with a **T4** and Internet on. Attach
 one still image as a private dataset. The notebook never touches Supabase,
 never reads a Cretona secret, and writes only to `/kaggle/working`.
 
-Cells are ordered cheapest-first, as in EXP-006. Cell 1 costs seconds and can
-end the experiment before 34 GB moves.
+Cells are ordered cheapest-first, as in EXP-006. Cells 1-3 cost seconds and a
+pip install, and can end the experiment before 34 GB moves; cell 5 is the first
+download.
 
 VRAM is sampled by a background thread reading `nvidia-smi` **during** the run.
 EXP-006 learned this the hard way: `torch.cuda.max_memory_allocated()` reported
@@ -180,7 +182,7 @@ still leave open:
 ## If it fails
 
 Record the negative result here the way
-`EXP-005_KAGGLE_T2V_DISCONFIRMED_2026-08-23.md` did, and say plainly what the
+`docs/evidence/EXP-005_KAGGLE_T2V_DISCONFIRMED_2026-08-23.md` did, and say what the
 reference image is for in the shipped product: a thumbnail and a stored
 reference, not a conditioning signal. A documented boundary is worth more than
 an undocumented one.

@@ -5,9 +5,10 @@ Written 2026-09-04. Nothing here is committed to; phase 1 can end all of it.
 ## Ordering rule
 
 **The gate runs before the integration, not after.** Cell 1 of
-`EXP-007_wan22_i2v.ipynb` costs seconds and downloads nothing. Cells 2-3 cost a
-34 GB download and are the first real spend. Nothing below phase 3 is worth
-starting until phase 2 has produced a clip.
+`EXP-007_wan22_i2v.ipynb` costs seconds, and cells 2-3 cost a pip install and a
+few kilobytes of JSON. **Cell 5 is the first real spend** - it pulls the text
+encoder and the VAE. Nothing below phase 3 is worth starting until phase 2 has
+produced a clip.
 
 EXP-006 wrote the worker code ahead of its gate because that code was **inert
 behind a flag**. This one is different: image-to-video changes the model the
@@ -18,8 +19,8 @@ after the measurement, not before.
 
 | # | Who | What | Time | Blocks on |
 |---|---|---|---|---|
-| 1 | You | EXP-007 cell 1: pipeline, dtype, disk | 2 min | — |
-| 2 | You | EXP-007 cells 2-7: one clip, measured | 45 min | 1 passes |
+| 1 | You | EXP-007 cells 1-3: disk, dtype, pipeline | 2 min | — |
+| 2 | You | EXP-007 cells 2-8: one clip, measured | 45 min | 1 passes |
 | 3 | Both | Decide: two models, one model, or neither | 30 min | 2 passes |
 | 4 | Claude | Worker integration for the chosen shape | 2 h | 3 |
 | 5 | You | New bundle, hashes, upload, restart | 20 min | 4 |
