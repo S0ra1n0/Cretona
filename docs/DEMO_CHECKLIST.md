@@ -4,8 +4,9 @@
 
 - Buổi đánh giá quá trình: **2026-09-03**
 - Buổi cuối kì: **2026-09-05** (thứ Bảy)
-- URL tunnel hiện tại: `https://firewall-inches-rankings-over.trycloudflare.com`
-  **URL này đổi mỗi lần khởi động lại `cloudflared`.**
+- URL tunnel: **đổi mỗi lần khởi động lại `cloudflared`.** Đừng tin con số ghi
+  ở đây — lấy URL thật từ cửa sổ cloudflared đang chạy (B3), rồi dùng nó cho
+  B4 và cho lệnh kiểm ở PHẦN C.
 
 ## Chạy lệnh ở đâu
 
@@ -118,8 +119,7 @@ B4, B5, dùng luôn APK cũ.**
 
 Nếu đã tắt máy:
 
-**[BẤT KỲ]** — mở **cửa sổ PowerShell mới**, vì lệnh này chiếm cửa sổ cho tới
-khi tắt.
+**[BẤT KỲ]** — mở **cửa sổ PowerShell mới của chính bạn** rồi gõ tay:
 
 ```powershell
 cloudflared tunnel --url http://127.0.0.1:8000
@@ -128,6 +128,15 @@ cloudflared tunnel --url http://127.0.0.1:8000
 Nó in ra URL dạng `https://xxx-yyy-zzz.trycloudflare.com`. **Chép lại URL đó.**
 Để cửa sổ này mở suốt buổi.
 
+> **Phải tự gõ trong cửa sổ của bạn.** Đừng để script hay công cụ nào bật hộ:
+> tiến trình con sinh ra từ một phiên khác sẽ bị dọn theo khi phiên đó kết
+> thúc, và tunnel chết lặng lẽ. Đã xảy ra ngày 03/09 — app báo *"The server
+> could not complete the request"* trong khi backend vẫn trả `200`.
+
+> **Tunnel chết KHÔNG giết job đang sinh video.** Worker Kaggle nói chuyện
+> thẳng với Supabase, không đi qua tunnel. Mất kết nối giữa buổi thì cứ dựng
+> lại B3→B5, video vẫn đang được tạo.
+
 ### B4. Dán URL mới vào `local.properties` (30 giây)
 
 Mở file `C:\Users\M15R6\AndroidStudioProjects\Final_Plus\Cretona\local.properties`, sửa **dòng 13**.
@@ -135,6 +144,31 @@ Giữ nguyên dấu `\` trước mỗi `:`:
 
 ```
 cretona.api.baseUrl.debug=https\://URL-MOI-O-DAY/api/v1/
+```
+
+### B4b. Bật emulator (1 phút)
+
+Bỏ qua nếu demo bằng **điện thoại thật** — chỉ cần cắm USB và bật USB debugging.
+
+**[BẤT KỲ]** — mở **cửa sổ PowerShell mới**:
+
+```powershell
+Start-Process "$env:LOCALAPPDATA\Android\Sdk\emulator\emulator.exe" -ArgumentList '-avd','Pixel_10_Pro'
+```
+
+Chờ tới lúc sẵn sàng rồi mới sang B5:
+
+```powershell
+$adb="$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"; $t0=Get-Date; for($i=0;$i -lt 90;$i++){ if("$(& $adb shell getprop sys.boot_completed 2>$null)".Trim() -eq '1'){ "EMULATOR SAN SANG sau $([int]((Get-Date)-$t0).TotalSeconds)s"; break }; Start-Sleep -Seconds 5 }
+```
+
+Boot thường mất ~30 giây. Chưa thấy `EMULATOR SAN SANG` thì đừng chạy B5, vì
+`adb install` sẽ báo không tìm thấy thiết bị.
+
+Nếu emulator dở chứng (treo, Google Play Services crash), cold boot:
+
+```powershell
+Start-Process "$env:LOCALAPPDATA\Android\Sdk\emulator\emulator.exe" -ArgumentList '-avd','Pixel_10_Pro','-no-snapshot-load'
 ```
 
 ### B5. Build lại và cài APK (3 phút)
@@ -199,10 +233,11 @@ phải chờ 20 phút giữa buổi.
 **[BẤT KỲ]**
 
 ```powershell
-curl.exe -s -o NUL -w "%{http_code}`n" https://URL-TUNNEL-CUA-BAN/health
+try { (Invoke-WebRequest https://URL-TUNNEL-CUA-BAN/health -TimeoutSec 12 -UseBasicParsing).StatusCode } catch { "CHET: $($_.Exception.Message)" }
 ```
 
-Phải ra `200`. Ra `000` hoặc `502` → cloudflared chết → quay lại B3.
+Phải ra `200`. Ra `530`, `502` hoặc không phân giải được tên miền →
+cloudflared chết → quay lại B3, lấy URL mới, rồi B4 → B5.
 
 **2. Model LLM còn nóng?**
 
