@@ -33,6 +33,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import java.time.OffsetDateTime
+import java.time.temporal.ChronoUnit
 import com.cretona.app.domain.model.AdminEvent
 import com.cretona.app.domain.model.AdminEventDraft
 import com.cretona.app.domain.model.AdminPackage
@@ -331,10 +333,40 @@ private fun PackageEditorDialog(
         title = { Text(if (existing == null) "New package" else "Edit package") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(name, { name = it }, label = { Text("Name") })
-                OutlinedTextField(credits, { credits = it }, label = { Text("Credits") })
-                OutlinedTextField(price, { price = it }, label = { Text("Price VND") })
-                OutlinedTextField(order, { order = it }, label = { Text("Sort order") })
+                OutlinedTextField(
+                    name,
+                    { name = it },
+                    label = { Text("Name") },
+                    placeholder = { Text("Starter pack") },
+                    supportingText = { Text("Shown on the Buy tab. 1-80 characters.") },
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    credits,
+                    { credits = it },
+                    label = { Text("Credits") },
+                    placeholder = { Text("50") },
+                    supportingText = { Text("Credits granted on purchase, 1-100000.") },
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    price,
+                    { price = it },
+                    label = { Text("Price VND") },
+                    placeholder = { Text("49000") },
+                    // Whole dong, no separators: the field parses with toIntOrNull
+                    // and "49.000" would silently become an invalid -1.
+                    supportingText = { Text("Whole dong, digits only. 0 makes it free.") },
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    order,
+                    { order = it },
+                    label = { Text("Sort order") },
+                    placeholder = { Text("0") },
+                    supportingText = { Text("Lower shows first.") },
+                    singleLine = true,
+                )
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
@@ -358,6 +390,14 @@ private fun PackageEditorDialog(
     )
 }
 
+/** Now, or a day offset from it, as ISO-8601 with the device's UTC offset.
+ *
+ * Seconds are trimmed because the backend parses with `fromisoformat` and the
+ * extra precision only makes the field harder to read and edit by hand.
+ */
+private fun isoNow(plusDays: Long = 0): String =
+    OffsetDateTime.now().plusDays(plusDays).truncatedTo(ChronoUnit.MINUTES).toString()
+
 @Composable
 private fun EventEditorDialog(
     existing: AdminEvent?,
@@ -379,8 +419,10 @@ private fun EventEditorDialog(
                 activeDays = null,
                 activeFromMinute = null,
                 activeToMinute = null,
-                startsAt = "",
-                endsAt = "",
+                // Empty boxes made the admin guess a format. A real,
+                // editable window is a better starting point than a hint.
+                startsAt = isoNow(),
+                endsAt = isoNow(plusDays = 7),
                 maxClaims = null,
                 autoGrant = false,
             ),
@@ -391,9 +433,44 @@ private fun EventEditorDialog(
         title = { Text(if (existing == null) "New event" else "Edit event") },
         text = {
             LazyColumn(Modifier.heightIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                item { OutlinedTextField(draft.code, { draft = draft.copy(code = it) }, label = { Text("Code") }, enabled = existing == null) }
-                item { OutlinedTextField(draft.name, { draft = draft.copy(name = it) }, label = { Text("Name") }) }
-                item { OutlinedTextField(draft.description.orEmpty(), { draft = draft.copy(description = it.ifBlank { null }) }, label = { Text("Description") }) }
+                item {
+                    OutlinedTextField(
+                        draft.code,
+                        { draft = draft.copy(code = it) },
+                        label = { Text("Code") },
+                        placeholder = { Text("WEEKEND_GIFT") },
+                        supportingText = {
+                            Text(
+                                if (existing == null) {
+                                    "Unique id, 1-40 characters. Cannot be changed later."
+                                } else {
+                                    "Fixed once the event exists."
+                                },
+                            )
+                        },
+                        singleLine = true,
+                        enabled = existing == null,
+                    )
+                }
+                item {
+                    OutlinedTextField(
+                        draft.name,
+                        { draft = draft.copy(name = it) },
+                        label = { Text("Name") },
+                        placeholder = { Text("Weekend gift") },
+                        supportingText = { Text("Shown to users. 1-120 characters.") },
+                        singleLine = true,
+                    )
+                }
+                item {
+                    OutlinedTextField(
+                        draft.description.orEmpty(),
+                        { draft = draft.copy(description = it.ifBlank { null }) },
+                        label = { Text("Description") },
+                        placeholder = { Text("Claim 20 free credits every weekend") },
+                        supportingText = { Text("Optional.") },
+                    )
+                }
                 item {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("grant", "discount").forEach { kind ->
@@ -424,6 +501,17 @@ private fun EventEditorDialog(
                             else draft.copy(discountPercent = number)
                         },
                         label = { Text(if (draft.kind == "grant") "Bonus credits" else "Discount percent") },
+                        placeholder = { Text(if (draft.kind == "grant") "20" else "30") },
+                        supportingText = {
+                            Text(
+                                if (draft.kind == "grant") {
+                                    "Credits added on claim. Must be above 0."
+                                } else {
+                                    "Percent off the generation cost, 1-100."
+                                },
+                            )
+                        },
+                        singleLine = true,
                     )
                 }
                 item {
@@ -438,12 +526,68 @@ private fun EventEditorDialog(
                         }
                     }
                 }
-                item { OutlinedTextField(draft.activeDays.orEmpty(), { draft = draft.copy(activeDays = it.ifBlank { null }) }, label = { Text("Active days, e.g. sat,sun") }) }
-                item { OutlinedTextField(draft.activeFromMinute?.toString().orEmpty(), { draft = draft.copy(activeFromMinute = it.toIntOrNull()) }, label = { Text("From minute (0–1440)") }) }
-                item { OutlinedTextField(draft.activeToMinute?.toString().orEmpty(), { draft = draft.copy(activeToMinute = it.toIntOrNull()) }, label = { Text("To minute (0–1440)") }) }
-                item { OutlinedTextField(draft.startsAt, { draft = draft.copy(startsAt = it) }, label = { Text("Starts at ISO-8601") }) }
-                item { OutlinedTextField(draft.endsAt, { draft = draft.copy(endsAt = it) }, label = { Text("Ends at ISO-8601") }) }
-                item { OutlinedTextField(draft.maxClaims?.toString().orEmpty(), { draft = draft.copy(maxClaims = it.toIntOrNull()) }, label = { Text("Max claims; blank = unlimited") }) }
+                item {
+                    OutlinedTextField(
+                        draft.activeDays.orEmpty(),
+                        { draft = draft.copy(activeDays = it.ifBlank { null }) },
+                        label = { Text("Active days") },
+                        placeholder = { Text("sat,sun") },
+                        supportingText = { Text("Lowercase, comma separated. Blank = every day.") },
+                        singleLine = true,
+                    )
+                }
+                item {
+                    OutlinedTextField(
+                        draft.activeFromMinute?.toString().orEmpty(),
+                        { draft = draft.copy(activeFromMinute = it.toIntOrNull()) },
+                        label = { Text("From minute of day") },
+                        placeholder = { Text("1200") },
+                        // Minutes since midnight is not a guessable unit, so the
+                        // hint carries the arithmetic rather than the range alone.
+                        supportingText = { Text("0-1440. 20:00 is 1200. Blank = all day.") },
+                        singleLine = true,
+                    )
+                }
+                item {
+                    OutlinedTextField(
+                        draft.activeToMinute?.toString().orEmpty(),
+                        { draft = draft.copy(activeToMinute = it.toIntOrNull()) },
+                        label = { Text("To minute of day") },
+                        placeholder = { Text("1320") },
+                        supportingText = { Text("0-1440. 22:00 is 1320. Blank = all day.") },
+                        singleLine = true,
+                    )
+                }
+                item {
+                    OutlinedTextField(
+                        draft.startsAt,
+                        { draft = draft.copy(startsAt = it) },
+                        label = { Text("Starts at") },
+                        placeholder = { Text(isoNow()) },
+                        supportingText = { Text("ISO-8601 with offset, e.g. ${'$'}{isoNow()}") },
+                        singleLine = true,
+                    )
+                }
+                item {
+                    OutlinedTextField(
+                        draft.endsAt,
+                        { draft = draft.copy(endsAt = it) },
+                        label = { Text("Ends at") },
+                        placeholder = { Text(isoNow(plusDays = 7)) },
+                        supportingText = { Text("Must be after the start. Users cannot claim past it.") },
+                        singleLine = true,
+                    )
+                }
+                item {
+                    OutlinedTextField(
+                        draft.maxClaims?.toString().orEmpty(),
+                        { draft = draft.copy(maxClaims = it.toIntOrNull()) },
+                        label = { Text("Max claims") },
+                        placeholder = { Text("100") },
+                        supportingText = { Text("Total claims across all users. Blank = unlimited.") },
+                        singleLine = true,
+                    )
+                }
                 item {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Auto grant", Modifier.weight(1f))
