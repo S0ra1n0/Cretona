@@ -49,7 +49,7 @@ xuống PHẦN B.
 | Cài app lên emulator | ✅ `com.cretona.app.debug` |
 | Đặt mật khẩu DB role `cretona_kaggle_worker` | ✅ `ALTER ROLE` thành công |
 | Ghép chuỗi kết nối session pooler | ✅ Kết nối được từ máy local |
-| Tạo notebook trên tài khoản Kaggle của bạn | ✅ Không còn phụ thuộc `bruce335` |
+| Notebook worker trên tài khoản Kaggle của Bruce | ✅ `bruce335/cretona-wan2-1` |
 | Upload bundle `STEPS=25` + sửa hash | ✅ `decc5f5d…` |
 | Nhập 5 Kaggle Secrets | ✅ Cả 5 `Attached` |
 | **Chạy 1 job thật** | ✅ **28,5 phút, hoàn tất** |
@@ -196,18 +196,25 @@ Rồi, vẫn **[GỐC]**:
 
 ### B6. Bật worker Kaggle (10–18 phút — LÂU NHẤT)
 
-**Ở đâu:** <https://www.kaggle.com/code> → tab **Your Work** → mở notebook
-worker của bạn (đã tạo ở A4).
+**Ở đâu:** mở notebook riêng
+[`bruce335/cretona-wan2-1`](https://www.kaggle.com/code/bruce335/cretona-wan2-1/edit).
+Notebook này vẫn giữ các cell EXP-005 cũ làm lịch sử thử nghiệm.
 
 Kiểm 2 thứ trước khi chạy, ở panel phải → **Settings**:
 
 - **Accelerator** = `GPU T4 x2`
 - **Internet** = `On`
 
-Rồi **Run All**. Để tab mở suốt buổi.
+Cuộn xuống **cell code cuối cùng**, bắt đầu bằng
+`from kaggle_secrets import UserSecretsClient` và kết thúc bằng
+`!python backend/kaggle_worker.py`. **Chỉ bấm nút chạy của cell cuối; tuyệt đối
+không bấm Run All**, vì Run All sẽ chạy lại toàn bộ EXP-005. Để tab mở suốt
+buổi; cell cuối phải tiếp tục chạy để phục vụ hàng đợi.
 
-> Notebook phải hiển thị `audio: 0` và xác minh worker SHA-256 bắt đầu bằng
-> `decc5f5d`. Nếu khác, dừng; không sửa hash để ép chạy một bundle mới.
+> Cell phải hiển thị `audio: 0`, rồi `OK backend/kaggle_worker.py` và
+> `OK backend/requirements-kaggle.txt`. Hash worker trong cell phải bắt đầu bằng
+> `decc5f5d`. Nếu khác hoặc cell kết thúc ngay, dừng; không sửa hash để ép chạy
+> một bundle mới.
 
 ### B7. Hâm nóng model LLM (25 giây)
 

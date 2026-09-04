@@ -102,10 +102,15 @@ The API/database work through S-16 is present. The remaining critical path is:
    and `_test/screenshots/s14-playback.png`. This ran on the pre-015 path.
 3. **S-15 (MIG-015): complete.** Migration live and verified, and project
    `46b6d55d…` completed on 2026-09-02 with both canonical objects present.
-   The worker now runs from a notebook on the S0ra1n0 Kaggle account, rebuilt
-   from `_test/cretona-kaggle-worker.ipynb`.
+   The final-demo worker cell is in the private
+   `bruce335/cretona-wan2-1` notebook and is rebuilt from
+   `_test/cretona-kaggle-worker.ipynb`.
+   On 2026-09-04 its saved draft was inspected with audio disabled, the proven
+   `decc5f5d…` worker hash, exact-hash selection across the two attached
+   historical datasets and the continuous worker command. That draft has not
+   been GPU-rerun; the final-session run remains the live check.
 4. **S-17:** the non-device evidence and canonical docs are reconciled through
-   2026-09-02. Append the post-015 live worker result when that run exists.
+   2026-09-04. Append the 2026-09-05 final-session result after that run.
 5. **S-18:** the bootstrap-from-empty half is **closed** — `test_fresh_bootstrap.py`
    replays the real `bootstrap.sql`, migrations 002–015 and
    `seed_credits_and_events.sql` against an empty PostgreSQL 17.6 and asserts the

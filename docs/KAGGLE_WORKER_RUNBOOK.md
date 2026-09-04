@@ -100,6 +100,10 @@ Never add `service_role` or the backend database administrator URL to Kaggle.
 Use a private Kaggle notebook with Internet and a 2×T4 accelerator. Add these
 cells after enabling the five secrets:
 
+The current `bruce335/cretona-wan2-1` notebook also retains the historical
+EXP-005 experiment. For the final demo, run only its last worker cell; do not
+use **Run All**.
+
 ```python
 from kaggle_secrets import UserSecretsClient
 import os
@@ -139,14 +143,27 @@ expected = {
 }
 root = Path("/kaggle/working/Cretona")
 for relative, expected_sha256 in expected.items():
-    matches = list(Path("/kaggle/input").rglob(relative))
-    assert len(matches) == 1, matches
+    candidates = list(Path("/kaggle/input").rglob(relative))
+    matches = [
+        path for path in candidates
+        if hashlib.sha256(path.read_bytes()).hexdigest() == expected_sha256
+    ]
+    assert len(matches) == 1, {
+        "relative": relative,
+        "candidateCount": len(candidates),
+        "matchingCount": len(matches),
+    }
     source = matches[0]
-    assert hashlib.sha256(source.read_bytes()).hexdigest() == expected_sha256
     destination = root / relative
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, destination)
+    print("OK", relative)
 ```
+
+This hash-first selection is deliberate: the notebook may have older worker
+datasets attached with the same relative filenames. It accepts exactly one
+copy of each proven file and fails closed if the accepted artifact is missing
+or duplicated.
 
 Run the cheap no-job connection smoke before installing the model stack:
 
