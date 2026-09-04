@@ -190,3 +190,169 @@ def test_add_audio_reports_false_when_mmaudio_is_absent(tmp_path: Path, monkeypa
     # Returns rather than raises, and leaves the clip untouched.
     assert kaggle_worker.add_audio(clip, "a paper dragon", 4) is False
     assert clip.read_bytes() == b"video" * 300
+
+
+# --- muxing instead of accepting MMAudio's re-encode -------------------------
+#
+# MMAudio composites by re-encoding the picture. Measured on two real worker
+# jobs (docs/evidence/EXP006_FIRST_AUDIO_JOBS_2026-09-03.md), a 405,459 B clip
+# came back at 2.9-5.1 MB while the soundtrack itself was about 64 KB. The
+# worker therefore keeps MMAudio's audio and Wan2.1's original picture.
+
+SILENT_CLIP = b"wan21-picture" * 200
+MMAUDIO_CLIP = b"mmaudio-reencoded-picture-and-sound" * 400
+MUXED_CLIP = b"original-picture-plus-sound" * 100
+
+
+def _mmaudio_repo(tmp_path: Path, monkeypatch) -> Path:
+    repo = tmp_path / "MMAudio"
+    repo.mkdir()
+    (repo / "demo.py").write_text("# stand-in for MMAudio\n", encoding="utf-8")
+    monkeypatch.setenv("CRETONA_MMAUDIO_DIR", str(repo))
+    monkeypatch.setattr(kaggle_worker, "_ffmpeg_executable", lambda: "ffmpeg")
+    return repo
+
+
+def _stub_subprocess(monkeypatch, repo: Path, *, mux_succeeds: bool) -> list[list[str]]:
+    """Answer for both subprocess calls and record the argv of each."""
+    seen: list[list[str]] = []
+
+    class Completed:
+        def __init__(self, returncode: int) -> None:
+            self.returncode = returncode
+            self.stdout = ""
+            self.stderr = "" if returncode == 0 else "stream mapping failed"
+
+    def fake_run(args, **_kwargs):
+        argv = [str(a) for a in args]
+        seen.append(argv)
+        if any(a.endswith("demo.py") for a in argv):
+            produced = repo / "output" / "clip.mp4"
+            produced.parent.mkdir(parents=True, exist_ok=True)
+            produced.write_bytes(MMAUDIO_CLIP)
+            return Completed(0)
+        if not mux_succeeds:
+            return Completed(1)
+        Path(argv[-1]).write_bytes(MUXED_CLIP)
+        return Completed(0)
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    return seen
+
+
+def test_the_soundtrack_is_muxed_onto_the_original_picture(tmp_path: Path, monkeypatch) -> None:
+    repo = _mmaudio_repo(tmp_path, monkeypatch)
+    _stub_subprocess(monkeypatch, repo, mux_succeeds=True)
+    clip = tmp_path / "video.mp4"
+    clip.write_bytes(SILENT_CLIP)
+
+    assert kaggle_worker.add_audio(clip, "a paper dragon", 4) is True
+
+    # The clip that ships is the mux, not the file MMAudio re-encoded.
+    assert clip.read_bytes() == MUXED_CLIP
+    assert not (repo / "output" / "clip.mp4").exists()
+    assert not (tmp_path / "video.mp4.mux.mp4").exists()
+
+
+def test_the_mux_copies_both_streams_rather_than_re_encoding(tmp_path: Path, monkeypatch) -> None:
+    """This is the whole point of the step, so it is asserted rather than assumed.
+
+    Re-encoding here would spend seven times the bitrate to preserve the
+    artefacts of the first encode. `-c:v copy` is what keeps the picture
+    identical to what Wan2.1 wrote, and `-c:a copy` avoids a second lossy pass
+    over sound that is already AAC.
+    """
+    repo = _mmaudio_repo(tmp_path, monkeypatch)
+    calls = _stub_subprocess(monkeypatch, repo, mux_succeeds=True)
+    clip = tmp_path / "video.mp4"
+    clip.write_bytes(SILENT_CLIP)
+
+    kaggle_worker.add_audio(clip, "a paper dragon", 4)
+
+    ffmpeg = next(argv for argv in calls if argv[0] == "ffmpeg")
+    assert "-c:v" in ffmpeg and ffmpeg[ffmpeg.index("-c:v") + 1] == "copy"
+    assert "-c:a" in ffmpeg and ffmpeg[ffmpeg.index("-c:a") + 1] == "copy"
+    # Picture from the untouched original, sound from MMAudio's composite.
+    assert ffmpeg[ffmpeg.index("-map") + 1] == "0:v:0"
+    assert ffmpeg[ffmpeg.index("-map", ffmpeg.index("-map") + 1) + 1] == "1:a:0"
+    # The index belongs at the front for progressive playback over a tunnel.
+    assert ffmpeg[ffmpeg.index("-movflags") + 1] == "+faststart"
+    # `-shortest` looks harmless next to two streams of near-equal length and
+    # is not: MMAudio returns 4.040 s of sound for a 4.0625 s clip, and asking
+    # ffmpeg to reconcile that cost four frames of picture -- 65 became 61 on
+    # a real worker clip. The video is what the project is graded on.
+    assert "-shortest" not in ffmpeg
+
+
+def test_a_failed_mux_keeps_the_soundtrack_rather_than_the_original(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Falling back costs file size; falling back to silence would cost the feature.
+
+    By the time the mux runs, the soundtrack has already cost about three
+    minutes of GPU time. A bigger clip that plays with sound is worth more than
+    a smaller one that plays without it.
+    """
+    repo = _mmaudio_repo(tmp_path, monkeypatch)
+    _stub_subprocess(monkeypatch, repo, mux_succeeds=False)
+    clip = tmp_path / "video.mp4"
+    clip.write_bytes(SILENT_CLIP)
+
+    assert kaggle_worker.add_audio(clip, "a paper dragon", 4) is True
+
+    assert clip.read_bytes() == MMAUDIO_CLIP
+    assert not (tmp_path / "video.mp4.mux.mp4").exists()
+
+
+def test_the_mux_is_skipped_when_no_ffmpeg_exists(tmp_path: Path, monkeypatch) -> None:
+    repo = _mmaudio_repo(tmp_path, monkeypatch)
+    monkeypatch.setattr(kaggle_worker, "_ffmpeg_executable", lambda: None)
+    calls = _stub_subprocess(monkeypatch, repo, mux_succeeds=True)
+    clip = tmp_path / "video.mp4"
+    clip.write_bytes(SILENT_CLIP)
+
+    assert kaggle_worker.add_audio(clip, "a paper dragon", 4) is True
+
+    # MMAudio ran, ffmpeg never did, and the clip still has sound.
+    assert [argv[0] for argv in calls if argv[0] == "ffmpeg"] == []
+    assert clip.read_bytes() == MMAUDIO_CLIP
+
+
+def test_mux_audio_removes_a_partial_file_when_ffmpeg_fails(tmp_path: Path, monkeypatch) -> None:
+    """A half-written container must not be mistaken for a finished clip."""
+    monkeypatch.setattr(kaggle_worker, "_ffmpeg_executable", lambda: "ffmpeg")
+    destination = tmp_path / "out.mp4"
+
+    class Completed:
+        returncode = 3
+        stdout = ""
+        stderr = "Invalid data found when processing input"
+
+    def fake_run(args, **_kwargs):
+        Path(str(args[-1])).write_bytes(b"truncated")
+        return Completed()
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+
+    assert kaggle_worker.mux_audio(tmp_path / "a.mp4", tmp_path / "b.mp4", destination) is False
+    assert not destination.exists()
+
+
+def test_mux_audio_rejects_an_empty_result(tmp_path: Path, monkeypatch) -> None:
+    """ffmpeg can exit 0 having written nothing usable; size is the second check."""
+    monkeypatch.setattr(kaggle_worker, "_ffmpeg_executable", lambda: "ffmpeg")
+    destination = tmp_path / "out.mp4"
+
+    class Completed:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_run(args, **_kwargs):
+        Path(str(args[-1])).write_bytes(b"tiny")
+        return Completed()
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+
+    assert kaggle_worker.mux_audio(tmp_path / "a.mp4", tmp_path / "b.mp4", destination) is False
+    assert not destination.exists()

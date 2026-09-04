@@ -52,6 +52,10 @@ AUDIO_NEGATIVE_PROMPT = "music, soundtrack, speech, voice, narration, singing, s
 # improvement is untested -- revisit only if the time ever needs winning back.
 AUDIO_STEPS = 50
 AUDIO_CFG_STRENGTH = 6.0
+# A stream copy of a four-second clip finishes in well under a second; this
+# only has to be long enough that a busy Kaggle box is never the reason a
+# soundtrack is thrown away.
+AUDIO_MUX_TIMEOUT_SECONDS = 120
 GUIDANCE_SCALE = 5.0
 LEASE_SECONDS = 180
 HEARTBEAT_SECONDS = 45
@@ -579,6 +583,98 @@ def audio_enabled() -> bool:
     return os.environ.get(AUDIO_ENV_VAR, "").strip().lower() in {"1", "true", "yes"}
 
 
+def _ffmpeg_executable() -> str | None:
+    """Find an ffmpeg binary without adding a dependency.
+
+    `imageio-ffmpeg` is already pinned in `requirements-kaggle.txt` because
+    `export_to_video` needs it, and it ships its own binary, so muxing costs
+    nothing new. `shutil.which` covers a host that has ffmpeg on PATH instead.
+    """
+    import shutil
+
+    try:
+        import imageio_ffmpeg
+
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        return shutil.which("ffmpeg")
+
+
+def mux_audio(silent: Path, composited: Path, destination: Path) -> bool:
+    """Put `silent`'s picture and `composited`'s soundtrack in one container.
+
+    Both streams are **copied**, never re-encoded, so this is a repackaging
+    step rather than a conversion. Returns whether `destination` is now a
+    usable clip; on any failure it removes the partial file and reports False,
+    leaving the caller free to keep what MMAudio produced.
+
+    `+faststart` moves the index to the front of the file. Playback happens
+    over a signed URL through a tunnel, where a player that has to fetch the
+    tail before it can start is a visible delay.
+    """
+    import subprocess
+
+    ffmpeg = _ffmpeg_executable()
+    if ffmpeg is None:
+        logger.warning("Mux skipped: no ffmpeg binary is available")
+        return False
+
+    destination.unlink(missing_ok=True)
+    try:
+        completed = subprocess.run(
+            [
+                ffmpeg,
+                "-nostdin",
+                "-y",
+                "-i",
+                str(silent),
+                "-i",
+                str(composited),
+                "-map",
+                "0:v:0",
+                "-map",
+                "1:a:0",
+                "-c:v",
+                "copy",
+                "-c:a",
+                "copy",
+                # No `-shortest`. MMAudio returns 4.040 s of sound for a
+                # 4.0625 s clip, and `-shortest` answered that mismatch by
+                # dropping four frames -- 65 became 61, measured. The picture
+                # is the graded artefact and the soundtrack sits on top of it,
+                # so a slightly short track is the right thing to tolerate.
+                "-movflags",
+                "+faststart",
+                str(destination),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=AUDIO_MUX_TIMEOUT_SECONDS,
+        )
+    except Exception as exc:
+        logger.warning("Mux skipped: %s", type(exc).__name__)
+        destination.unlink(missing_ok=True)
+        return False
+
+    if completed.returncode != 0:
+        # `-map 1:a:0` fails loudly when MMAudio produced no audio stream,
+        # which is the case worth distinguishing from a broken binary.
+        logger.warning(
+            "Mux skipped: ffmpeg exited %s: %s",
+            completed.returncode,
+            (completed.stderr or "").strip()[-300:],
+        )
+        destination.unlink(missing_ok=True)
+        return False
+
+    if not destination.is_file() or destination.stat().st_size <= 1024:
+        logger.warning("Mux skipped: ffmpeg wrote no usable file")
+        destination.unlink(missing_ok=True)
+        return False
+
+    return True
+
+
 def add_audio(video: Path, prompt: str, duration_seconds: int) -> bool:
     """Generate a soundtrack for `video` and replace it in place. Best effort.
 
@@ -652,11 +748,33 @@ def add_audio(video: Path, prompt: str, duration_seconds: int) -> bool:
         logger.warning("Audio skipped: MMAudio output was empty")
         return False
 
+    # MMAudio re-encodes the picture when it composites, at roughly seven times
+    # the bitrate Wan2.1 wrote: a 405,459 B clip came back between 2.9 and
+    # 5.1 MB, of which the soundtrack was about 64 KB. A second encode cannot
+    # restore detail the first one discarded, so copying both streams into a
+    # fresh container keeps the sound, keeps the original picture, and drops
+    # the file by roughly an order of magnitude. Measurements:
+    # docs/evidence/EXP006_FIRST_AUDIO_JOBS_2026-09-03.md.
+    #
     # Replace only once the replacement is known good, so a truncated write
     # cannot cost the clip that already generated successfully.
-    shutil.copyfile(newest, video)
+    composited_bytes = newest.stat().st_size
+    muxed = video.with_name(video.name + ".mux.mp4")
+    if mux_audio(video, newest, muxed):
+        muxed_bytes = muxed.stat().st_size
+        muxed.replace(video)
+        logger.info(
+            "Audio muxed without re-encoding: %s B rather than MMAudio's %s B",
+            muxed_bytes,
+            composited_bytes,
+        )
+    else:
+        # A larger clip that plays beats a smaller one that is silent, so a
+        # failed mux falls back to what MMAudio produced rather than dropping
+        # the soundtrack that just cost three minutes of GPU time.
+        logger.warning("Mux unavailable; keeping MMAudio's re-encoded clip")
+        shutil.copyfile(newest, video)
     newest.unlink(missing_ok=True)
-    logger.info("Audio added to project video")
     return True
 
 
