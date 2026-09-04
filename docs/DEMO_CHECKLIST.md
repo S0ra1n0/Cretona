@@ -50,7 +50,7 @@ xuống PHẦN B.
 | Đặt mật khẩu DB role `cretona_kaggle_worker` | ✅ `ALTER ROLE` thành công |
 | Ghép chuỗi kết nối session pooler | ✅ Kết nối được từ máy local |
 | Notebook worker trên tài khoản Kaggle của Bruce | ✅ `bruce335/cretona-wan2-1` |
-| Upload bundle `STEPS=25` + sửa hash | ✅ `decc5f5d…` |
+| Upload bundle `STEPS=25` + sửa hash | ✅ `decc5f5d…` (đã thay bằng bundle audio, xem B6) |
 | Nhập 5 Kaggle Secrets | ✅ Cả 5 `Attached` |
 | **Chạy 1 job thật** | ✅ **28,5 phút, hoàn tất** |
 | **Thumbnail MIG-015** | ✅ **JPEG 40.696 B vào bucket `uploads`** |
@@ -85,9 +85,14 @@ Android: **129 test, 0 fail** (trước là 126).
 
 ### Đóng băng cho buổi 05/09
 
-- Giữ `STEPS = 25` và worker SHA-256 `decc5f5d…`; không đổi bundle đã chạy live.
-- Không bật audio và không chuyển sang Wan2.2. Hai hướng đó chưa có live E2E và
-  không phải yêu cầu của đồ án.
+- Giữ `STEPS = 25` và worker SHA-256 `04d3e70b…` — bản có audio. Hai job thật
+  đã chạy hết đường ống với bản này ngày 03/09
+  ([bằng chứng](evidence/EXP006_FIRST_AUDIO_JOBS_2026-09-03.md)); không đổi
+  bundle nữa.
+- Không chuyển sang Wan2.2. EXP-007 chưa từng chạy trên GPU thật.
+- Clip có audio nặng 2,9–5,1 MB thay vì ~0,4 MB. Qua tunnel Cloudflare thì
+  video sẽ mất thêm vài giây mới bắt đầu phát — đó là hành vi đã biết, không
+  phải lỗi.
 - Chất lượng 25 bước chưa được chấm đối chiếu với 50 bước; mô tả đúng là
   **demo-adequate, quality unverified**.
 
@@ -211,21 +216,30 @@ Cuộn xuống **cell code cuối cùng**, bắt đầu bằng
 không bấm Run All**, vì Run All sẽ chạy lại toàn bộ EXP-005. Để tab mở suốt
 buổi; cell cuối phải tiếp tục chạy để phục vụ hàng đợi.
 
-> Cell phải hiển thị `audio: 0`, rồi `OK backend/kaggle_worker.py` và
+> **Dataset phải có `cretona-kaggle-worker-AUDIO.zip`.** Cell lọc ứng viên
+> theo hash, nên nếu chỉ attach bundle silent cũ thì nó dừng với
+> `matchingCount: 0` — đó là hành vi đúng. File nằm ở
+> **[GỐC]**`\_test\cretona-kaggle-worker-AUDIO.zip`.
+>
+> Cell phải hiển thị `audio: 1`, rồi `OK backend/kaggle_worker.py` và
 > `OK backend/requirements-kaggle.txt`. Hash worker trong cell phải bắt đầu bằng
-> `decc5f5d`. Nếu khác hoặc cell kết thúc ngay, dừng; không sửa hash để ép chạy
-> một bundle mới.
+> `04d3e70b`. Nếu khác hoặc cell kết thúc ngay, dừng; không sửa hash để ép chạy
+> một bundle khác.
 
 ### B7. Hâm nóng model LLM (25 giây)
 
 **[BẤT KỲ]**
 
 ```powershell
-Invoke-RestMethod -Uri http://127.0.0.1:11434/api/generate -Method Post -ContentType 'application/json' -Body (@{ model='qwen3:4b-instruct-2507-q4_K_M'; prompt='warm'; stream=$false; keep_alive='4h'; options=@{ num_predict=8 } } | ConvertTo-Json) -TimeoutSec 180 | Out-Null; (Invoke-RestMethod http://127.0.0.1:11434/api/ps).models.name
+Invoke-RestMethod -Uri http://127.0.0.1:11434/api/generate -Method Post -ContentType 'application/json' -Body (@{ model='qwen3.5:2b'; prompt='warm'; stream=$false; keep_alive='4h'; options=@{ num_predict=8 } } | ConvertTo-Json) -TimeoutSec 180 | Out-Null; (Invoke-RestMethod http://127.0.0.1:11434/api/ps).models.name
 ```
 
-In ra `qwen3:4b-instruct-2507-q4_K_M` là xong — đây là model mặc định trong
-backend. Trước khi khởi động B2, `backend/.env` phải đặt
+In ra `qwen3.5:2b` là xong. Đây là model **máy này** thực sự chạy:
+`backend/.env` đặt `CRETONA_OLLAMA_MODEL=qwen3.5:2b`, đè lên giá trị mặc định
+`qwen3:4b-instruct-2507-q4_K_M` trong `config.py`. Đừng warm model mặc định đó
+— máy này chưa pull nó về, Ollama sẽ trả `model not found`.
+
+Trước khi khởi động B2, `backend/.env` phải đặt
 `CRETONA_PROMPT_LLM_PROVIDER=ollama`; nếu là `deterministic`, Enhance đang dùng
 fallback có nhãn chứ không phải LLM thật.
 
@@ -267,7 +281,7 @@ cloudflared chết → quay lại B3, lấy URL mới, rồi B4 → B5.
 (Invoke-RestMethod http://127.0.0.1:11434/api/ps).models.name
 ```
 
-Phải thấy `qwen3:4b-instruct-2507-q4_K_M`. Trống → chạy lại B7.
+Phải thấy `qwen3.5:2b`. Trống → chạy lại B7.
 
 **3. Worker Kaggle còn chạy?**
 

@@ -10,7 +10,9 @@ The model is `Wan-AI/Wan2.1-T2V-1.3B-Diffusers` at revision
 post-MIG-015 4-second job completed in 28.5 minutes, including the model
 download; another live 25-step job completed in 25.9 minutes end to end. A
 clean warm-cache measurement does not exist. The worker is not an always-on
-service, and the final-demo path produces silent video.
+service. The final-demo path produces video **with an MMAudio soundtrack**;
+the checkpoints are CC-BY-NC 4.0, which permits this coursework and forbids
+commercial use.
 
 > **Live checkpoint, 2026-09-02:** migrations 014 and 015 are present on the
 > Cretona Supabase project and their read-only verification passed.
@@ -120,7 +122,7 @@ for name in (
 ```
 
 The repository is private. Do not add a GitHub token to Kaggle. The final demo
-uses the already uploaded, secret-free `cretona-kaggle-worker-STEPS25.zip`
+uses the already uploaded, secret-free `cretona-kaggle-worker-AUDIO.zip`
 containing exactly
 `backend/kaggle_worker.py` and `backend/requirements-kaggle.txt`; record its
 revision, bundle SHA-256 and both file SHA-256 values, then upload it as a
@@ -134,10 +136,10 @@ import shutil
 from pathlib import Path
 
 expected = {
-    # Revision voi STEPS = 25. Hash tinh tren dang LF (blob git), khong phai
-    # file CRLF trong working tree tren Windows.
+    # Revision voi STEPS = 25 va audio. Hash tinh tren dang LF (blob git),
+    # khong phai file CRLF trong working tree tren Windows.
     "backend/kaggle_worker.py":
-        "decc5f5ddddfc0af515ee3cce045e1ce97742af854303afa4c24bba2d97e3823",
+        "04d3e70b78cd8a90c52644ac7d69e45ce75c58a98c95d52345bc0a9ad47c82ea",
     "backend/requirements-kaggle.txt":
         "46263bf0527742dde0d98a5da163afc1646a53b5f6de545ad3e94da43c99c669",
 }
@@ -232,5 +234,10 @@ Source tests can prove queue ownership, lease renewal, path construction,
 write-back and refund behavior. Only the live steps above prove that Kaggle can
 authenticate, download weights, generate an MP4, upload it, and that Android
 can play the signed result. That proof passed for the exact `decc5f5d…`
-silent-video bundle. A different worker hash, enabled audio, or Wan2.2 remains
-unaccepted until its own full run passes.
+silent-video bundle on 2026-09-02, and for the `04d3e70b…` audio bundle on
+2026-09-03, where two jobs generated, composited an audible track, uploaded
+both objects and completed
+([evidence](evidence/EXP006_FIRST_AUDIO_JOBS_2026-09-03.md)). The audio record
+covers the worker and Storage halves; **Android playback of an audio clip was
+not separately captured**. Wan2.2 remains unaccepted until its own full run
+passes.

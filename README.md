@@ -32,9 +32,9 @@ is pinned Wan2.1 T2V 1.3B on free Kaggle compute. Four experiment clips were
 generated and reviewed as demo-adequate, with direction and camera-motion
 limitations recorded. A real Android-submitted job completed through the live
 worker, reached private Storage, and played in Android on 2026-09-01. The
-final-demo release remains the proven silent-video Wan2.1 bundle. Experimental
-MMAudio output is opt-in and Wan2.2 image-to-video has not been run; neither is
-part of the accepted release.
+final-demo release is the `STEPS = 25` Wan2.1 bundle with MMAudio enabled: two
+real jobs completed with an audible AAC track on 2026-09-03. Wan2.2
+image-to-video has not been run and is not part of the accepted release.
 
 Migration 015 requires every worker completion to upload both `video.mp4` and
 `thumbnail.jpg`. A post-migration job completed on 2026-09-02 with both

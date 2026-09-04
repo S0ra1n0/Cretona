@@ -103,8 +103,16 @@ playback starts over a tunnel. A re-encode pass remains worth doing.
 
 ## Bearing on the final-demo notebook
 
-`_test/cretona-kaggle-worker.ipynb` currently pins the silent `decc5f5d…`
+`_test/cretona-kaggle-worker.ipynb` briefly pinned the silent `decc5f5d…`
 worker with `ENABLE_AUDIO = False`, on the stated grounds that a real audio
-worker job had not run. **That premise is superseded by this record**; whether
-to enable audio for the 2026-09-05 session is now a scope and risk decision
-rather than a question of evidence.
+worker job had not run. This record supersedes that premise, and on 2026-09-05
+the notebook was moved to the `04d3e70b…` audio bundle with
+`ENABLE_AUDIO = True`.
+
+The two knobs are not independent. The silent worker contains no audio code and
+ignores `CRETONA_WORKER_AUDIO` entirely, so setting the flag against the silent
+hash downloads MMAudio and still produces a silent clip **with no error**. The
+flag and the bundle hash move together or not at all.
+
+`cretona-kaggle-worker-STEPS25.zip` (`decc5f5d…`) remains the fallback if audio
+misbehaves during the session.

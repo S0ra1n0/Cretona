@@ -65,9 +65,9 @@ dùng IP LAN.
 
 Worker Kaggle: mở notebook riêng
 [`bruce335/cretona-wan2-1`](https://www.kaggle.com/code/bruce335/cretona-wan2-1/edit),
-giữ `ENABLE_AUDIO = False`, verify bundle `cretona-kaggle-worker-STEPS25.zip`
+giữ `ENABLE_AUDIO = True`, verify bundle `cretona-kaggle-worker-AUDIO.zip`
 với worker SHA-256
-`decc5f5ddddfc0af515ee3cce045e1ce97742af854303afa4c24bba2d97e3823`, rồi
+`04d3e70b78cd8a90c52644ac7d69e45ce75c58a98c95d52345bc0a9ad47c82ea`, rồi
 **chỉ chạy cell cuối cùng**. Không dùng **Run All** vì notebook còn giữ các cell
 EXP-005 lịch sử. Cell cuối kết thúc bằng lệnh không có `--once` để phục vụ cả
 hàng đợi:

@@ -10,9 +10,11 @@
 - **Detailed tickets:** [TASK-SPLIT-2026-08-28.md](TASK-SPLIT-2026-08-28.md)
 - **Release-candidate baseline verified in CI:**
   `66ae548a18ce65dadebc8559e1a171cd593b5e34`
-- **Final-demo worker:** the proven `STEPS = 25` silent-video build, worker
-  SHA-256 `decc5f5d…`; full hashes are in section 7. The committed notebook
-  pins this artifact and keeps experimental audio disabled.
+- **Final-demo worker:** the `STEPS = 25` build **with MMAudio enabled**,
+  worker SHA-256 `04d3e70b…`; full hashes are in section 7. Two real jobs
+  completed on it on 2026-09-03
+  ([evidence](evidence/EXP006_FIRST_AUDIO_JOBS_2026-09-03.md)). The committed
+  notebook pins this artifact and sets `ENABLE_AUDIO = True`.
 - **Hosted CI evidence:** [run 33882650865](https://github.com/S0ra1n0/Cretona/actions/runs/33882650865)
   passed Android/JVM 17, FastAPI/Python 3.12 and FastAPI/PostgreSQL 17 parity at
   the hosted-CI baseline
@@ -40,9 +42,10 @@ development identity and the fake provider support credential-free local tests.
 
 The AI responsibilities are deliberately separate:
 
-- prompt enhancement uses a text LLM through FastAPI; the configured local
-  model is `qwen3:4b-instruct-2507-q4_K_M`, with a labelled deterministic
-  fallback when Ollama is unavailable;
+- prompt enhancement uses a text LLM through FastAPI; `config.py` defaults to
+  `qwen3:4b-instruct-2507-q4_K_M` and the demo machine overrides it to
+  `qwen3.5:2b` in `backend/.env`, with a labelled deterministic fallback when
+  Ollama is unavailable;
 - video generation is provider-neutral in Android and FastAPI;
 - `fake` is deterministic test/demo output;
 - `real` and `local` are image-plus-motion placeholders, not evidence of a
@@ -62,7 +65,7 @@ The AI responsibilities are deliberately separate:
 | Credits, payments, events and refund ledger | Complete in SQLite/Postgres adapters; migration `013` and seed exist | The 626-test PostgreSQL run covers charge, per-attempt refund and worker failure parity; migration 013 has historical live probes | Live state is not re-verified by the hosted database |
 | Android user journeys | B-01 through B-07 source-complete; real repositories are bound | Gate rerun 2026-09-03 at `8c77b6f`: **129 unit tests**, 0 failures; debug APK built and installed on the `Pixel_10_Pro` emulator against the live backend | Emulator journeys captured; see the definition of done |
 | Android admin console | B-08 through B-13 source-complete against real endpoints | Included in the final compile/test/lint gate | Emulator acceptance, light/dark screenshots and live-endpoint walkthrough |
-| Prompt LLM | Qwen/Ollama adapter plus explicit fallback implemented | Local backend adapter rerun 2026-09-04 selected `qwen3:4b-instruct-2507-q4_K_M` with `provider=ollama`, `usedFallback=false` | Repeat through the authenticated HTTP endpoint during the live demo |
+| Prompt LLM | Qwen/Ollama adapter plus explicit fallback implemented | Local backend adapter rerun 2026-09-04 selected `qwen3:4b-instruct-2507-q4_K_M` with `provider=ollama`, `usedFallback=false`. **That was a different machine**: the demo host has only `qwen3.5:2b`, `qwen3:4b` and `qwen3:1.7b` pulled, and its `.env` selects `qwen3.5:2b` | Repeat through the authenticated HTTP endpoint during the live demo |
 | Free generative video | Wan2.1 T2V 1.3B two-phase Kaggle notebook proven to generate | 4/4 distinct 832×480, 81-frame clips; mean 48.6 min/clip on 2×T4 | Reviewed 2026-09-02: **demo-adequate, quality unverified**. The two-reviewer blind protocol was descoped and no numeric score is claimed. Direction and camera motion are ignored in all four clips, so demo prompts must not depend on either (section 5) |
 | Real video in the app | External `kaggle` provider, least-privilege worker, lease heartbeat, Storage upload and atomic completion/refund exist in source | **S-14 accepted 2026-09-01:** an Android-submitted job completed through the worker; the MP4 is in Storage and parses as avc1 832x480, 65 frames, 4.06 s, and it played in the app. See [S14_FIRST_LIVE_CLIP_2026-09-01.md](evidence/S14_FIRST_LIVE_CLIP_2026-09-01.md) | S-14 ran on the **pre-015** completion path. Migration 015 has since changed it; see the gallery-thumbnail row |
 | Gallery thumbnails (MIG-015) | Worker extracts and uploads a JPEG; completion refuses without both objects; three lease-scoped `uploads` policies | Migration live and verified read-only 2026-09-02 ([record](evidence/LIVE_SUPABASE_MIGRATION_015_2026-09-02.md)). `create_thumbnail` proven on all four real Wan2.1 clips (40–56 KB valid JPEGs). The refusal branch is covered against PostgreSQL 17.6 in both directions | **Accepted 2026-09-02.** Project `46b6d55d…` completed with `video.mp4` (405,459 B) in `videos` and `thumbnail.jpg` (40,696 B) in `uploads`; `thumbnail_path` is populated and the ledger holds exactly one −1 charge with no refund. See [MIG015_FIRST_THUMBNAIL_JOB_2026-09-02.md](evidence/MIG015_FIRST_THUMBNAIL_JOB_2026-09-02.md) |
@@ -106,10 +109,12 @@ The API/database work through S-16 is present. The remaining critical path is:
    The final-demo worker cell is in the private
    `bruce335/cretona-wan2-1` notebook and is rebuilt from
    `_test/cretona-kaggle-worker.ipynb`.
-   On 2026-09-04 its saved draft was inspected with audio disabled, the proven
-   `decc5f5d…` worker hash, exact-hash selection across the two attached
-   historical datasets and the continuous worker command. That draft has not
-   been GPU-rerun; the final-session run remains the live check.
+   On 2026-09-04 its saved draft was inspected with the proven `decc5f5d…`
+   worker hash, exact-hash selection across the two attached historical
+   datasets and the continuous worker command. On 2026-09-05 the pin moved to
+   the audio build `04d3e70b…`, which had already completed two real jobs on
+   2026-09-03. That draft has not been GPU-rerun; the final-session run remains
+   the live check.
 4. **S-17:** the non-device evidence and canonical docs are reconciled through
    2026-09-04. Append the 2026-09-05 final-session result after that run.
 5. **S-18:** the bootstrap-from-empty half is **closed** — `test_fresh_bootstrap.py`
@@ -213,9 +218,13 @@ Not run or not accepted:
 - Android rendering *this* job's thumbnail was not separately captured;
 - NFR-REL-003 (60fps during polling, download and playback) has never been
   measured either way;
-- EXP-006 proved audio generation only in isolation. A rebuilt worker bundle,
-  one real audio job, and the required scope amendment remain open; audio is
-  disabled in the final-demo notebook;
+- **audio: the runtime half is closed, the paperwork is not.** Two real jobs
+  completed with an audible AAC track on 2026-09-03
+  ([evidence](evidence/EXP006_FIRST_AUDIO_JOBS_2026-09-03.md)), and the
+  final-demo notebook now ships that bundle. Still open: `PROJECT-PROPOSAL.md`
+  lists audio mixing under explicit non-scope and the MMAudio checkpoints are
+  **CC-BY-NC 4.0**; both need recording. Android playback of an audio clip was
+  not separately captured, and the 7-12x file-size growth has no re-encode pass;
 - EXP-007's Wan2.2 image-to-video notebook is source-only and has not run on a
   real Kaggle GPU. It is stretch scope, not part of the accepted release;
 - the 2026-09-01 connectivity smoke had an empty queue and loaded no model, but
@@ -298,20 +307,29 @@ package, due 2026-09-09 rather than on the day of the demo. The partial is the e
 captured by hand. The pass/fail item — a real Wan2.1 clip
 generated on free Kaggle and played in Android — is **done and evidenced**.
 
-### Worker bundle hashes, `STEPS = 25` build
+### Worker bundle hashes, `STEPS = 25` + audio build
 
-Verify these in the notebook before copying either file. The live 2026-09-02
-job ran on exactly this bundle, and the 2026-09-05 demo stays on it:
+Verify these in the notebook before copying either file. Two live jobs on
+2026-09-03 ran on exactly this bundle, and the 2026-09-05 demo uses it:
 
 ```text
-bundle        cretona-kaggle-worker-STEPS25.zip
-worker        decc5f5ddddfc0af515ee3cce045e1ce97742af854303afa4c24bba2d97e3823
+bundle        cretona-kaggle-worker-AUDIO.zip
+worker        04d3e70b78cd8a90c52644ac7d69e45ce75c58a98c95d52345bc0a9ad47c82ea
 requirements  46263bf0527742dde0d98a5da163afc1646a53b5f6de545ad3e94da43c99c669
 ```
 
-Notebook source: `_test/cretona-kaggle-worker.ipynb`. Do not raise `STEPS`,
-replace the worker file, or enable audio before the final demo. Any such change
-creates a new artifact and requires a separate live acceptance run.
+The superseded silent build is `decc5f5d…` in
+`cretona-kaggle-worker-STEPS25.zip`; it is the fallback if audio misbehaves on
+the day, and it is what the 2026-09-02 thumbnail record was taken on.
+
+Notebook source: `_test/cretona-kaggle-worker.ipynb`. Do not raise `STEPS` or
+replace the worker file before the final demo. Either change creates a new
+artifact and requires a separate live acceptance run.
+
+The audio bundle sets `CRETONA_WORKER_AUDIO=1`; the silent one has no audio
+code at all and ignores the variable, so **the flag and the hash must move
+together**. Setting the flag against the silent hash downloads MMAudio and
+still produces a silent clip, with no error.
 
 Hashes are taken over the committed **LF** blobs, not the Windows working-tree
 files; a CRLF copy hashes differently and the notebook will reject it.
