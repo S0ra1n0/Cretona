@@ -8,11 +8,12 @@
   is a live checkpoint, not the moment the deliverables are due.
 - **Team:** Bruce — Android/admin UI · S0ra1n0 — FastAPI/database/Kaggle worker
 - **Detailed tickets:** [TASK-SPLIT-2026-08-28.md](TASK-SPLIT-2026-08-28.md)
-- **Latest green technical baseline:** `f6e1657dc5c91f2278b4debdc19e9441b136f6b8`
+- **Release-candidate baseline verified in CI:**
+  `66ae548a18ce65dadebc8559e1a171cd593b5e34`
 - **Final-demo worker:** the proven `STEPS = 25` silent-video build, worker
   SHA-256 `decc5f5d…`; full hashes are in section 7. The committed notebook
   pins this artifact and keeps experimental audio disabled.
-- **Hosted CI:** [run 33879468605](https://github.com/S0ra1n0/Cretona/actions/runs/33879468605)
+- **Hosted CI evidence:** [run 33882650865](https://github.com/S0ra1n0/Cretona/actions/runs/33882650865)
   passed Android/JVM 17, FastAPI/Python 3.12 and FastAPI/PostgreSQL 17 parity at
   the hosted-CI baseline
 - **Earlier non-device gate:** [preflight](evidence/NON_DEVICE_PREFLIGHT_2026-08-31.md)
