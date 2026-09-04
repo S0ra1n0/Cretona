@@ -18,14 +18,17 @@ mục phải đứng. Chỉ có hai loại:
 
 | Ký hiệu | Thư mục |
 |---|---|
-| **[GỐC]** | `C:\Users\M15R6\AndroidStudioProjects\Final_Plus\Cretona` |
+| **[GỐC]** | Thư mục clone chứa `gradlew`, `backend` và `app` |
 | **[BẤT KỲ]** | Đứng đâu cũng được |
 
 Mở PowerShell rồi vào thư mục gốc:
 
 ```powershell
-cd C:\Users\M15R6\AndroidStudioProjects\Final_Plus\Cretona
+$repoRoot = 'D:\1. UMT\3.5. PLUS26\Cretona'
+Set-Location -LiteralPath $repoRoot
 ```
+
+Trên máy Khoa, chỉ thay giá trị `$repoRoot` bằng đường dẫn clone của Khoa.
 
 Kiểm tra đúng chỗ chưa — phải thấy `gradlew`, `local.properties`, `backend`:
 
@@ -37,8 +40,9 @@ ls
 
 ## PHẦN A — ĐÃ XONG (2026-09-02)
 
-Toàn bộ phần A đã hoàn thành đêm 02/09. **Sáng 03/09 không cần làm lại gì ở
-đây**, đi thẳng xuống PHẦN B.
+Toàn bộ phần A là bằng chứng đã chấp nhận từ 02/09. Không áp migration, tạo lại
+worker identity hay đổi credential nếu preflight không chỉ ra lỗi; đi thẳng
+xuống PHẦN B.
 
 | Việc | Kết quả |
 |---|---|
@@ -79,12 +83,13 @@ vừa mất.
 
 Android: **129 test, 0 fail** (trước là 126).
 
-### Còn nợ, để sau buổi 03/09
+### Đóng băng cho buổi 05/09
 
-- **Nâng `STEPS` 25 → 30.** Bạn đã quyết làm sau buổi đánh giá quá trình. Tốn
-  ~35–40 phút vì phải dựng lại bundle, đổi hash, restart session và tải lại
-  22,7 GB model. Mỗi job sau đó đắt thêm ~20% (~24 phút thay vì ~20).
-- **Chất lượng 25 steps chưa đối chiếu với 50 steps.** Mới chỉ đánh giá bằng mắt.
+- Giữ `STEPS = 25` và worker SHA-256 `decc5f5d…`; không đổi bundle đã chạy live.
+- Không bật audio và không chuyển sang Wan2.2. Hai hướng đó chưa có live E2E và
+  không phải yêu cầu của đồ án.
+- Chất lượng 25 bước chưa được chấm đối chiếu với 50 bước; mô tả đúng là
+  **demo-adequate, quality unverified**.
 
 ---
 
@@ -142,8 +147,9 @@ Nó in ra URL dạng `https://xxx-yyy-zzz.trycloudflare.com`. **Chép lại URL 
 
 ### B4. Dán URL mới vào `local.properties` (30 giây)
 
-Mở file `C:\Users\M15R6\AndroidStudioProjects\Final_Plus\Cretona\local.properties`, sửa **dòng 13**.
-Giữ nguyên dấu `\` trước mỗi `:`:
+Mở file `local.properties` ngay trong **[GỐC]**, tìm khóa
+`cretona.api.baseUrl.debug` (không dựa vào số dòng) và thay URL. Giữ nguyên dấu
+`\` trước mỗi `:`:
 
 ```
 cretona.api.baseUrl.debug=https\://URL-MOI-O-DAY/api/v1/
@@ -200,17 +206,21 @@ Kiểm 2 thứ trước khi chạy, ở panel phải → **Settings**:
 
 Rồi **Run All**. Để tab mở suốt buổi.
 
-> Lần này Run All được, vì cấu hình đã kiểm chứng ở A8 tối qua.
+> Notebook phải hiển thị `audio: 0` và xác minh worker SHA-256 bắt đầu bằng
+> `decc5f5d`. Nếu khác, dừng; không sửa hash để ép chạy một bundle mới.
 
 ### B7. Hâm nóng model LLM (25 giây)
 
 **[BẤT KỲ]**
 
 ```powershell
-Invoke-RestMethod -Uri http://127.0.0.1:11434/api/generate -Method Post -ContentType 'application/json' -Body (@{ model='qwen3.5:2b'; prompt='warm'; stream=$false; keep_alive='4h'; options=@{ num_predict=8 } } | ConvertTo-Json) -TimeoutSec 180 | Out-Null; (Invoke-RestMethod http://127.0.0.1:11434/api/ps).models.name
+Invoke-RestMethod -Uri http://127.0.0.1:11434/api/generate -Method Post -ContentType 'application/json' -Body (@{ model='qwen3:4b-instruct-2507-q4_K_M'; prompt='warm'; stream=$false; keep_alive='4h'; options=@{ num_predict=8 } } | ConvertTo-Json) -TimeoutSec 180 | Out-Null; (Invoke-RestMethod http://127.0.0.1:11434/api/ps).models.name
 ```
 
-In ra `qwen3.5:2b` là xong — lệnh này vừa hâm nóng vừa xác nhận luôn.
+In ra `qwen3:4b-instruct-2507-q4_K_M` là xong — đây là model mặc định trong
+backend. Trước khi khởi động B2, `backend/.env` phải đặt
+`CRETONA_PROMPT_LLM_PROVIDER=ollama`; nếu là `deterministic`, Enhance đang dùng
+fallback có nhãn chứ không phải LLM thật.
 
 > **Đừng dùng `curl.exe` cho lệnh này.** Windows PowerShell 5.1 không gửi được
 > JSON qua `curl.exe`: viết `\"` thì nó gửi luôn cả dấu `\`, viết nháy đơn thì
@@ -250,7 +260,7 @@ cloudflared chết → quay lại B3, lấy URL mới, rồi B4 → B5.
 (Invoke-RestMethod http://127.0.0.1:11434/api/ps).models.name
 ```
 
-Phải thấy `qwen3.5:2b`. Trống → chạy lại B7.
+Phải thấy `qwen3:4b-instruct-2507-q4_K_M`. Trống → chạy lại B7.
 
 **3. Worker Kaggle còn chạy?**
 
@@ -353,13 +363,16 @@ ghi trong `DECISIONS.md`, không phải thiếu sót.
 | Kaggle xin GPU | 1–3 phút | Ước tính |
 | Kaggle `pip install` | 3–5 phút | Ước tính |
 | Kaggle nạp model Wan2.1 | 5–10 phút | Ước tính |
-| Sinh clip 4 giây @ 25 steps | ~20 phút | **Ngoại suy, chưa đo** |
+| Job 4 giây @ 25 steps, cold + tải model | 28,5 phút | Đo 2026-09-02 |
+| Job Kaggle live khác @ 25 steps | 25,9 phút end to end | Đo 2026-09-03 |
 
-### Hai thứ chưa ai kiểm chứng
+### Ranh giới chưa được nghiệm thu
 
-1. **`STEPS = 25` chưa từng chạy trên GPU thật.** Con số 20 phút là ngoại suy từ
-   một điểm đo duy nhất. Chất lượng ở 25 bước cũng chưa ai xem.
-2. **`usedFallback=false` chưa xác nhận qua API thật.** Mới chỉ chứng minh Ollama
-   trả lời đúng trong 37 giây khi gọi trực tiếp.
+1. Thời gian warm-cache chưa được đo riêng; 25,9 phút là end-to-end, không phải
+   benchmark warm được cô lập.
+2. Chất lượng 25 bước chưa được chấm số so với 50 bước.
+3. Audio chỉ qua EXP-006 cô lập; chưa có worker-to-Android E2E.
+4. Wan2.2 image-to-video EXP-007 chưa chạy trên Kaggle GPU.
 
-Bước **A5** tối nay trả lời cả hai.
+Các mục này không phải release gate. Trong buổi demo chỉ cần kiểm API Enhance
+trả `usedFallback=false` để chứng minh Qwen đang được gọi qua FastAPI.

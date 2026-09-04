@@ -6,18 +6,20 @@ FastAPI signed URL → Android Media3 playback.
 
 The model is `Wan-AI/Wan2.1-T2V-1.3B-Diffusers` at revision
 `0fad780a534b6463e45facd96134c9f345acfa5b`. It is text-to-video only, accepts
-2–5 seconds. The worker now runs **25 denoising steps** (was 50), which puts a
-4-second clip at roughly 20 minutes on the Kaggle 2×T4 host — extrapolated from
-the measured 48.6-minute, 81-frame, 50-step EXP-005 run, not yet measured
-directly. The worker is not an always-on service.
+2–5 seconds. The accepted worker runs **25 denoising steps** (was 50). A cold
+post-MIG-015 4-second job completed in 28.5 minutes, including the model
+download; another live 25-step job completed in 25.9 minutes end to end. A
+clean warm-cache measurement does not exist. The worker is not an always-on
+service, and the final-demo path produces silent video.
 
-> **Live checkpoint, 2026-09-01:** migration 014 is already present on the
-> Cretona Supabase project and `verify-014` passed in a read-only transaction.
+> **Live checkpoint, 2026-09-02:** migrations 014 and 015 are present on the
+> Cretona Supabase project and their read-only verification passed.
 > The database role has a password and exactly one Auth user is marked as a
 > worker. All five Kaggle Secrets are enabled, Supabase Auth returned 200 and
 > `kaggle_worker.py --once` reached the empty PostgreSQL claim queue and exited
-> 0. Do not reapply the migration, create duplicate identities or rotate a
-> credential without cause. Continue at section 5 for S-14. Evidence:
+> 0. Real jobs later generated an MP4, uploaded the required thumbnail, and
+> played in Android. Do not reapply a migration, create duplicate identities or
+> rotate a credential without cause. Evidence:
 > [`LIVE_SUPABASE_MIGRATION_014_2026-08-31.md`](evidence/LIVE_SUPABASE_MIGRATION_014_2026-08-31.md)
 > and [`KAGGLE_WORKER_S13_2026-09-01.md`](evidence/KAGGLE_WORKER_S13_2026-09-01.md).
 
@@ -113,8 +115,9 @@ for name in (
     os.environ[name] = secrets.get_secret(name)
 ```
 
-The repository is private. Do not add a GitHub token to Kaggle. From a reviewed
-local revision, create a secret-free ZIP containing exactly
+The repository is private. Do not add a GitHub token to Kaggle. The final demo
+uses the already uploaded, secret-free `cretona-kaggle-worker-STEPS25.zip`
+containing exactly
 `backend/kaggle_worker.py` and `backend/requirements-kaggle.txt`; record its
 revision, bundle SHA-256 and both file SHA-256 values, then upload it as a
 private notebook input. Kaggle currently exposes the automatically extracted
@@ -153,8 +156,8 @@ Run the cheap no-job connection smoke before installing the model stack:
 !python backend/kaggle_worker.py --once
 ```
 
-An empty queue should exit 0 without loading a model. For S-14, install the
-complete pinned worker dependencies:
+An empty queue should exit 0 without loading a model. For a repeat acceptance
+or demo, install the complete pinned worker dependencies:
 
 ```bash
 !python -m pip install -q -r backend/requirements-kaggle.txt
@@ -211,5 +214,6 @@ official [Storage access-control contract](https://supabase.com/docs/guides/stor
 Source tests can prove queue ownership, lease renewal, path construction,
 write-back and refund behavior. Only the live steps above prove that Kaggle can
 authenticate, download weights, generate an MP4, upload it, and that Android
-can play the signed result. Until one full run passes, report the feature as
-**source-complete, live E2E not yet accepted**—never “100% functional.”
+can play the signed result. That proof passed for the exact `decc5f5d…`
+silent-video bundle. A different worker hash, enabled audio, or Wan2.2 remains
+unaccepted until its own full run passes.

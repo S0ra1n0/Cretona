@@ -4,14 +4,14 @@ Cretona is a Mobile 1 project by Bruce and S0ra1n0 for creating short AI
 videos from text and, after the text path is proven, an optional reference
 image.
 
-The current technical baseline is `b4bf348`. GitHub Actions
-[run 33598905267](https://github.com/S0ra1n0/Cretona/actions/runs/33598905267)
+The latest green technical baseline is `f6e1657`. GitHub Actions
+[run 33879468605](https://github.com/S0ra1n0/Cretona/actions/runs/33879468605)
 builds and tests Android, exercises FastAPI against SQLite and PostgreSQL 17,
 replays the complete Supabase bootstrap plus migrations 002–015 from empty,
 audits Python dependencies, and scans the release APK for server-only
 credential markers. Live Supabase migration 015 and the matching private
-Kaggle worker bundle have also passed their guarded verification and
-empty-queue smoke.
+Kaggle worker bundle have also passed their guarded verification, generation,
+thumbnail upload, and Android playback path.
 
 ## Current integration status
 
@@ -31,7 +31,10 @@ Local Qwen3-4B has passed a real FastAPI call. The selected temporal-video path
 is pinned Wan2.1 T2V 1.3B on free Kaggle compute. Four experiment clips were
 generated and reviewed as demo-adequate, with direction and camera-motion
 limitations recorded. A real Android-submitted job completed through the live
-worker, reached private Storage, and played in Android on 2026-09-01.
+worker, reached private Storage, and played in Android on 2026-09-01. The
+final-demo release remains the proven silent-video Wan2.1 bundle. Experimental
+MMAudio output is opt-in and Wan2.2 image-to-video has not been run; neither is
+part of the accepted release.
 
 Migration 015 requires every worker completion to upload both `video.mp4` and
 `thumbnail.jpg`. A post-migration job completed on 2026-09-02 with both

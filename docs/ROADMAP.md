@@ -1,6 +1,6 @@
 # Cretona — current delivery roadmap
 
-- **Last reconciled:** 2026-09-02
+- **Last reconciled:** 2026-09-04
 - **Final demo session:** 2026-09-05 (Saturday) — live, in front of the
   reviewer, same as 2026-09-03.
 - **Submission deadline:** 2026-09-09 — source code, report and demo video
@@ -8,12 +8,11 @@
   is a live checkpoint, not the moment the deliverables are due.
 - **Team:** Bruce — Android/admin UI · S0ra1n0 — FastAPI/database/Kaggle worker
 - **Detailed tickets:** [TASK-SPLIT-2026-08-28.md](TASK-SPLIT-2026-08-28.md)
-- **Hosted-CI baseline:** `b4bf3483d99ad97961d852dc07b02b5ecfbf53ce`
-- **Local gate revision:** `8c77b6f` — pushed; hosted CI has not been checked
-  for the commits after `b4bf348`.
-- **Kaggle worker bundle:** `STEPS = 25` build, worker SHA-256 `decc5f5d…`;
-  hashes in section 7. Notebook source is `_test/cretona-kaggle-worker.ipynb`
-- **Hosted CI:** [run 33598905267](https://github.com/S0ra1n0/Cretona/actions/runs/33598905267)
+- **Latest green technical baseline:** `f6e1657dc5c91f2278b4debdc19e9441b136f6b8`
+- **Final-demo worker:** the proven `STEPS = 25` silent-video build, worker
+  SHA-256 `decc5f5d…`; full hashes are in section 7. The committed notebook
+  pins this artifact and keeps experimental audio disabled.
+- **Hosted CI:** [run 33879468605](https://github.com/S0ra1n0/Cretona/actions/runs/33879468605)
   passed Android/JVM 17, FastAPI/Python 3.12 and FastAPI/PostgreSQL 17 parity at
   the hosted-CI baseline
 - **Earlier non-device gate:** [preflight](evidence/NON_DEVICE_PREFLIGHT_2026-08-31.md)
@@ -58,8 +57,8 @@ The AI responsibilities are deliberately separate:
 
 | Area | Implemented | Observed evidence | Remaining boundary |
 |---|---|---|---|
-| FastAPI API, auth, ownership, quotas, admin | Complete in source | Local gate 2026-09-02: **611 passed / 0 skipped** on disposable PostgreSQL 17.6, and 611 passed / 56 Postgres-only skipped on SQLite. Ruff check/format, `pip check` and `pip_audit` clean | Live deployment and real-client acceptance remain separate |
-| Credits, payments, events and refund ledger | Complete in SQLite/Postgres adapters; migration `013` and seed exist | The 611-test PostgreSQL run covers charge, per-attempt refund and worker failure parity; migration 013 has historical live probes | Live state is not re-verified by the disposable database |
+| FastAPI API, auth, ownership, quotas, admin | Complete in source | Hosted CI 2026-09-04: **626 passed / 0 skipped** on PostgreSQL 17, and 569 passed / 57 Postgres-only skipped on SQLite. Ruff check/format, `pip check` and `pip_audit` clean | Live deployment and real-client acceptance remain separate |
+| Credits, payments, events and refund ledger | Complete in SQLite/Postgres adapters; migration `013` and seed exist | The 626-test PostgreSQL run covers charge, per-attempt refund and worker failure parity; migration 013 has historical live probes | Live state is not re-verified by the hosted database |
 | Android user journeys | B-01 through B-07 source-complete; real repositories are bound | Gate rerun 2026-09-03 at `8c77b6f`: **129 unit tests**, 0 failures; debug APK built and installed on the `Pixel_10_Pro` emulator against the live backend | Emulator journeys captured; see the definition of done |
 | Android admin console | B-08 through B-13 source-complete against real endpoints | Included in the final compile/test/lint gate | Emulator acceptance, light/dark screenshots and live-endpoint walkthrough |
 | Prompt LLM | Qwen/Ollama adapter plus explicit fallback implemented | Historical live FastAPI evidence selected Qwen; not re-run in this audit | Re-run with `usedFallback=false` before the demo if Ollama is part of the demo |
@@ -148,11 +147,12 @@ already proven and the scorecard shows Wan2.1 is unacceptable.
 
 ## 6. Current verification and blockers
 
-Verified 2026-09-02/03 on this machine at `8c77b6f`, unless noted:
+Evidence accumulated 2026-09-01 through 2026-09-04; hosted source verification
+is current through `f6e1657`, unless a row says it is historical live evidence:
 
-- backend disposable-Postgres profile: **611 passed, 0 skipped** against a
-  `postgres:17.6-alpine` container, the same image hosted CI uses;
-- backend SQLite profile: 611 passed and 56 intentionally skipped. **A plain
+- backend hosted PostgreSQL profile: **626 passed, 0 skipped** against a
+  PostgreSQL 17 service;
+- backend hosted SQLite profile: 569 passed and 57 intentionally skipped. **A plain
   local `pytest` still exits 0 while skipping every Postgres-only test,
   including the fresh-bootstrap replay — a green SQLite run is not a green run**;
 - backend Ruff check/format, `pip check` and `pip_audit --local` are clean;
@@ -165,8 +165,8 @@ Verified 2026-09-02/03 on this machine at `8c77b6f`, unless noted:
   this is now an enforced CI step, not a manual one;
 - dependency workflow uses least privilege, immutable action SHAs and verified
   Gradle wrapper/distribution checksums;
-- hosted CI run 33598905267 passed all Android, SQLite-backend and
-  PostgreSQL-parity jobs at the hosted-CI baseline `b4bf348`;
+- hosted CI run 33879468605 passed all Android, SQLite-backend and
+  PostgreSQL-parity jobs at the baseline `f6e1657`;
 - the live Supabase gate ran with `transaction_read_only=on` against PostgreSQL
   17.6: migrations 006-015 are present, the worker role has no superuser,
   database, role, bypass-RLS, replication, membership or direct table power,
@@ -200,12 +200,15 @@ Not run or not accepted:
 - **a warm-cache generation time has not been measured.** The single observed
   run was cold at 28.5 minutes; the ~20-minute warm figure is extrapolation;
 - **quality at 25 steps has not been scored against 50.** The clip was judged
-  usable by eye. Raising `STEPS` to 30 is deferred until after the 09-03
-  progress review;
+  usable by eye. The accepted 25-step worker is frozen through submission;
 - Android rendering *this* job's thumbnail was not separately captured;
-- the commits after `b4bf348` have **not been confirmed green in hosted CI**;
 - NFR-REL-003 (60fps during polling, download and playback) has never been
   measured either way;
+- EXP-006 proved audio generation only in isolation. A rebuilt worker bundle,
+  one real audio job, and the required scope amendment remain open; audio is
+  disabled in the final-demo notebook;
+- EXP-007's Wan2.2 image-to-video notebook is source-only and has not run on a
+  real Kaggle GPU. It is stretch scope, not part of the accepted release;
 - the 2026-09-01 connectivity smoke had an empty queue and loaded no model, but
   a **later** run on the same day completed a real app-submitted job:
   `4ad038f6-081d-4e81-894a-01301391ed36`, `completed` at 14:11 UTC, MP4 in the
@@ -222,10 +225,10 @@ Not run or not accepted:
 - [x] User credits, events, purchase, charge and refund paths are implemented.
 - [x] Admin user, project, credits, events, packages, settings and dashboard
       paths are implemented.
-- [x] Final backend SQLite gate is green (611 passed).
-- [x] Final Postgres gate is green (611 passed, 0 skipped, PostgreSQL 17.6).
+- [x] Final backend SQLite gate is green (569 passed, 57 Postgres-only skipped).
+- [x] Final Postgres gate is green (626 passed, 0 skipped, PostgreSQL 17).
 - [x] Final Android source/build gate is green (129 tests at `8c77b6f`).
-- [x] Hosted CI is green at the hosted-CI baseline `b4bf348`.
+- [x] Hosted CI is green at the technical baseline `f6e1657`.
 - [x] Live Supabase migrations 014 **and 015** pass read-only security
       verification.
 - [x] Five Kaggle Secrets and the live Auth/empty-queue claim smoke pass, most
@@ -289,7 +292,7 @@ generated on free Kaggle and played in Android — is **done and evidenced**.
 ### Worker bundle hashes, `STEPS = 25` build
 
 Verify these in the notebook before copying either file. The live 2026-09-02
-job ran on exactly this bundle:
+job ran on exactly this bundle, and the 2026-09-05 demo stays on it:
 
 ```text
 bundle        cretona-kaggle-worker-STEPS25.zip
@@ -297,9 +300,9 @@ worker        decc5f5ddddfc0af515ee3cce045e1ce97742af854303afa4c24bba2d97e3823
 requirements  46263bf0527742dde0d98a5da163afc1646a53b5f6de545ad3e94da43c99c669
 ```
 
-Notebook source: `_test/cretona-kaggle-worker.ipynb`. Raising `STEPS` means
-rebuilding the bundle, re-uploading the dataset and re-editing the hash cell,
-which forces a session restart and a fresh ~22.7 GB model download.
+Notebook source: `_test/cretona-kaggle-worker.ipynb`. Do not raise `STEPS`,
+replace the worker file, or enable audio before the final demo. Any such change
+creates a new artifact and requires a separate live acceptance run.
 
 Hashes are taken over the committed **LF** blobs, not the Windows working-tree
 files; a CRLF copy hashes differently and the notebook will reject it.

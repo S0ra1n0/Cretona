@@ -15,8 +15,8 @@ không". Tài liệu này là kịch bản để câu thứ hai được trả l
 
 ## 1. Ràng buộc phải nói thẳng
 
-Một job Wan2.1 mất **khoảng 49 phút** trên Kaggle 2×T4 (65 frame, 4 giây; bản 3
-giây/49 frame ngắn hơn nhưng vẫn hàng chục phút). **Không thể sinh xong một
+Hai job Wan2.1 4 giây, 65 frame, 25 bước đã mất **25,9–28,5 phút end to end**
+trên Kaggle 2×T4; warm-cache chưa được đo riêng. **Không thể bảo đảm sinh xong một
 video trong một buổi demo 10–15 phút.** Bất kỳ kịch bản nào hứa điều đó sẽ hỏng
 trước mặt giám khảo.
 
@@ -63,9 +63,10 @@ dùng IP LAN.
 Ứng dụng cài trên emulator có id **`com.cretona.app.debug`** — chú ý hậu tố,
 `com.cretona.app` sẽ báo `No activities found`.
 
-Worker Kaggle: mở notebook riêng, verify hash bundle
-`cretona-kaggle-worker-a7330d06.zip`, rồi chạy **không** `--once` để nó phục vụ
-cả hàng đợi:
+Worker Kaggle: mở notebook riêng, giữ `ENABLE_AUDIO = False`, verify bundle
+`cretona-kaggle-worker-STEPS25.zip` với worker SHA-256
+`decc5f5ddddfc0af515ee3cce045e1ce97742af854303afa4c24bba2d97e3823`, rồi chạy
+**không** `--once` để nó phục vụ cả hàng đợi:
 
 ```bash
 !python backend/kaggle_worker.py
