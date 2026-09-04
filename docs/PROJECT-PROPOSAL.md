@@ -50,6 +50,9 @@ failure, and provider failure. A polished happy path alone is not sufficient.
 - Per-user history, job detail, result playback, and safe error messages.
 - Admin user list, enable/disable user, and all-job metadata list.
 - Fake provider for deterministic development and demo fallback.
+- A model-generated soundtrack on the produced clip, off unless enabled, and
+  never allowed to fail a video that generated correctly. Added
+  2026-09-05 by `DEC-014`; see [DECISIONS.md](DECISIONS.md).
 - A blind paid benchmark followed by bounded live end-to-end evidence.
 - Pre-generation cost estimate and explicit confirmation for `Premium`.
 
@@ -64,8 +67,12 @@ failure, and provider failure. A polished happy path alone is not sufficient.
 
 - Direct integrations with multiple provider-specific contracts or exposing
   arbitrary endpoint/model IDs to Android.
-- Video-to-video editing, timeline editing, transitions, captions, or audio
-  mixing.
+- Video-to-video editing, timeline editing, transitions, or captions.
+- Audio **mixing**: no track editing, levels, ducking, or user-supplied music.
+  This line originally read "or audio mixing" and was written to mean no audio
+  at all. A generated soundtrack shipped on 2026-09-05 and the line was
+  narrowed rather than reinterpreted — the change is recorded as `DEC-014`
+  rather than absorbed silently.
 - Payments, subscriptions, social feed, likes, comments, or followers.
 - Training or fine-tuning a video model.
 - Redis, RabbitMQ, Celery, Kubernetes, microservices, or GraphQL.

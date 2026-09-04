@@ -21,8 +21,8 @@ disabled and the proposal's non-scope line stands.
 | 2 | You | EXP-006 cells 2–5 on an existing clip | 25 min | ✅ **passed, 3 runs** |
 | 3 | Claude | Worker integration, flag off by default | done | ✅ **tuned to 50/6.0** |
 | 4 | You | New bundle, hashes, upload, restart | 20 min | 2 passes |
-| 5 | You | One real job with audio end to end | 35 min | 4 |
-| 6 | Claude | Amend proposal scope, SRS, roadmap | 20 min | 5 passes |
+| 5 | You | One real job with audio end to end | 35 min | ✅ **two jobs, 09-03** |
+| 6 | Claude | Amend proposal scope, SRS, roadmap | 20 min | ✅ **`DEC-014`, 09-05** |
 
 Phase 3 is already complete; see below.
 
@@ -44,13 +44,14 @@ Concretely this means audio generation is:
 - off unless `CRETONA_WORKER_AUDIO=1` is set, so an older bundle and a
   notebook that never sets the flag behave exactly as they do today.
 
-## What phase 6 must not skip
+## Phase 6, done 2026-09-05
 
-`PROJECT-PROPOSAL.md` lists audio mixing under **explicit non-scope**. If audio
-ships, that line changes and the change is recorded as a decision, with the
-CC-BY-NC checkpoint constraint written down. Shipping a feature the proposal
-says is out of scope, without amending the proposal, is worse than not shipping
-it: it reads as scope drift rather than a decision.
+`PROJECT-PROPOSAL.md` listed audio mixing under **explicit non-scope**. That
+line is now narrowed to mixing alone, the generated soundtrack is named in
+`P0`, and the change is recorded as **`DEC-014`** with the CC-BY-NC checkpoint
+constraint, the measured evidence and the measured cost. Shipping a feature the
+proposal says is out of scope, without amending the proposal, would have read
+as scope drift rather than a decision.
 
 ## Kill criteria, restated
 

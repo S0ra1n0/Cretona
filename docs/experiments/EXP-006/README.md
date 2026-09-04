@@ -6,10 +6,12 @@ still a scope decision, not a merge — see `PLAN.md` phase 6.
 
 ## Why this is an experiment and not a task
 
-`PROJECT-PROPOSAL.md` lists **audio mixing under explicit non-scope**. Shipping
-audio therefore needs a deliberate scope change, not a quiet feature. Until this
-experiment passes, the honest description of Cretona's output stays
-**"silent video"**.
+`PROJECT-PROPOSAL.md` listed **audio under explicit non-scope**, so shipping
+audio needed a deliberate scope change rather than a quiet feature. That is what
+happened: the gate passed, two real jobs shipped an audible track on 2026-09-03
+([record](../../evidence/EXP006_FIRST_AUDIO_JOBS_2026-09-03.md)), and the
+proposal was amended on 2026-09-05 as **`DEC-014`**. The ordering was the point
+— experiment, then evidence, then the scope change, in that order.
 
 ## Hypothesis
 

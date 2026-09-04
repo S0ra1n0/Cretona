@@ -87,7 +87,16 @@ stream alone runs at 5.64 Mbps against a 128 kbps audio track, so **the growth
 is the video re-encode, not the sound**.
 
 That lands on Supabase Storage, on signed-URL download, and on how quickly
-playback starts over a tunnel. A re-encode pass remains worth doing.
+playback starts over a tunnel.
+
+**Fixed in source on 2026-09-05, not yet proven on Kaggle.** `add_audio` now
+copies MMAudio's audio stream onto Wan2.1's original picture rather than
+accepting the re-encode: no stream is encoded twice. Run against these exact
+files, job A comes back at **472,018 B** — 10.8x smaller — with all 65 frames,
+the picture at its original 798 kbps, and the soundtrack bit-identical at
+−31.3 dB mean / −5.2 dB peak. That measurement was taken on a workstation. **No
+worker job has produced a muxed clip yet**, so this is verified code, not
+verified delivery.
 
 ## What this record does not establish
 
@@ -96,10 +105,10 @@ playback starts over a tunnel. A re-encode pass remains worth doing.
   survives the full worker path.
 - **Android playback of these two clips** was not separately captured.
 - **A warm-cache generation time** is still unmeasured, with or without audio.
-- **The scope amendment is still open.** `PROJECT-PROPOSAL.md` lists audio
-  mixing under explicit non-scope, and the MMAudio checkpoints are CC-BY-NC
-  4.0. Shipping audio needs that line amended and the licence recorded; see
-  `docs/experiments/EXP-006/PLAN.md` phase 6. This record closes phase 5 only.
+- **The scope amendment was open when this record was written and is now
+  closed.** `PROJECT-PROPOSAL.md` narrowed its non-scope line to audio *mixing*
+  and names the generated soundtrack in `P0`; the CC-BY-NC 4.0 checkpoint
+  constraint is recorded in `DEC-014`. Done 2026-09-05.
 
 ## Bearing on the final-demo notebook
 

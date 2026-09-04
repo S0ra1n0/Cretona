@@ -221,10 +221,11 @@ Not run or not accepted:
 - **audio: the runtime half is closed, the paperwork is not.** Two real jobs
   completed with an audible AAC track on 2026-09-03
   ([evidence](evidence/EXP006_FIRST_AUDIO_JOBS_2026-09-03.md)), and the
-  final-demo notebook now ships that bundle. Still open: `PROJECT-PROPOSAL.md`
-  lists audio mixing under explicit non-scope and the MMAudio checkpoints are
-  **CC-BY-NC 4.0**; both need recording. Android playback of an audio clip was
-  not separately captured, and the 7-12x file-size growth has no re-encode pass;
+  final-demo notebook ships that bundle, and the scope change is recorded as
+  `DEC-014` with the **CC-BY-NC 4.0** checkpoint constraint. Still open:
+  **Android playback of an audio clip has never been captured**, and the mux
+  that cuts the 7-12x file growth back to 472,018 B is in source with tests but
+  **has not run on Kaggle**;
 - EXP-007's Wan2.2 image-to-video notebook is source-only and has not run on a
   real Kaggle GPU. It is stretch scope, not part of the accepted release;
 - the 2026-09-01 connectivity smoke had an empty queue and loaded no model, but

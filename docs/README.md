@@ -8,6 +8,7 @@
 | Resume or hand off current work | [ROADMAP.md](ROADMAP.md), then [KAGGLE_WORKER_RUNBOOK.md](KAGGLE_WORKER_RUNBOOK.md) |
 | Rehearse the live demonstration | [LIVE_DEMO_RUNBOOK.md](LIVE_DEMO_RUNBOOK.md), then [DEMO_CHECKLIST.md](DEMO_CHECKLIST.md) |
 | Know what the system must do | [SRS.md](SRS.md) |
+| Know what to do next, with owners and deadlines | [TASKS-TO-2026-09-09.md](TASKS-TO-2026-09-09.md) |
 | Know what to build next | [ROADMAP.md](ROADMAP.md) |
 | Call or implement an endpoint | [API_CONTRACT.md](API_CONTRACT.md) |
 | Change the database | [DATA_MODEL.md](DATA_MODEL.md) |
