@@ -213,15 +213,45 @@ def _mmaudio_repo(tmp_path: Path, monkeypatch) -> Path:
     return repo
 
 
-def _stub_subprocess(monkeypatch, repo: Path, *, mux_succeeds: bool) -> list[list[str]]:
-    """Answer for both subprocess calls and record the argv of each."""
+MEASURED_JSON = """[Parsed_loudnorm_0 @ 000]
+{
+	"input_i" : "-29.44",
+	"input_tp" : "-6.72",
+	"input_lra" : "4.00",
+	"input_thresh" : "-39.50",
+	"output_i" : "-16.86",
+	"output_tp" : "-1.50",
+	"output_lra" : "1.70",
+	"output_thresh" : "-26.86",
+	"normalization_type" : "dynamic",
+	"target_offset" : "0.86"
+}"""
+
+
+def _is_measurement(argv: list[str]) -> bool:
+    """The analysis pass writes nothing; the mux writes a file."""
+    return "-f" in argv and argv[argv.index("-f") + 1] == "null"
+
+
+def _stub_subprocess(
+    monkeypatch,
+    repo: Path,
+    *,
+    mux_succeeds: bool,
+    measurement: str | None = MEASURED_JSON,
+) -> list[list[str]]:
+    """Answer all three subprocess calls and record the argv of each.
+
+    `measurement=None` stands for an ffmpeg that cannot report loudness, which
+    must degrade to an unnormalised mux rather than to silence.
+    """
     seen: list[list[str]] = []
 
     class Completed:
-        def __init__(self, returncode: int) -> None:
+        def __init__(self, returncode: int, stderr: str = "") -> None:
             self.returncode = returncode
             self.stdout = ""
-            self.stderr = "" if returncode == 0 else "stream mapping failed"
+            self.stderr = stderr or ("" if returncode == 0 else "stream mapping failed")
 
     def fake_run(args, **_kwargs):
         argv = [str(a) for a in args]
@@ -231,6 +261,8 @@ def _stub_subprocess(monkeypatch, repo: Path, *, mux_succeeds: bool) -> list[lis
             produced.parent.mkdir(parents=True, exist_ok=True)
             produced.write_bytes(MMAUDIO_CLIP)
             return Completed(0)
+        if _is_measurement(argv):
+            return Completed(0, measurement or "no json here")
         if not mux_succeeds:
             return Completed(1)
         Path(argv[-1]).write_bytes(MUXED_CLIP)
@@ -238,6 +270,10 @@ def _stub_subprocess(monkeypatch, repo: Path, *, mux_succeeds: bool) -> list[lis
 
     monkeypatch.setattr("subprocess.run", fake_run)
     return seen
+
+
+def _mux_call(calls: list[list[str]]) -> list[str]:
+    return next(argv for argv in calls if argv[0] == "ffmpeg" and not _is_measurement(argv))
 
 
 def test_the_soundtrack_is_muxed_onto_the_original_picture(tmp_path: Path, monkeypatch) -> None:
@@ -259,8 +295,9 @@ def test_the_mux_copies_both_streams_rather_than_re_encoding(tmp_path: Path, mon
 
     Re-encoding here would spend seven times the bitrate to preserve the
     artefacts of the first encode. `-c:v copy` is what keeps the picture
-    identical to what Wan2.1 wrote, and `-c:a copy` avoids a second lossy pass
-    over sound that is already AAC.
+    identical to what Wan2.1 wrote. The audio is the deliberate exception: it is
+    re-encoded so it can be normalised, because 64 KB of AAC costs nothing next
+    to the picture and MMAudio's level is too low to hear on a phone.
     """
     repo = _mmaudio_repo(tmp_path, monkeypatch)
     calls = _stub_subprocess(monkeypatch, repo, mux_succeeds=True)
@@ -269,9 +306,8 @@ def test_the_mux_copies_both_streams_rather_than_re_encoding(tmp_path: Path, mon
 
     kaggle_worker.add_audio(clip, "a paper dragon", 4)
 
-    ffmpeg = next(argv for argv in calls if argv[0] == "ffmpeg")
+    ffmpeg = _mux_call(calls)
     assert "-c:v" in ffmpeg and ffmpeg[ffmpeg.index("-c:v") + 1] == "copy"
-    assert "-c:a" in ffmpeg and ffmpeg[ffmpeg.index("-c:a") + 1] == "copy"
     # Picture from the untouched original, sound from MMAudio's composite.
     assert ffmpeg[ffmpeg.index("-map") + 1] == "0:v:0"
     assert ffmpeg[ffmpeg.index("-map", ffmpeg.index("-map") + 1) + 1] == "1:a:0"
@@ -356,3 +392,201 @@ def test_mux_audio_rejects_an_empty_result(tmp_path: Path, monkeypatch) -> None:
 
     assert kaggle_worker.mux_audio(tmp_path / "a.mp4", tmp_path / "b.mp4", destination) is False
     assert not destination.exists()
+
+
+# --- the prompt MMAudio actually receives ------------------------------------
+#
+# The tests above this line were written against the shape EXP-006's notebook
+# used -- subject first, style clauses after a comma -- which is not what the
+# app produces. `PromptService` emits
+#
+#     Cinematic <ratio> video of <subject>. Clear subject motion, coherent
+#     environment, smooth camera movement, natural lighting, consistent
+#     details, high visual quality, no text or watermark.
+#
+# so the subject shares a comma-clause with "Cinematic 16:9". A filter that
+# split on commas dropped that clause whole and handed MMAudio nothing but
+# boilerplate. Two real jobs shipped that way on 2026-09-05 and their audio had
+# no relationship to the picture. These cases use the real shape.
+
+WATERFALL = (
+    "Cinematic 16:9 video of Waterfall. Clear subject motion, coherent "
+    "environment, smooth camera movement, natural lighting, consistent details, "
+    "high visual quality, no text or watermark., in 8k hyperrealistic cinematic "
+    "look, ultra detailed textures, IMAX camera quality, natural depth of field"
+)
+
+
+def test_the_subject_survives_the_enhancer_template() -> None:
+    """The one word that matters is the one the old filter deleted."""
+    assert kaggle_worker.audio_prompt(WATERFALL) == "Waterfall"
+
+
+def test_the_enhancer_boilerplate_is_not_handed_to_mmaudio() -> None:
+    """ "High visual quality" is not a sound, and it was all the model got."""
+    result = kaggle_worker.audio_prompt(WATERFALL).lower()
+
+    for boilerplate in (
+        "coherent environment",
+        "consistent details",
+        "high visual quality",
+        "no text or watermark",
+        "subject motion",
+        "camera",
+        "lighting",
+    ):
+        assert boilerplate not in result, boilerplate
+
+
+def test_a_style_preset_keeps_its_setting_words_beside_the_subject() -> None:
+    """A cyberpunk street still sounds like rain and a city."""
+    composed = (
+        "Cinematic 16:9 video of a street at night. Clear subject motion, coherent "
+        "environment, smooth camera movement, natural lighting, consistent details, "
+        "high visual quality, no text or watermark., in cyberpunk 2077 aesthetic, "
+        "glowing neon lights, futuristic cityscape, rainy volumetric reflections, "
+        "dark atmosphere"
+    )
+
+    result = kaggle_worker.audio_prompt(composed)
+
+    assert result.startswith("a street at night")
+    assert "futuristic cityscape" in result
+    assert "rainy volumetric reflections" in result
+    assert "aesthetic" not in result
+
+
+def test_a_multi_word_subject_is_kept_whole() -> None:
+    composed = (
+        "Cinematic 9:16 video of A sheep walking in a farm. Clear subject motion, "
+        "coherent environment, smooth camera movement, natural lighting, consistent "
+        "details, high visual quality, no text or watermark."
+    )
+
+    assert kaggle_worker.audio_prompt(composed) == "A sheep walking in a farm"
+
+
+def test_an_empty_prompt_stays_empty() -> None:
+    assert kaggle_worker.audio_prompt("   ") == ""
+
+
+def test_broadband_noise_is_no_longer_negative_prompted() -> None:
+    """A waterfall, rain, wind and a river are all broadband noise.
+
+    "static" and "hum" were added to suppress artefacts and suppressed the
+    subject instead. What EXP-006 measured as valuable was the music and voice
+    half of this list, which stays.
+    """
+    negative = kaggle_worker.AUDIO_NEGATIVE_PROMPT.lower()
+
+    assert "static" not in negative
+    assert "hum" not in negative
+    for invented in ("music", "speech", "voice", "narration", "singing"):
+        assert invented in negative
+
+
+# --- loudness normalisation --------------------------------------------------
+#
+# MMAudio writes around -25 to -32 LUFS across four measured clips, against a
+# -14 to -23 range for streaming and mobile. The first person to listen said
+# they could barely hear it, and they were right. Normalising costs a re-encode
+# of about 64 KB, which is nothing beside the picture it travels with.
+
+
+def test_the_soundtrack_is_normalised_on_the_way_through(tmp_path: Path, monkeypatch) -> None:
+    repo = _mmaudio_repo(tmp_path, monkeypatch)
+    calls = _stub_subprocess(monkeypatch, repo, mux_succeeds=True)
+    clip = tmp_path / "video.mp4"
+    clip.write_bytes(SILENT_CLIP)
+
+    assert kaggle_worker.add_audio(clip, "a paper dragon", 4) is True
+
+    ffmpeg = _mux_call(calls)
+    assert ffmpeg[ffmpeg.index("-c:a") + 1] == "aac"
+    audio_filter = ffmpeg[ffmpeg.index("-filter:a") + 1]
+    assert f"I={kaggle_worker.AUDIO_TARGET_LUFS}" in audio_filter
+    # Second-pass values come from the first pass, so the gain is linear rather
+    # than guessed frame by frame.
+    assert "measured_I=-29.44" in audio_filter
+    assert "linear=true" in audio_filter
+
+
+def test_the_measurement_pass_runs_before_the_mux(tmp_path: Path, monkeypatch) -> None:
+    """One pass would pump on a four-second clip; measuring first avoids it."""
+    repo = _mmaudio_repo(tmp_path, monkeypatch)
+    calls = _stub_subprocess(monkeypatch, repo, mux_succeeds=True)
+    clip = tmp_path / "video.mp4"
+    clip.write_bytes(SILENT_CLIP)
+
+    kaggle_worker.add_audio(clip, "a paper dragon", 4)
+
+    ffmpeg_calls = [argv for argv in calls if argv[0] == "ffmpeg"]
+    assert _is_measurement(ffmpeg_calls[0])
+    assert not _is_measurement(ffmpeg_calls[1])
+
+
+def test_an_unreadable_measurement_still_ships_the_soundtrack(tmp_path: Path, monkeypatch) -> None:
+    """Normalising is an enhancement on an enhancement.
+
+    Losing the volume adjustment is acceptable; losing three minutes of GPU
+    time over it is not.
+    """
+    repo = _mmaudio_repo(tmp_path, monkeypatch)
+    calls = _stub_subprocess(monkeypatch, repo, mux_succeeds=True, measurement=None)
+    clip = tmp_path / "video.mp4"
+    clip.write_bytes(SILENT_CLIP)
+
+    assert kaggle_worker.add_audio(clip, "a paper dragon", 4) is True
+
+    assert clip.read_bytes() == MUXED_CLIP
+    ffmpeg = _mux_call(calls)
+    assert ffmpeg[ffmpeg.index("-c:a") + 1] == "copy"
+
+
+def test_near_silence_is_left_alone_rather_than_amplified(tmp_path, monkeypatch) -> None:
+    """Lifting a noise floor 30 dB produces hiss, not a soundtrack.
+
+    Quiet is the better failure: it invites "the model found nothing here",
+    which is true, rather than "the model produced static", which is worse than
+    silence by EXP-006's own kill criterion.
+    """
+    monkeypatch.setattr(kaggle_worker, "_ffmpeg_executable", lambda: "ffmpeg")
+    silent_json = MEASURED_JSON.replace('"input_i" : "-29.44"', '"input_i" : "-61.20"')
+
+    class Completed:
+        returncode = 0
+        stdout = ""
+        stderr = silent_json
+
+    monkeypatch.setattr("subprocess.run", lambda *a, **k: Completed())
+
+    assert kaggle_worker._measure_loudness(tmp_path / "clip.mp4") is None
+
+
+def test_a_measurable_track_is_normalised(tmp_path, monkeypatch) -> None:
+    """The floor must not be so high that ordinary MMAudio output trips it."""
+    monkeypatch.setattr(kaggle_worker, "_ffmpeg_executable", lambda: "ffmpeg")
+
+    class Completed:
+        returncode = 0
+        stdout = ""
+        stderr = MEASURED_JSON
+
+    monkeypatch.setattr("subprocess.run", lambda *a, **k: Completed())
+
+    measured = kaggle_worker._measure_loudness(tmp_path / "clip.mp4")
+
+    assert measured is not None
+    assert measured["input_i"] == "-29.44"
+    assert kaggle_worker.AUDIO_LOUDNESS_FLOOR_LUFS < -29.44 < kaggle_worker.AUDIO_TARGET_LUFS
+
+
+def test_a_failed_measurement_command_is_not_fatal(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(kaggle_worker, "_ffmpeg_executable", lambda: "ffmpeg")
+
+    def boom(*_a, **_k):
+        raise OSError("ffmpeg vanished")
+
+    monkeypatch.setattr("subprocess.run", boom)
+
+    assert kaggle_worker._measure_loudness(tmp_path / "clip.mp4") is None

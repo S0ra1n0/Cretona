@@ -12,6 +12,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import sys
 import threading
 import time
@@ -44,7 +45,11 @@ AUDIO_TIMEOUT_SECONDS = 600
 # The negative prompt is the one worth setting: on quiet ambient clips the model
 # tends to invent a music bed or a voice, and either is instantly recognisable
 # as wrong for a four-second scene with nobody speaking in it.
-AUDIO_NEGATIVE_PROMPT = "music, soundtrack, speech, voice, narration, singing, static, hum"
+# "static" and "hum" were here to suppress noise artefacts and had to go: they
+# denote broadband noise, which is acoustically what a waterfall, rain, wind and
+# a river all are. Negative-prompting them fought the most common subjects this
+# app generates. What EXP-006 actually validated was the music/voice half.
+AUDIO_NEGATIVE_PROMPT = "music, soundtrack, speech, voice, narration, singing"
 # Tuned on a T4 against EXP-006, 2026-09-03. MMAudio defaults to 25 steps at
 # cfg 4.5; both were raised because a 4-second clip finished in 91 s against a
 # 300 s budget, so the quality was there to buy. 50 steps costs about 180 s and
@@ -56,6 +61,21 @@ AUDIO_CFG_STRENGTH = 6.0
 # only has to be long enough that a busy Kaggle box is never the reason a
 # soundtrack is thrown away.
 AUDIO_MUX_TIMEOUT_SECONDS = 120
+# MMAudio writes around -25 to -32 LUFS. Streaming and mobile sit between -14
+# and -23, so its output is 7-16 dB below anything a phone speaker makes
+# audible: measured on four real clips, and the reason the first listener said
+# they could barely hear it.
+AUDIO_TARGET_LUFS = -16.0
+AUDIO_TARGET_PEAK_DBTP = -1.5
+AUDIO_TARGET_LRA = 11.0
+# Below this the track is closer to silence than to a soundtrack, and lifting
+# it to the target would amplify a noise floor rather than a sound. Leave those
+# alone: quiet is a better failure than loud hiss.
+AUDIO_LOUDNESS_FLOOR_LUFS = -45.0
+# A reference still is a phone photo at worst. Anything larger than this is not
+# a still, and downloading it onto a Kaggle box is not worth the wait.
+REFERENCE_MAX_BYTES = 25 * 1024 * 1024
+REFERENCE_TIMEOUT_SECONDS = 120
 GUIDANCE_SCALE = 5.0
 LEASE_SECONDS = 180
 HEARTBEAT_SECONDS = 45
@@ -131,6 +151,10 @@ class Job:
     prompt: str
     duration_seconds: int
     aspect_ratio: str
+    #: Object name in the private `uploads` bucket, or None for a text-only
+    #: job. Shaped `<user_id>/<yyyy-mm-dd>/<uuid>.jpg`, which is deliberately
+    #: not the thumbnail shape -- see supabase/016.
+    image_path: str | None = None
 
     @classmethod
     def from_row(cls, row: dict[str, Any]) -> Job:
@@ -143,12 +167,21 @@ class Job:
         prompt = str(row["prompt"] or "").strip()
         if not prompt:
             raise ValueError("Kaggle jobs require a text prompt.")
+        # `image_path` is absent from an older claim function's result, and that
+        # must stay a text-only job rather than an error: a worker bundle can be
+        # newer than the database it claims from.
+        image_path = str(row.get("image_path") or "").strip() or None
+        if image_path is not None and not image_path.startswith(f"{row['user_id']}/"):
+            # The path is the owner's folder by construction. A row that says
+            # otherwise is not something to download on the strength of.
+            raise ValueError("Reference image does not belong to the job owner.")
         return cls(
             project_id=UUID(str(row["project_id"])),
             user_id=UUID(str(row["user_id"])),
             prompt=prompt,
             duration_seconds=duration,
             aspect_ratio=aspect,
+            image_path=image_path,
         )
 
 
@@ -206,6 +239,44 @@ class SupabaseWorkerClient:
             raise RuntimeError(f"Storage upload returned HTTP {exc.code}.") from exc
         except urllib.error.URLError as exc:
             raise RuntimeError("Storage upload could not reach Supabase.") from exc
+
+    def download_reference(self, session: AuthSession, path: str, destination: Path) -> None:
+        """Fetch the job's reference still from the private `uploads` bucket.
+
+        Reachable only while this worker holds the project's lease: the read is
+        gated by `private.cretona_kaggle_can_read_reference`, which matches the
+        object name against `video_projects.image_path` of the leased row
+        (supabase/016). An expired lease turns this into an HTTP 400, which is
+        the correct answer rather than a surprise.
+        """
+        encoded_path = "/".join(urllib.parse.quote(part, safe="") for part in path.split("/"))
+        url = f"{self.config.supabase_url.rstrip('/')}/storage/v1/object/uploads/{encoded_path}"
+        request = urllib.request.Request(
+            url,
+            method="GET",
+            headers={
+                "apikey": self.config.publishable_key,
+                "Authorization": f"Bearer {session.access_token}",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=REFERENCE_TIMEOUT_SECONDS) as response:
+                if response.status >= 300:
+                    raise RuntimeError(f"Reference download returned HTTP {response.status}.")
+                # Read one byte past the cap so an oversized object is refused
+                # rather than streamed onto the box in full.
+                payload = response.read(REFERENCE_MAX_BYTES + 1)
+        except urllib.error.HTTPError as exc:
+            raise RuntimeError(f"Reference download returned HTTP {exc.code}.") from exc
+        except urllib.error.URLError as exc:
+            raise RuntimeError("Reference download could not reach Supabase.") from exc
+
+        if not payload:
+            raise RuntimeError("Reference image is empty.")
+        if len(payload) > REFERENCE_MAX_BYTES:
+            raise RuntimeError(f"Reference image exceeds {REFERENCE_MAX_BYTES} bytes.")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(payload)
 
     def upload_video(self, session: AuthSession, path: str, source: Path) -> None:
         self._upload(session, "videos", path, source, "video/mp4")
@@ -554,7 +625,21 @@ _VISUAL_ONLY_MARKERS = (
     "subsurface scattering",
     "character rendering",
     "hyperrealistic",
+    # Boilerplate the prompt enhancer appends to every job. None of it
+    # describes a sound, and leaving it in was worse than useless: it was the
+    # only thing MMAudio received once the subject had been filtered away.
+    "subject motion",
+    "coherent environment",
+    "consistent details",
+    "visual quality",
+    "no text",
+    "watermark",
 )
+
+#: `PromptService` emits "Cinematic <ratio> video of <subject>. <boilerplate>".
+#: The subject is the one part a soundtrack can act on, and it is glued to a
+#: visual marker, so it has to be lifted out before any clause filtering.
+_TEMPLATE_PREFIX = re.compile(r"^\s*cinematic\s+\S+\s+video\s+of\s+", re.IGNORECASE)
 #: Setting words are kept on purpose even when they arrive inside a style
 #: directive: "futuristic cityscape" tells a soundtrack more than it costs.
 
@@ -567,16 +652,34 @@ def audio_prompt(video_prompt: str) -> str:
     sonify instructions about framing and grain. Dropping those clauses leaves
     the subject and setting, which is what a listener would expect to hear.
 
+    The subject is extracted before anything is filtered. Splitting on commas
+    alone destroyed it: the enhancer writes "Cinematic 16:9 video of Waterfall.
+    Clear subject motion" as one comma-clause, so a filter that drops any clause
+    containing "cinematic 16:9" drops the word "Waterfall" with it. Two real
+    jobs shipped with MMAudio conditioned on nothing but "coherent environment,
+    consistent details, high visual quality, no text or watermark", which is why
+    their soundtracks had no relationship to the picture.
+
     Falls back to the original when filtering would leave nothing: a
     scene-shaped prompt beats an empty one.
     """
-    clauses = [clause.strip() for clause in video_prompt.split(",")]
+    text = video_prompt.strip()
+    if not text:
+        return text
+
+    # An enhanced prompt has its subject in the first sentence; a raw one has no
+    # sentence break and is filtered clause by clause as before.
+    head, separator, tail = text.partition(".")
+    subject = _TEMPLATE_PREFIX.sub("", head).strip() if separator else ""
+    remainder = tail if separator else text
+
     kept = [
         clause
-        for clause in clauses
+        for clause in (clause.strip() for clause in remainder.split(","))
         if clause and not any(marker in clause.lower() for marker in _VISUAL_ONLY_MARKERS)
     ]
-    return ", ".join(kept) if kept else video_prompt.strip()
+    parts = ([subject] if subject else []) + kept
+    return ", ".join(parts) if parts else text
 
 
 def audio_enabled() -> bool:
@@ -600,7 +703,85 @@ def _ffmpeg_executable() -> str | None:
         return shutil.which("ffmpeg")
 
 
-def mux_audio(silent: Path, composited: Path, destination: Path) -> bool:
+def _measure_loudness(source: Path) -> dict[str, str] | None:
+    """Run `loudnorm`'s analysis pass and return what it found.
+
+    Two passes beat one here. Single-pass `loudnorm` guesses as it goes and
+    pumps on a four-second clip; measuring first lets the second pass apply a
+    known, linear gain. Both passes are sub-second on a clip this short.
+
+    Returns None whenever the answer cannot be trusted, so the caller falls
+    back to copying the stream untouched.
+    """
+    import json
+    import subprocess
+
+    ffmpeg = _ffmpeg_executable()
+    if ffmpeg is None:
+        return None
+    try:
+        completed = subprocess.run(
+            [
+                ffmpeg,
+                "-nostdin",
+                "-i",
+                str(source),
+                "-filter:a",
+                f"loudnorm=I={AUDIO_TARGET_LUFS}:TP={AUDIO_TARGET_PEAK_DBTP}"
+                f":LRA={AUDIO_TARGET_LRA}:print_format=json",
+                "-f",
+                "null",
+                "-",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=AUDIO_MUX_TIMEOUT_SECONDS,
+        )
+    except Exception as exc:
+        logger.warning("Loudness measurement skipped: %s", type(exc).__name__)
+        return None
+    if completed.returncode != 0:
+        logger.warning("Loudness measurement skipped: ffmpeg exited %s", completed.returncode)
+        return None
+
+    text = completed.stderr or ""
+    start, end = text.rfind("{"), text.rfind("}")
+    if start < 0 or end < start:
+        logger.warning("Loudness measurement skipped: no JSON in ffmpeg output")
+        return None
+    try:
+        measured = json.loads(text[start : end + 1])
+        source_lufs = float(measured["input_i"])
+    except (ValueError, KeyError, TypeError):
+        logger.warning("Loudness measurement skipped: unreadable ffmpeg output")
+        return None
+
+    if source_lufs < AUDIO_LOUDNESS_FLOOR_LUFS:
+        logger.info(
+            "Loudness normalisation skipped: source is %.1f LUFS, below the %.1f floor",
+            source_lufs,
+            AUDIO_LOUDNESS_FLOOR_LUFS,
+        )
+        return None
+    return measured
+
+
+def loudnorm_filter(measured: dict[str, str]) -> str:
+    """Second-pass `loudnorm` arguments built from the first pass's numbers."""
+    return (
+        f"loudnorm=I={AUDIO_TARGET_LUFS}:TP={AUDIO_TARGET_PEAK_DBTP}:LRA={AUDIO_TARGET_LRA}"
+        f":measured_I={measured['input_i']}:measured_TP={measured['input_tp']}"
+        f":measured_LRA={measured['input_lra']}:measured_thresh={measured['input_thresh']}"
+        f":offset={measured['target_offset']}:linear=true"
+    )
+
+
+def mux_audio(
+    silent: Path,
+    composited: Path,
+    destination: Path,
+    audio_filter: str | None = None,
+) -> bool:
     """Put `silent`'s picture and `composited`'s soundtrack in one container.
 
     Both streams are **copied**, never re-encoded, so this is a repackaging
@@ -636,8 +817,11 @@ def mux_audio(silent: Path, composited: Path, destination: Path) -> bool:
                 "1:a:0",
                 "-c:v",
                 "copy",
-                "-c:a",
-                "copy",
+                *(
+                    ["-filter:a", audio_filter, "-c:a", "aac", "-b:a", "128k"]
+                    if audio_filter
+                    else ["-c:a", "copy"]
+                ),
                 # No `-shortest`. MMAudio returns 4.040 s of sound for a
                 # 4.0625 s clip, and `-shortest` answered that mismatch by
                 # dropping four frames -- 65 became 61, measured. The picture
@@ -758,13 +942,24 @@ def add_audio(video: Path, prompt: str, duration_seconds: int) -> bool:
     #
     # Replace only once the replacement is known good, so a truncated write
     # cannot cost the clip that already generated successfully.
+    #
+    # The soundtrack is also normalised on the way through. Re-encoding 64 KB of
+    # AAC costs nothing next to the picture it travels with, and MMAudio's own
+    # level is far too low to hear on a phone.
     composited_bytes = newest.stat().st_size
     muxed = video.with_name(video.name + ".mux.mp4")
-    if mux_audio(video, newest, muxed):
+    measured = _measure_loudness(newest)
+    normalised = measured is not None and mux_audio(
+        video, newest, muxed, audio_filter=loudnorm_filter(measured)
+    )
+    # Normalising is an enhancement on an enhancement. If it fails, mux the
+    # stream untouched rather than lose the soundtrack over its volume.
+    if normalised or mux_audio(video, newest, muxed):
         muxed_bytes = muxed.stat().st_size
         muxed.replace(video)
         logger.info(
-            "Audio muxed without re-encoding: %s B rather than MMAudio's %s B",
+            "Audio muxed %s: %s B rather than MMAudio's %s B",
+            "and normalised" if normalised else "without normalisation",
             muxed_bytes,
             composited_bytes,
         )
