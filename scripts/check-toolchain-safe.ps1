@@ -148,14 +148,6 @@ function Test-CompleteModelSnapshot {
     return $null -eq $incomplete
 }
 
-$rtk = Resolve-Executable 'rtk'
-if ($rtk) {
-    $probe = Invoke-Probe $rtk @('--version')
-    Add-Result 'RTK' ($probe.ExitCode -eq 0) "$($probe.Line) at $rtk"
-} else {
-    Add-Result 'RTK' $false 'Install the official Windows release into a PATH directory.'
-}
-
 $git = Resolve-Executable 'git'
 if ($git) {
     $probe = Invoke-Probe $git @('--version')

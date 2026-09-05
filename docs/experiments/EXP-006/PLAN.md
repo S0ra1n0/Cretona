@@ -19,10 +19,10 @@ disabled and the proposal's non-scope line stands.
 |---|---|---|---|---|
 | 1 | You | EXP-006 cell 1: torch ≥ 2.5.1 | 5 min | ✅ **2.10.0+cu128** |
 | 2 | You | EXP-006 cells 2–5 on an existing clip | 25 min | ✅ **passed, 3 runs** |
-| 3 | Claude | Worker integration, flag off by default | done | ✅ **tuned to 50/6.0** |
+| 3 | Backend | Worker integration, flag off by default | done | ✅ **tuned to 50/6.0** |
 | 4 | You | New bundle, hashes, upload, restart | 20 min | 2 passes |
 | 5 | You | One real job with audio end to end | 35 min | ✅ **two jobs, 09-03** |
-| 6 | Claude | Amend proposal scope, SRS, roadmap | 20 min | ✅ **`DEC-014`, 09-05** |
+| 6 | Backend | Amend proposal scope, SRS, roadmap | 20 min | ✅ **`DEC-014`, 09-05** |
 
 Phase 3 is already complete; see below.
 

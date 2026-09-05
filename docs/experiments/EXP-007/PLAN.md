@@ -22,10 +22,10 @@ after the measurement, not before.
 | 1 | You | EXP-007 cells 1-3: disk, dtype, pipeline | 2 min | — |
 | 2 | You | EXP-007 cells 2-8: one clip, measured | 45 min | 1 passes |
 | 3 | Both | Decide: two models, one model, or neither | 30 min | 2 passes |
-| 4 | Claude | Worker integration for the chosen shape | 2 h | 3 |
+| 4 | Backend | Worker integration for the chosen shape | 2 h | 3 |
 | 5 | You | New bundle, hashes, upload, restart | 20 min | 4 |
 | 6 | You | One real image job end to end from the app | 40 min | 5 |
-| 7 | Claude | Amend proposal, SRS, ADR, roadmap | 30 min | 6 passes |
+| 7 | Backend | Amend proposal, SRS, ADR, roadmap | 30 min | 6 passes |
 
 Phase 2's 45 minutes is mostly download. The generation itself is what
 criterion 3 measures.

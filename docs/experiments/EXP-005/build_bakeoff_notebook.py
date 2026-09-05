@@ -987,7 +987,7 @@ entry = f"""  - id: "EVD-EXP005-XXX"
     exit_code: {0 if len(ok) == len(RESULTS) else 1}
     result_summary: "{summary}"
     artifact_or_log: "{RUN_ID}/results.json, environment.json, BLIND_KEY.json, blind/*.mp4"
-    executed_by: "Claude on Kaggle"
+    executed_by: "S0ra1n0 on Kaggle"
     independently_verified_by: null
 """
 

@@ -23,7 +23,7 @@ remediation.
 The target identity was checked by matching the project reference derived from
 the ignored `SUPABASE_URL` with the ignored direct PostgreSQL DSN. The actual
 reference, URL, role, password, keys, and database host are intentionally not
-recorded. The connected Supabase account available to Codex did not list this
+recorded. The connected Supabase account available at the time did not list this
 project, so the direct connection was used only after the identity check.
 
 ## Read-only guard and evidence boundary

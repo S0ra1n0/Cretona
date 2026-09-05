@@ -11,7 +11,6 @@ the active FastAPI service in `backend/` on port 8000.
 | JDK | 17+ | Android build; prefer Android Studio's JBR |
 | Android SDK | API 37 | Compile SDK required by the checked-in dependencies |
 | Python | 3.12+ | Active FastAPI backend |
-| RTK | 0.45+ | Compact, repeatable Codex/CLI command output |
 | Node.js | 20 LTS | Optional: verify the Express reference backend |
 | FFmpeg/FFprobe | recent | Optional: regenerate or inspect video fixtures |
 | Ollama | recent | Optional: real local prompt enhancement |
@@ -201,19 +200,7 @@ FastAPI must bind `0.0.0.0`; `localhost` inside the emulator means the emulator
 itself. For a physical device, allow only the required port on the trusted local
 network and do not expose development auth to the public internet.
 
-## 6. RTK durability note
-
-RTK is installed at `C:\Users\ASUS\.local\bin\rtk.exe`. Its tracking database
-is configured in the ignored `.rtk-data/` directory because Codex Desktop's
-Windows sandbox cannot reliably write RTK's default LocalAppData database. The
-user-scoped `CLAUDE_CONFIG_DIR` variable also prevents RTK from relying on an
-undefined home path in a fresh Codex shell. A restarted shell should inherit
-the setting.
-
-Native Windows Codex currently uses RTK through repository/global instructions;
-the missing shell-hook notice does not mean command filtering is unavailable.
-
-## 7. Troubleshooting
+## 6. Troubleshooting
 
 | Symptom | Cause and fix |
 |---|---|
@@ -224,5 +211,4 @@ the missing shell-hook notice does not mean command filtering is unavailable.
 | FastAPI import fails | Recreate `backend/.venv` and install `-e ".[dev]"` |
 | Prompt says deterministic fallback | Ollama is disabled/unreachable; check `.env`, model availability, and `/api/tags` locally |
 | Video is a color test pattern | Expected `fake`-provider evidence; select `kaggle` and run the external worker for Wan2.1 output |
-| `rtk gain` cannot write LocalAppData | Confirm the roaming RTK config points `database_path` at `.rtk-data/history.db` |
-| FFmpeg link is blocked in Codex | Run `check-toolchain-safe.ps1`; it resolves the WinGet symlink target before invoking the executable |
+| FFmpeg resolves to a blocked link | Run `check-toolchain-safe.ps1`; it resolves the WinGet symlink target before invoking the executable |

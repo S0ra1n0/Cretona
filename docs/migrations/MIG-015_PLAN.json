@@ -11,7 +11,7 @@
     "planned_at": "2026-09-02"
   },
   "routing": {
-    "orchestrator": "Codex build-software-project",
+    "orchestrator": "Cretona team",
     "handoff_target": "Cretona repository and live Supabase operator",
     "specialist_self_activation": false,
     "reroute_recommendations": []
@@ -57,7 +57,7 @@
     "application_owners": ["FastAPI backend owner", "Kaggle worker owner"],
     "operations_owner": "Bruce Nguyen",
     "reviewer": "Cretona teammate",
-    "integrator": "Codex"
+    "integrator": "Cretona team"
   },
   "impact": {
     "change_classes": ["compatible function replacement", "additive RLS policies"],

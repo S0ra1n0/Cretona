@@ -25,6 +25,15 @@ backend/assets/*.mp4
 backend/assets/*.jpg
 !backend/assets/demo-output.mp4
 
+# Worker bundles. Rebuilt from the tracked source with `git show :<path>`, so
+# the zip is a build artifact and the hash in the notebook is what pins it.
+_test/*.zip
+
+# Editor and tooling leftovers
+local.properties.bak-*
+*.orig
+*.rej
+
 # Android / Gradle
 *.iml
 .gradle/
@@ -52,7 +61,6 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .qa-pip-audit-cache/
-.rtk-data/
 .coverage
 htmlcov/
 .venv/
