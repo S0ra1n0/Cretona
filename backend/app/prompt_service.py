@@ -53,6 +53,11 @@ class PromptEnhancer:
                         "model": self.settings.ollama_model,
                         "prompt": instruction,
                         "stream": False,
+                        # Without this a reasoning model answers into
+                        # `thinking` and leaves `response` empty, which reads
+                        # here as "Ollama declined" and silently drops every
+                        # enhancement to the deterministic fallback.
+                        **({"think": False} if self.settings.ollama_disable_thinking else {}),
                         # This laptop has only 16 GB RAM. Release the model after
                         # every request so prompt enhancement cannot starve the
                         # separate video worker.

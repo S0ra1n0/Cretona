@@ -103,6 +103,18 @@ class Settings(BaseSettings):
     ollama_num_ctx: int = Field(default=4096, ge=512, le=32768)
     ollama_num_predict: int = Field(default=180, ge=32, le=1000)
     ollama_temperature: float = Field(default=0.2, ge=0, le=2)
+    #: Ask a reasoning model to answer directly instead of thinking first.
+    #:
+    #: Qwen3 models reason by default and put the trace in `thinking`, leaving
+    #: `response` empty. Measured on `qwen3.5:2b`: the default spends its whole
+    #: budget reasoning and returns 0 characters with `done_reason=length`, and
+    #: raising `num_predict` from 180 to 600 does not help -- it just reasons
+    #: for longer. With thinking off the same model answers in 4.9 s.
+    #:
+    #: Set false for a deployment whose Ollama rejects the field. Enhancement
+    #: already falls back to the deterministic template on any error, so the
+    #: worst case is what shipped before this setting existed.
+    ollama_disable_thinking: bool = True
 
     fake_polls_before_complete: int = Field(default=1, ge=1, le=20)
     fake_video_filename: str = "demo-output.mp4"

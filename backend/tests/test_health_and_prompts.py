@@ -114,6 +114,7 @@ def test_ollama_request_is_bounded_and_unloads_model() -> None:
         assert payload["model"] == "qwen3:4b-instruct-2507-q4_K_M"
         assert payload["stream"] is False
         assert payload["keep_alive"] == 0
+        assert payload["think"] is False
         assert payload["options"] == {
             "num_ctx": 4096,
             "num_predict": 180,
@@ -133,3 +134,57 @@ def test_ollama_request_is_bounded_and_unloads_model() -> None:
     assert result.provider == "ollama"
     assert result.used_fallback is False
     assert result.enhanced_prompt == "A bounded cinematic prompt."
+
+
+def test_a_reasoning_model_that_answers_into_thinking_is_the_reason_think_is_off() -> None:
+    """Qwen3 reasons by default and leaves `response` empty.
+
+    Measured on `qwen3.5:2b`: the default spends its whole token budget on the
+    trace and returns `done_reason=length` with zero characters, so every
+    enhancement silently became the deterministic template. Raising
+    `num_predict` from 180 to 600 did not help. This is what that failure looks
+    like from inside the adapter.
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "response": "",
+                "thinking": "1. Deconstruct the idea...",
+                "done_reason": "length",
+            },
+        )
+
+    enhancer = PromptEnhancer(
+        Settings(prompt_llm_provider="ollama"),
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = asyncio.run(
+        enhancer.enhance(PromptEnhanceRequest(prompt="paper dragon", aspectRatio="16:9"))
+    )
+
+    # The trace is not an enhanced prompt, so falling back is correct here. The
+    # fix is upstream: do not let the model reason in the first place.
+    assert result.provider == "deterministic"
+    assert result.used_fallback is True
+
+
+def test_the_thinking_field_can_be_withheld_for_a_stricter_ollama() -> None:
+    """Some deployments reject an unknown field; the setting turns it off."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert "think" not in json.loads(request.content)
+        return httpx.Response(200, json={"response": "A bounded cinematic prompt."})
+
+    enhancer = PromptEnhancer(
+        Settings(prompt_llm_provider="ollama", ollama_disable_thinking=False),
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = asyncio.run(
+        enhancer.enhance(PromptEnhanceRequest(prompt="paper dragon", aspectRatio="16:9"))
+    )
+
+    assert result.used_fallback is False

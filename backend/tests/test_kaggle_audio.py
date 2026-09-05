@@ -590,3 +590,44 @@ def test_a_failed_measurement_command_is_not_fatal(tmp_path, monkeypatch) -> Non
     monkeypatch.setattr("subprocess.run", boom)
 
     assert kaggle_worker._measure_loudness(tmp_path / "clip.mp4") is None
+
+
+# A third prompt shape reaches the worker once Ollama is actually answering:
+# the LLM writes one long sentence and trails camera, lighting and aspect-ratio
+# clauses after commas, with no sentence break to separate them. This is the
+# real output of `qwen3.5:2b` through the backend adapter on 2026-09-05.
+
+LIVE_LLM = (
+    "A high school girl with a confident stride walks purposefully down a sunlit "
+    "suburban road lined with green trees and parked cars, captured in a "
+    "cinematic wide shot with a slow push-in, soft natural lighting, 16:9 aspect ratio."
+)
+
+
+def test_a_live_llm_prompt_keeps_its_scene_and_drops_the_camera_work() -> None:
+    result = kaggle_worker.audio_prompt(LIVE_LLM)
+
+    assert result.startswith("A high school girl")
+    assert "suburban road" in result
+    for visual in ("wide shot", "push-in", "lighting", "aspect ratio"):
+        assert visual not in result.lower(), visual
+
+
+def test_the_first_clause_survives_whatever_shape_the_prompt_arrives_in() -> None:
+    """The subject is never filtered, in any of the three shapes.
+
+    Losing it is the failure that shipped two jobs with audio unrelated to the
+    picture, and it happened because the filter had only ever been run against
+    the one shape EXP-006's notebook used.
+    """
+    shapes = {
+        "enhancer template": (WATERFALL, "Waterfall"),
+        "live LLM": (LIVE_LLM, "A high school girl"),
+        "raw notebook style": (
+            "A red paper boat on a calm lake at sunrise, in 8k hyperrealistic cinematic look",
+            "A red paper boat on a calm lake at sunrise",
+        ),
+    }
+
+    for label, (prompt, expected_start) in shapes.items():
+        assert kaggle_worker.audio_prompt(prompt).startswith(expected_start), label

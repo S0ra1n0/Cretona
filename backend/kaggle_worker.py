@@ -634,6 +634,9 @@ _VISUAL_ONLY_MARKERS = (
     "visual quality",
     "no text",
     "watermark",
+    "aspect ratio",
+    "wide shot",
+    "close-up",
 )
 
 #: `PromptService` emits "Cinematic <ratio> video of <subject>. <boilerplate>".
@@ -667,16 +670,26 @@ def audio_prompt(video_prompt: str) -> str:
     if not text:
         return text
 
-    # An enhanced prompt has its subject in the first sentence; a raw one has no
-    # sentence break and is filtered clause by clause as before.
+    # Three prompt shapes reach here and all of them must work. The enhancer
+    # template puts the subject in a first sentence glued to "Cinematic 16:9";
+    # a live LLM writes one long sentence with camera and lighting clauses
+    # trailing after commas; a raw prompt has neither. Splitting on the first
+    # sentence break and then on commas covers all three, and keeping the very
+    # first clause unconditionally is what stops any of them losing the
+    # subject -- the failure that shipped two jobs with unrelated audio.
     head, separator, tail = text.partition(".")
-    subject = _TEMPLATE_PREFIX.sub("", head).strip() if separator else ""
-    remainder = tail if separator else text
+    head = _TEMPLATE_PREFIX.sub("", head).strip()
+
+    clauses = [clause.strip() for clause in head.split(",") if clause.strip()]
+    subject = clauses[0] if clauses else ""
+    remainder = clauses[1:] + [
+        clause.strip() for clause in (tail if separator else "").split(",") if clause.strip()
+    ]
 
     kept = [
         clause
-        for clause in (clause.strip() for clause in remainder.split(","))
-        if clause and not any(marker in clause.lower() for marker in _VISUAL_ONLY_MARKERS)
+        for clause in remainder
+        if not any(marker in clause.lower() for marker in _VISUAL_ONLY_MARKERS)
     ]
     parts = ([subject] if subject else []) + kept
     return ", ".join(parts) if parts else text
